@@ -1,0 +1,178 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm -F *)",
+      "Bash(pnpm -C *)",
+      "Bash(pnpm -r *)",
+      "Bash(pnpm run *)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm clean:*)",
+      "Bash(pnpm outdated:*)",
+      "Bash(pnpm why:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm dlx *)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsup:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prettier:*)",
+      "Bash(tsc --noEmit)",
+      "Bash(tsc --noEmit:*)",
+      "Bash(tsc -p *)",
+      "Bash(node --version)",
+      "Bash(node -v)",
+      "Bash(node -e *)",
+      "Bash(node scripts/*)",
+      "Bash(claude --version)",
+      "Bash(claude -v)",
+      "Bash(corepack enable)",
+      "Bash(corepack prepare:*)",
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git diff)",
+      "Bash(git diff:*)",
+      "Bash(git log)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(git branch)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git add:*)",
+      "Bash(git restore --staged:*)",
+      "Bash(git stash)",
+      "Bash(git stash:*)",
+      "Bash(git commit -m:*)",
+      "Bash(git commit -F:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git config --get:*)",
+      "Bash(ls)",
+      "Bash(ls:*)",
+      "Bash(mkdir -p *)",
+      "Bash(rm -rf node_modules)",
+      "Bash(rm -rf packages/*/dist)",
+      "Bash(rm -rf packages/*/node_modules)",
+      "Bash(rm -rf .relay)",
+      "Bash(touch:*)",
+      "Bash(chmod +x:*)",
+      "Bash(cat _work/*)",
+      "Bash(cat _specs/*)",
+      "Bash(cat package.json)",
+      "Bash(cat packages/*/package.json)",
+      "Bash(cat tsconfig.base.json)",
+      "Bash(cat tsconfig.json)",
+      "Bash(cat pnpm-workspace.yaml)",
+      "Bash(cat .npmrc)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(diff:*)",
+      "Bash(printenv:*)",
+      "Bash(env)",
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      "Bash(test -*)",
+      "Bash(find . -name *)",
+      "Bash(find packages -name *)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:platform.claude.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:typescriptlang.org)",
+      "WebFetch(domain:vitest.dev)",
+      "WebFetch(domain:zod.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:www.npmjs.com)"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push origin --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore --worktree *)",
+      "Bash(git config --global *)",
+      "Bash(git config user.* *)",
+      "Bash(git rebase -i *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(rm -rf _specs)",
+      "Bash(rm -rf _specs/*)",
+      "Bash(rm -rf _work)",
+      "Bash(rm -rf _work/*)",
+      "Bash(rm -rf .git)",
+      "Bash(rm -rf .git/*)",
+      "Bash(rm -rf .claude)",
+      "Bash(rm -rf .claude/*)",
+      "Bash(npm publish *)",
+      "Bash(pnpm publish *)",
+      "Bash(npm unpublish *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo ''; echo '●─▶●─▶●─▶●  relay'; echo ''; echo 'sprint backlog:'; if ls _work/sprint-*.json >/dev/null 2>&1; then ls _work/sprint-*.json | sort -V | xargs -I{} basename {} .json | sed 's/^/    /'; else echo '    (none — _work/ is empty)'; fi; echo ''; echo 'recent commits:'; git log --oneline -5 2>/dev/null | sed 's/^/    /' || echo '    (not a git repo yet — git init when ready)'; echo ''",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import sys, json; data=json.load(sys.stdin); fp=data.get(\"tool_input\",{}).get(\"file_path\",\"\"); blocked = (\"/_specs/\" in fp) or (\"/_work/sprint-\" in fp and fp.endswith(\".json\")); sys.exit(2 if blocked else 0)' 2>/dev/null && exit 0 || { echo 'BLOCKED: spec files (_specs/) and sprint backlog (_work/sprint-*.json) are frozen sources of truth. Do not edit them — they define what gets built. If a spec is wrong, raise it with the user before changing.' >&2; exit 2; }",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import sys, json, re; data=json.load(sys.stdin); cmd=data.get(\"tool_input\",{}).get(\"command\",\"\"); patterns=[r\"\\bnpm\\s+publish\\b\", r\"\\bpnpm\\s+publish\\b\", r\"\\bgit\\s+push\\s+(-f|--force)\\b\", r\"\\bgit\\s+reset\\s+--hard\\b\", r\"\\brm\\s+-rf\\s+/(?!tmp|var/folders)\", r\"\\brm\\s+-rf\\s+\\.git\\b\", r\"\\brm\\s+-rf\\s+_specs\\b\", r\"\\brm\\s+-rf\\s+_work\\b\"]; matched=[p for p in patterns if re.search(p, cmd)]; sys.stderr.write(\"BLOCKED: command matches a destructive pattern (\"+matched[0]+\"). If this is intentional, ask the user to run it manually.\\n\") if matched else None; sys.exit(2 if matched else 0)'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import sys, json; data=json.load(sys.stdin); cmd=data.get(\"tool_input\",{}).get(\"command\",\"\"); print(\"  →\", \"committed\" if \"git commit\" in cmd else \"\", end=\"\") if \"git commit\" in cmd else None' 2>/dev/null; if echo \"$0\" | python3 -c 'import sys, json; data=json.load(sys.stdin); cmd=data.get(\"tool_input\",{}).get(\"command\",\"\"); sys.exit(0 if \"git commit\" in cmd else 1)' 2>/dev/null; then SHA=$(git rev-parse --short HEAD 2>/dev/null); SUBJ=$(git log -1 --pretty=%s 2>/dev/null); [ -n \"$SHA\" ] && echo \"  → committed $SHA: $SUBJ\"; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CHANGED=$( { git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u); PKGS=$(echo \"$CHANGED\" | grep -E '^(packages/[^/]+|examples/[^/]+)/' | sed -E 's|^((packages|examples)/[^/]+)/.*|\\1|' | sort -u); if [ -n \"$PKGS\" ]; then echo ''; echo 'changed paths this session touched:'; echo \"$PKGS\" | sed 's/^/    /'; echo ''; echo 'verify with:'; echo \"$PKGS\" | awk -F/ 'NR<=4 {print \"    pnpm -F \" $NF \" typecheck\"}'; echo ''; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
