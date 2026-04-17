@@ -1,6 +1,25 @@
 // @relay/core -- library entry.
 
 export type { ErrorCode } from './errors.js';
+// Flow and step core types
+export type {
+  BranchStepSpec,
+  Flow,
+  FlowGraph,
+  FlowSpec,
+  ParallelStepSpec,
+  PromptStepOutput,
+  PromptStepSpec,
+  RunState,
+  RunStatus,
+  ScriptStepSpec,
+  Step,
+  StepBase,
+  StepKind,
+  StepState,
+  StepStatus,
+  TerminalStepSpec,
+} from './flow/types.js';
 // Error hierarchy
 export {
   ClaudeAuthError,
