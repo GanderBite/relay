@@ -11,6 +11,10 @@
     "build": "pnpm -r --parallel build",
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "pnpm -r --parallel test",
-    "lint": "pnpm -r --parallel lint"
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.12"
   }
 }

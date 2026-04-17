@@ -1,39 +1,36 @@
 // @relay/core -- library entry.
 
-// Error hierarchy (task_6)
+export type { ErrorCode } from './errors.js';
+// Error hierarchy
 export {
-  ERROR_CODES,
-  PipelineError,
-  FlowDefinitionError,
-  StepFailureError,
   ClaudeAuthError,
+  ERROR_CODES,
+  FlowDefinitionError,
   HandoffSchemaError,
-  TimeoutError,
+  PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
+  StepFailureError,
+  TimeoutError,
 } from './errors.js';
-export type { ErrorCode } from './errors.js';
+export type { LogEvent, LoggerOptions, LogLevel } from './logger.js';
 
-// Atomic write helpers (task_7)
-export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
-
-// Logger (task_8)
+// Logger
 export { Logger } from './logger.js';
-export type { LogLevel, LogEvent, LoggerOptions } from './logger.js';
-
-// Zod re-export (task_9)
-export { z } from './zod.js';
-export type { ZodSchema, ZodIssue, ZodTypeAny, Infer } from './zod.js';
-
-// Provider and invocation types (task_10)
+// Provider and invocation types
 export type {
+  AuthState,
+  CostEstimate,
+  InvocationContext,
+  InvocationEvent,
+  InvocationRequest,
+  InvocationResponse,
+  NormalizedUsage,
   Provider,
   ProviderCapabilities,
-  AuthState,
-  NormalizedUsage,
-  InvocationRequest,
-  InvocationContext,
-  InvocationResponse,
-  InvocationEvent,
-  CostEstimate,
 } from './providers/types.js';
+// Atomic write helpers
+export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
+export type { Infer, ZodIssue, ZodSchema, ZodTypeAny } from './zod.js';
+// Zod re-export
+export { z } from './zod.js';

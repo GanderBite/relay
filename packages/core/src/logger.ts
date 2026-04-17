@@ -16,10 +16,10 @@
  * close() is safe to call multiple times; subsequent calls resolve immediately.
  */
 
+import * as nodeFs from 'node:fs';
+import * as nodePath from 'node:path';
 import pino from 'pino';
 import PinoPretty from 'pino-pretty';
-import * as nodePath from 'node:path';
-import * as nodeFs from 'node:fs';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -73,7 +73,7 @@ const LEVEL_SYMBOL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 function buildPrettyStream(): PinoPretty.PrettyStream {
-  const useColor = !process.env['NO_COLOR'];
+  const useColor = !process.env.NO_COLOR;
   return PinoPretty({
     destination: 1, // stdout fd
     colorize: useColor,
@@ -90,15 +90,17 @@ function buildPrettyStream(): PinoPretty.PrettyStream {
     translateTime: false,
     messageFormat: (log, messageKey, levelLabel, _extras) => {
       const symbol = LEVEL_SYMBOL[levelLabel] ?? '·';
-      const ts = typeof log['ts'] === 'string' ? log['ts'] : '';
+      const ts = typeof log.ts === 'string' ? log.ts : '';
       const level = levelLabel.padEnd(5);
-      const flowName = typeof log['flowName'] === 'string' ? log['flowName'] : '';
-      const stepId = typeof log['stepId'] === 'string' ? `[${log['stepId']}]` : '';
+      const flowName = typeof log.flowName === 'string' ? log.flowName : '';
+      const stepId = typeof log.stepId === 'string' ? `[${log.stepId}]` : '';
       const sep = stepId.length > 0 ? ' ' : '';
-      const event = typeof log[messageKey] === 'string' ? log[messageKey] : String(log[messageKey] ?? '');
-      const data = log['data'] != null && typeof log['data'] === 'object' && Object.keys(log['data']).length > 0
-        ? ` ${JSON.stringify(log['data'])}`
-        : '';
+      const event =
+        typeof log[messageKey] === 'string' ? log[messageKey] : String(log[messageKey] ?? '');
+      const data =
+        log.data != null && typeof log.data === 'object' && Object.keys(log.data).length > 0
+          ? ` ${JSON.stringify(log.data)}`
+          : '';
       return `${symbol} ${ts} ${level} ${flowName}${sep}${stepId} ${event}${data}`;
     },
   });
@@ -176,11 +178,16 @@ export class Logger {
 
     // When no destinations are configured, route to a null sink so pino
     // still performs level filtering without writing anything.
+    const nullSink: pino.DestinationStream = {
+      write(_msg: string) {
+        /* intentional no-op */
+      },
+    };
     const destination: pino.DestinationStream =
       streams.length === 0
-        ? { write(_msg: string) { /* intentional no-op */ } }
-        : streams.length === 1
-          ? (streams[0]!.stream)
+        ? nullSink
+        : streams.length === 1 && streams[0] != null
+          ? streams[0].stream
           : pino.multistream(streams, { dedupe: false });
 
     this._pino = pino(
@@ -197,7 +204,11 @@ export class Logger {
           level: (label: string) => ({ level: label }),
           // Suppress pid and hostname from the base bindings block.
           bindings: (bindings: pino.Bindings) => {
-            const { pid: _pid, hostname: _hostname, ...rest } = bindings as {
+            const {
+              pid: _pid,
+              hostname: _hostname,
+              ...rest
+            } = bindings as {
               pid?: unknown;
               hostname?: unknown;
               [k: string]: unknown;
@@ -268,8 +279,8 @@ export class Logger {
     if (this._fileDestination == null) return Promise.resolve();
 
     return new Promise<void>((resolve) => {
-      this._fileDestination!.flushSync();
-      this._fileDestination!.end();
+      this._fileDestination?.flushSync();
+      this._fileDestination?.end();
       resolve();
     });
   }

@@ -2,12 +2,12 @@ import type { ZodIssue } from 'zod';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
-  FLOW_DEFINITION:     'relay_FLOW_DEFINITION',
-  STEP_FAILURE:        'relay_STEP_FAILURE',
-  CLAUDE_AUTH:         'relay_CLAUDE_AUTH',
-  HANDOFF_SCHEMA:      'relay_HANDOFF_SCHEMA',
-  TIMEOUT:             'relay_TIMEOUT',
-  PROVIDER_AUTH:       'relay_PROVIDER_AUTH',
+  FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
+  STEP_FAILURE: 'relay_STEP_FAILURE',
+  CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
+  HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
+  TIMEOUT: 'relay_TIMEOUT',
+  PROVIDER_AUTH: 'relay_PROVIDER_AUTH',
   PROVIDER_CAPABILITY: 'relay_PROVIDER_CAPABILITY',
 } as const;
 
@@ -21,11 +21,7 @@ export class PipelineError extends Error {
   readonly code: string;
   readonly details: Record<string, unknown> | undefined;
 
-  constructor(
-    message: string,
-    code: string,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(message: string, code: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'PipelineError';
     this.code = code;
@@ -68,12 +64,7 @@ export class StepFailureError extends PipelineError {
   readonly stepId: string;
   readonly attempt: number;
 
-  constructor(
-    message: string,
-    stepId: string,
-    attempt: number,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(message: string, stepId: string, attempt: number, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STEP_FAILURE, details);
     this.name = 'StepFailureError';
     this.stepId = stepId;
@@ -158,11 +149,7 @@ export class TimeoutError extends PipelineError {
 export class ProviderAuthError extends PipelineError {
   readonly providerName: string;
 
-  constructor(
-    message: string,
-    providerName: string,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(message: string, providerName: string, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.PROVIDER_AUTH, details);
     this.name = 'ProviderAuthError';
     this.providerName = providerName;

@@ -1,9 +1,10 @@
 /**
  * @relay/core — Provider and invocation interface types
  *
- * §4.6.1–§4.6.4: the full set of provider abstraction types.
- * Pure TypeScript interfaces and type aliases — no runtime logic, no classes,
- * no imports from errors.ts.
+ * The full set of provider abstraction types: capabilities, auth state,
+ * invocation request/response/context, streaming events, and the Provider
+ * interface itself. Pure TypeScript interfaces and type aliases — no runtime
+ * logic, no classes, no imports from errors.ts.
  *
  * Consumers: Runner, ClaudeProvider, MockProvider, flow authors.
  */
@@ -11,10 +12,11 @@
 import type { Logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
-// §4.6.2 ProviderCapabilities
+// ProviderCapabilities
 // ---------------------------------------------------------------------------
 
 /**
+ * Static descriptor each Provider publishes to the Runner.
  * Describes what an LLM provider can and cannot do.
  * Step builders check these at flow-load time before any tokens are spent.
  */
@@ -45,7 +47,7 @@ export interface ProviderCapabilities {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.4 AuthState
+// AuthState
 // ---------------------------------------------------------------------------
 
 /**
@@ -57,7 +59,7 @@ export interface AuthState {
 
   /**
    * Stable identifier for the billing source. Surfaced in CLI/logs.
-   * Spec §4.6.4 enumerates the full union.
+   * Possible values: 'subscription' | 'api-account' | 'bedrock' | 'vertex' | 'foundry' | 'local' | 'unknown'.
    */
   billingSource:
     | 'subscription'
@@ -79,7 +81,7 @@ export interface AuthState {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.3 Normalized invocation shape — NormalizedUsage
+// NormalizedUsage — token counts broken down by role
 // ---------------------------------------------------------------------------
 
 /**
@@ -94,7 +96,7 @@ export interface NormalizedUsage {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.3 InvocationRequest
+// InvocationRequest
 // ---------------------------------------------------------------------------
 
 /**
@@ -124,7 +126,7 @@ export interface InvocationRequest {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.3 InvocationContext
+// InvocationContext
 // ---------------------------------------------------------------------------
 
 /**
@@ -144,7 +146,7 @@ export interface InvocationContext {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.3 InvocationResponse
+// InvocationResponse
 // ---------------------------------------------------------------------------
 
 /**
@@ -156,7 +158,11 @@ export interface InvocationResponse {
 
   usage: NormalizedUsage;
 
-  /** API-equivalent cost estimate in USD. See §4.7 for subscription billing caveats. */
+  /**
+   * API-equivalent cost estimate in USD.
+   * For subscription-billed providers this reflects a compute-equivalent
+   * estimate, not a charge; the Runner surfaces it as informational only.
+   */
   costUsd: number;
 
   durationMs: number;
@@ -175,12 +181,12 @@ export interface InvocationResponse {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.3 InvocationEvent — discriminated union
+// InvocationEvent — discriminated union for streaming
 // ---------------------------------------------------------------------------
 
 /**
  * Per-token streaming event emitted by Provider.stream().
- * Discriminated on the `type` field using the wire names from the spec.
+ * Discriminated on the `type` field.
  */
 export type InvocationEvent =
   | { type: 'turn.start'; turn: number }
@@ -210,14 +216,13 @@ export interface CostEstimate {
 }
 
 // ---------------------------------------------------------------------------
-// §4.6.1 Provider
+// Provider — the core provider abstraction
 // ---------------------------------------------------------------------------
 
 /**
- * The core provider abstraction.
  * Implement this interface to add any LLM backend to Relay.
  *
- * "Provider" is distinct from "Runner": the Runner (§4.9) orchestrates the
+ * "Provider" is distinct from "Runner": the Runner orchestrates the
  * flow; the Provider executes a single LLM invocation.
  */
 export interface Provider {

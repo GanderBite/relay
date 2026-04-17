@@ -1,4 +1,4 @@
-// @relay/cli — CLI entry. Commands land in later sprints.
+// @relay/cli — CLI entry. Commands are added in later packages.
 export function main(): void {
-  // populated in sprint 2+
+  // placeholder
 }
