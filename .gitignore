@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.relay/
+.DS_Store
+
+# pnpm lock and patch files
+*.patch
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Coverage reports
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor directories
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+
+# AI artifacts
+_work/
+_specs/
