@@ -1,6 +1,10 @@
 // @relay/core -- library entry.
 
 export type { ErrorCode } from './errors.js';
+// Flow compiler
+export { defineFlow } from './flow/define.js';
+// Step namespace and step spec types
+export { step } from './flow/step.js';
 // Flow and step core types
 export type {
   BranchStepSpec,
