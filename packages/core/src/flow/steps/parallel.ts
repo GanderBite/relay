@@ -1,7 +1,7 @@
 import { FlowDefinitionError } from '../../errors.js';
-import type { ParallelStepSpec, Step } from '../types.js';
+import type { ParallelStep, ParallelStepSpec } from '../types.js';
 
-export function parallelStep(spec: ParallelStepSpec): Step {
+export function parallelStep(spec: ParallelStepSpec): ParallelStep {
   if (!Array.isArray(spec.branches) || spec.branches.length === 0) {
     throw new FlowDefinitionError(
       'parallel step "branches" must be a non-empty array',
@@ -22,12 +22,11 @@ export function parallelStep(spec: ParallelStepSpec): Step {
     );
   }
 
-  const normalized: ParallelStepSpec & { id: string } = {
+  return {
     ...spec,
+    kind: 'parallel',
     id: '',
     maxRetries: spec.maxRetries ?? 0,
     onFail: spec.onFail ?? 'abort',
   };
-
-  return normalized;
 }

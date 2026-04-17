@@ -1,7 +1,7 @@
 import { FlowDefinitionError } from '../../errors.js';
-import type { TerminalStepSpec, Step } from '../types.js';
+import type { TerminalStep, TerminalStepSpec } from '../types.js';
 
-export function terminalStep(spec: TerminalStepSpec): Step {
+export function terminalStep(spec: TerminalStepSpec): TerminalStep {
   if (spec.exitCode !== undefined) {
     if (!Number.isInteger(spec.exitCode) || spec.exitCode < 0 || spec.exitCode > 255) {
       throw new FlowDefinitionError(
@@ -10,11 +10,10 @@ export function terminalStep(spec: TerminalStepSpec): Step {
     }
   }
 
-  const normalized: TerminalStepSpec & { id: string } = {
+  return {
     ...spec,
+    kind: 'terminal',
     id: '',
     exitCode: spec.exitCode ?? 0,
   };
-
-  return normalized;
 }

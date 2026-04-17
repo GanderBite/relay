@@ -1,17 +1,8 @@
 import type { ZodSchema } from '../zod.js';
 
-// ---------------------------------------------------------------------------
-// Step kinds
-// ---------------------------------------------------------------------------
-
 export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal';
 
-// ---------------------------------------------------------------------------
-// StepBase — fields present on every step spec
-// ---------------------------------------------------------------------------
-
 export interface StepBase {
-  kind: StepKind;
   dependsOn?: string[];
   onFail?: 'abort' | 'continue' | string;
   maxRetries?: number;
@@ -19,21 +10,12 @@ export interface StepBase {
   contextFrom?: string[];
 }
 
-// ---------------------------------------------------------------------------
-// PromptStepOutput — discriminated union on presence of handoff / artifact
-// ---------------------------------------------------------------------------
-
 export type PromptStepOutput =
   | { handoff: string; schema?: ZodSchema }
   | { artifact: string }
   | { handoff: string; artifact: string; schema?: ZodSchema };
 
-// ---------------------------------------------------------------------------
-// Step spec types
-// ---------------------------------------------------------------------------
-
 export interface PromptStepSpec extends StepBase {
-  kind: 'prompt';
   promptFile: string;
   output: PromptStepOutput;
   provider?: string;
@@ -45,66 +27,42 @@ export interface PromptStepSpec extends StepBase {
 }
 
 export interface ScriptStepSpec extends StepBase {
-  kind: 'script';
   run: string | string[];
   cwd?: string;
   env?: Record<string, string>;
-  output?: {
-    handoff?: string;
-    schema?: ZodSchema;
-    artifact?: string;
-  };
+  output?: { artifact?: string };
   onExit?: Record<string, 'abort' | 'continue' | string>;
 }
 
-export type BranchStepSpec = Omit<ScriptStepSpec, 'output' | 'kind'> & {
-  kind: 'branch';
+export type BranchStepSpec = Omit<ScriptStepSpec, 'output'> & {
   onExit: Record<string, 'abort' | 'continue' | string>;
 };
 
 export interface ParallelStepSpec extends StepBase {
-  kind: 'parallel';
   branches: string[];
   onAllComplete?: string;
 }
 
 export interface TerminalStepSpec extends StepBase {
-  kind: 'terminal';
   message?: string;
   exitCode?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Step — discriminated union on kind, with compiler-injected id
-// ---------------------------------------------------------------------------
+export type PromptStep = PromptStepSpec & { kind: 'prompt'; id: string };
+export type ScriptStep = ScriptStepSpec & { kind: 'script'; id: string };
+export type BranchStep = BranchStepSpec & { kind: 'branch'; id: string };
+export type ParallelStep = ParallelStepSpec & { kind: 'parallel'; id: string };
+export type TerminalStep = TerminalStepSpec & { kind: 'terminal'; id: string };
 
-export type Step =
-  | (PromptStepSpec & { id: string })
-  | (ScriptStepSpec & { id: string })
-  | (BranchStepSpec & { id: string })
-  | (ParallelStepSpec & { id: string })
-  | (TerminalStepSpec & { id: string });
-
-// ---------------------------------------------------------------------------
-// FlowGraph — structural contract; implemented by buildGraph in flow/graph.ts
-// ---------------------------------------------------------------------------
+export type Step = PromptStep | ScriptStep | BranchStep | ParallelStep | TerminalStep;
 
 export interface FlowGraph {
-  /** Adjacency list: stepId -> set of stepIds that depend on it (successors). */
   successors: ReadonlyMap<string, ReadonlySet<string>>;
-  /** Adjacency list: stepId -> set of stepIds it depends on (predecessors). */
   predecessors: ReadonlyMap<string, ReadonlySet<string>>;
-  /** Deterministic topological order produced by Kahn's algorithm. */
   topoOrder: readonly string[];
-  /** Step ids with no predecessors, sorted lexicographically. */
   rootSteps: readonly string[];
-  /** Effective entry step — resolved from explicit `start` or the unique root. */
   entry: string;
 }
-
-// ---------------------------------------------------------------------------
-// FlowSpec — user-authored flow definition
-// ---------------------------------------------------------------------------
 
 export interface FlowSpec<TInput> {
   name: string;
@@ -116,19 +74,11 @@ export interface FlowSpec<TInput> {
   start?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Flow — compiled form; FlowSpec plus DAG data produced by the flow compiler
-// ---------------------------------------------------------------------------
-
 export interface Flow<TInput> extends FlowSpec<TInput> {
   graph: FlowGraph;
   stepOrder: string[];
   rootSteps: string[];
 }
-
-// ---------------------------------------------------------------------------
-// RunState / StepState — JSON-serialisable run checkpoint (state.json)
-// ---------------------------------------------------------------------------
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'aborted';
 

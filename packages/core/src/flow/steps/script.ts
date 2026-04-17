@@ -1,7 +1,6 @@
 import { FlowDefinitionError } from '../../errors.js';
-import type { ScriptStepSpec, Step } from '../types.js';
+import type { ScriptStep, ScriptStepSpec } from '../types.js';
 
-// A string value for `run` will be shlex-split by the runtime before spawning.
 const ON_EXIT_KEY_RE = /^\d+$/;
 
 function validateRun(run: ScriptStepSpec['run']): void {
@@ -47,7 +46,7 @@ function validateOnExit(onExit: Record<string, string>): void {
   }
 }
 
-export function scriptStep(spec: ScriptStepSpec): Step {
+export function scriptStep(spec: ScriptStepSpec): ScriptStep {
   validateRun(spec.run);
 
   if (spec.maxRetries !== undefined && spec.maxRetries < 0) {
@@ -60,12 +59,11 @@ export function scriptStep(spec: ScriptStepSpec): Step {
     validateOnExit(spec.onExit);
   }
 
-  const normalized: ScriptStepSpec & { id: string } = {
+  return {
     ...spec,
+    kind: 'script',
     id: '',
     maxRetries: spec.maxRetries ?? 0,
     onFail: spec.onFail ?? 'abort',
   };
-
-  return normalized;
 }

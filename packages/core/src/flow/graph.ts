@@ -57,7 +57,6 @@ export function buildGraph(steps: Record<string, Step>, start?: string): FlowGra
             `parallel step "${key}" branches to unknown step "${branch}"`,
           );
         }
-        addEdge(key, branch);
       }
 
       if (step.onAllComplete !== undefined && !stepMap.has(step.onAllComplete)) {
@@ -235,9 +234,6 @@ function resolveEntry(
 function handoffNameOf(step: Step): string | undefined {
   if (step.kind === 'prompt') {
     return 'handoff' in step.output ? step.output.handoff : undefined;
-  }
-  if (step.kind === 'script') {
-    return step.output?.handoff;
   }
   return undefined;
 }

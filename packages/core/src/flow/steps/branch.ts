@@ -1,5 +1,5 @@
 import { FlowDefinitionError } from '../../errors.js';
-import type { BranchStepSpec, Step } from '../types.js';
+import type { BranchStep, BranchStepSpec } from '../types.js';
 
 const EXIT_KEY_RE = /^\d+$/;
 
@@ -32,13 +32,7 @@ function validateOnExit(onExit: Record<string, 'abort' | 'continue' | string>): 
   }
 }
 
-export function branchStep(spec: BranchStepSpec): Step {
-  if ('output' in spec) {
-    throw new FlowDefinitionError(
-      'branch step does not allow an "output" field',
-    );
-  }
-
+export function branchStep(spec: BranchStepSpec): BranchStep {
   const run = spec.run;
   if (!run || (typeof run === 'string' && run.trim() === '')) {
     throw new FlowDefinitionError(
@@ -59,12 +53,11 @@ export function branchStep(spec: BranchStepSpec): Step {
 
   validateOnExit(spec.onExit);
 
-  const normalized: BranchStepSpec & { id: string } = {
+  return {
     ...spec,
+    kind: 'branch',
     id: '',
     maxRetries: spec.maxRetries ?? 0,
     onFail: spec.onFail ?? 'abort',
   };
-
-  return normalized;
 }
