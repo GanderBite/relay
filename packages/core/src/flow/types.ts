@@ -1,4 +1,4 @@
-import type { ZodSchema } from '../zod.js';
+import type { z } from '../zod.js';
 
 export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal';
 
@@ -11,9 +11,9 @@ export interface StepBase {
 }
 
 export type PromptStepOutput =
-  | { handoff: string; schema?: ZodSchema }
+  | { handoff: string; schema?: z.ZodType }
   | { artifact: string }
-  | { handoff: string; artifact: string; schema?: ZodSchema };
+  | { handoff: string; artifact: string; schema?: z.ZodType };
 
 export interface PromptStepSpec extends StepBase {
   promptFile: string;
@@ -69,7 +69,7 @@ export interface FlowSpec<TInput> {
   version: string;
   description?: string;
   defaultProvider?: string;
-  input: ZodSchema<TInput>;
+  input: z.ZodType<TInput>;
   steps: Record<string, Step>;
   start?: string;
 }

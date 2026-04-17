@@ -52,6 +52,5 @@ export type {
 } from './providers/types.js';
 // Atomic write helpers
 export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
-export type { Infer, ZodIssue, ZodSchema, ZodTypeAny } from './zod.js';
-// Zod re-export
+// Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly
 export { z } from './zod.js';

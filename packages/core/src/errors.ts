@@ -1,4 +1,4 @@
-import type { ZodIssue } from 'zod';
+import type { z } from './zod.js';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
@@ -99,12 +99,12 @@ export class ClaudeAuthError extends PipelineError {
  */
 export class HandoffSchemaError extends PipelineError {
   readonly handoffId: string;
-  readonly issues: ZodIssue[];
+  readonly issues: z.core.$ZodIssue[];
 
   constructor(
     message: string,
     handoffId: string,
-    issues: ZodIssue[],
+    issues: z.core.$ZodIssue[],
     details?: Record<string, unknown>,
   ) {
     super(message, ERROR_CODES.HANDOFF_SCHEMA, details);
