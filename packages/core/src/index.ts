@@ -13,9 +13,7 @@ export {
   StepFailureError,
   TimeoutError,
 } from './errors.js';
-export type { LogEvent, LoggerOptions, LogLevel } from './logger.js';
-
-// Logger
+// Logger — exports both the pino instance (value) and its type
 export { Logger } from './logger.js';
 // Provider and invocation types
 export type {
