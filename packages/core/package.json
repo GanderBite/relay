@@ -1,0 +1,40 @@
+{
+  "name": "@relay/core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.3.6"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.2.112"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=25.8"
+  }
+}
