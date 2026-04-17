@@ -94,6 +94,12 @@ export interface FlowGraph {
   successors: ReadonlyMap<string, ReadonlySet<string>>;
   /** Adjacency list: stepId -> set of stepIds it depends on (predecessors). */
   predecessors: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Deterministic topological order produced by Kahn's algorithm. */
+  topoOrder: readonly string[];
+  /** Step ids with no predecessors, sorted lexicographically. */
+  rootSteps: readonly string[];
+  /** Effective entry step — resolved from explicit `start` or the unique root. */
+  entry: string;
 }
 
 // ---------------------------------------------------------------------------
