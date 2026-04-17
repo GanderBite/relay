@@ -1,21 +1,28 @@
 /**
  * @relay/core — Logger
  *
- * Per §4.10: two log streams — NDJSON to a per-run log file, and a colorized
- * human-readable line to stdout when running in a TTY. No external log library;
- * plain JSON.stringify writes to a WriteStream.
+ * Two destinations: NDJSON append to a per-run log file and a colorized
+ * human-readable stream to stdout when running in a TTY.
  *
  * Level ordering: debug < info < warn < error.
  * Messages below the configured threshold are dropped.
  *
- * stepId resolution: the method-level stepId takes precedence over the pinned
- * stepId supplied to child(). If neither is present, the field is omitted.
+ * stepId resolution: the method-level stepId takes precedence over the
+ * stepId pinned via child(). If neither is present, the field is omitted.
+ *
+ * child() returns an instanceof Logger with a pino child logger underneath;
+ * it shares the parent's destinations rather than re-opening them.
+ *
+ * close() is safe to call multiple times; subsequent calls resolve immediately.
  */
 
-import * as fs from 'node:fs';
+import pino from 'pino';
+import PinoPretty from 'pino-pretty';
+import * as nodePath from 'node:path';
+import * as nodeFs from 'node:fs';
 
 // ---------------------------------------------------------------------------
-// Types
+// Public types
 // ---------------------------------------------------------------------------
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -26,7 +33,6 @@ export type LogEvent = {
   flowName: string;
   runId: string;
   stepId?: string;
-  /** e.g. 'step.start', 'prompt.token_update', 'step.failed' */
   event: string;
   data?: Record<string, unknown>;
 };
@@ -34,63 +40,88 @@ export type LogEvent = {
 export interface LoggerOptions {
   runId: string;
   flowName: string;
-  /** Absolute path to the NDJSON log file. Created with append flag. */
+  /** Absolute path to the NDJSON log file. Created in append mode; parent dirs are created if needed. */
   logFile?: string;
-  /** Emit colorized lines to stdout. Only activates when stdout is a TTY. */
+  /** Emit colorized lines to stdout. Only activates when stdout is a TTY and NO_COLOR is unset. */
   console?: boolean;
-  /** Minimum level to emit. Messages below this threshold are dropped. Default: 'info'. */
+  /** Minimum level to emit. Defaults to 'info'. */
   level?: LogLevel;
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Internal merge-object shape passed to each pino log call
 // ---------------------------------------------------------------------------
 
-const LEVEL_ORDER: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
+interface LogMergeObject {
+  stepId?: string;
+  data?: Record<string, unknown>;
+}
 
-/**
- * ANSI color codes keyed by level.
- * Applied only when stdout is a TTY and NO_COLOR is not set.
- */
-const ANSI: Record<LogLevel, string> = {
-  debug: '\x1b[2m',   // dim
-  info: '',            // no color
-  warn: '\x1b[33m',   // yellow
-  error: '\x1b[31m',  // red
-};
+// ---------------------------------------------------------------------------
+// Symbol vocabulary for the pretty stream
+// ---------------------------------------------------------------------------
 
-const ANSI_RESET = '\x1b[0m';
-
-/** Level prefix symbols drawn from the Relay symbol vocabulary. */
-const LEVEL_SYMBOL: Record<LogLevel, string> = {
+const LEVEL_SYMBOL: Record<string, string> = {
   debug: '·',
   info: '·',
   warn: '⚠',
   error: '✕',
 };
 
-function shouldUseColor(): boolean {
-  return Boolean(process.stdout.isTTY) && !process.env['NO_COLOR'];
+// ---------------------------------------------------------------------------
+// Build the pino-pretty stream for stdout
+// ---------------------------------------------------------------------------
+
+function buildPrettyStream(): PinoPretty.PrettyStream {
+  const useColor = !process.env['NO_COLOR'];
+  return PinoPretty({
+    destination: 1, // stdout fd
+    colorize: useColor,
+    colorizeObjects: useColor,
+    // The message is stored under the 'event' key (our messageKey).
+    messageKey: 'event',
+    // Timestamps are stored under 'ts'.
+    timestampKey: 'ts',
+    // Keep ts, level, event and our custom fields; drop pid/hostname/v.
+    ignore: 'pid,hostname',
+    // Single-line output keeps structured data on the same line.
+    singleLine: true,
+    // Translate the raw ISO string as-is (no reformatting).
+    translateTime: false,
+    messageFormat: (log, messageKey, levelLabel, _extras) => {
+      const symbol = LEVEL_SYMBOL[levelLabel] ?? '·';
+      const ts = typeof log['ts'] === 'string' ? log['ts'] : '';
+      const level = levelLabel.padEnd(5);
+      const flowName = typeof log['flowName'] === 'string' ? log['flowName'] : '';
+      const stepId = typeof log['stepId'] === 'string' ? `[${log['stepId']}]` : '';
+      const sep = stepId.length > 0 ? ' ' : '';
+      const event = typeof log[messageKey] === 'string' ? log[messageKey] : String(log[messageKey] ?? '');
+      const data = log['data'] != null && typeof log['data'] === 'object' && Object.keys(log['data']).length > 0
+        ? ` ${JSON.stringify(log['data'])}`
+        : '';
+      return `${symbol} ${ts} ${level} ${flowName}${sep}${stepId} ${event}${data}`;
+    },
+  });
 }
 
-function formatConsole(event: LogEvent): string {
-  const useColor = shouldUseColor();
-  const symbol = LEVEL_SYMBOL[event.level];
-  const prefix = useColor ? (ANSI[event.level] ?? '') : '';
-  const suffix = useColor && prefix ? ANSI_RESET : '';
+// ---------------------------------------------------------------------------
+// Duck-typed interface for the SonicBoom destination returned by pino.destination().
+// We only call flushSync() and end() on it.
+// ---------------------------------------------------------------------------
 
-  const stepPart = event.stepId != null ? ` [${event.stepId}]` : '';
-  const dataPart =
-    event.data != null && Object.keys(event.data).length > 0
-      ? ` ${JSON.stringify(event.data)}`
-      : '';
+interface SonicBoomLike extends pino.DestinationStream {
+  flushSync(): void;
+  end(): void;
+}
 
-  return `${prefix}${symbol} ${event.ts} ${event.level.padEnd(5)} ${event.flowName}${stepPart} ${event.event}${dataPart}${suffix}`;
+// ---------------------------------------------------------------------------
+// Internal constructor arguments (not part of the public API)
+// ---------------------------------------------------------------------------
+
+interface LoggerInternals {
+  pinoInstance: pino.Logger;
+  fileDestination: SonicBoomLike | undefined;
+  pinnedStepId: string | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,31 +132,92 @@ export class Logger {
   readonly runId: string;
   readonly flowName: string;
 
-  private readonly _stream: fs.WriteStream | undefined;
-  private readonly _console: boolean;
-  private readonly _threshold: number;
+  private readonly _pino: pino.Logger;
+  private readonly _fileDestination: SonicBoomLike | undefined;
   private readonly _pinnedStepId: string | undefined;
+  private _closed: boolean = false;
 
-  constructor(options: LoggerOptions, pinnedStepId?: string) {
+  /**
+   * Public constructor. Pass LoggerOptions to create a root logger.
+   * The second argument is reserved for internal child-construction.
+   */
+  constructor(options: LoggerOptions, internals?: LoggerInternals) {
     this.runId = options.runId;
     this.flowName = options.flowName;
-    this._console = options.console ?? false;
-    this._threshold = LEVEL_ORDER[options.level ?? 'info'] ?? LEVEL_ORDER['info'];
-    this._pinnedStepId = pinnedStepId;
 
-    if (options.logFile != null) {
-      const stream = fs.createWriteStream(options.logFile, { flags: 'a' });
-      stream.on('error', (err: Error) => {
-        process.stderr.write(
-          `relay logger write error (${options.logFile ?? 'unknown'}): ${err.message}\n`,
-        );
-      });
-      this._stream = stream;
+    if (internals != null) {
+      // Child logger path — reuse the already-built pino instance and destination.
+      this._pino = internals.pinoInstance;
+      this._fileDestination = internals.fileDestination;
+      this._pinnedStepId = internals.pinnedStepId;
+      return;
     }
+
+    // Root logger path — build destinations and create the pino instance.
+    const level = options.level ?? 'info';
+    const streams: pino.StreamEntry[] = [];
+
+    let fileDestination: SonicBoomLike | undefined;
+    if (options.logFile != null) {
+      const dir = nodePath.dirname(options.logFile);
+      nodeFs.mkdirSync(dir, { recursive: true });
+      fileDestination = pino.destination({
+        dest: options.logFile,
+        append: true,
+        sync: false,
+      });
+      streams.push({ stream: fileDestination, level });
+    }
+
+    const usePretty = options.console === true && Boolean(process.stdout.isTTY);
+    if (usePretty) {
+      streams.push({ stream: buildPrettyStream(), level });
+    }
+
+    // When no destinations are configured, route to a null sink so pino
+    // still performs level filtering without writing anything.
+    const destination: pino.DestinationStream =
+      streams.length === 0
+        ? { write(_msg: string) { /* intentional no-op */ } }
+        : streams.length === 1
+          ? (streams[0]!.stream)
+          : pino.multistream(streams, { dedupe: false });
+
+    this._pino = pino(
+      {
+        level,
+        // Rename the message field from 'msg' to 'event'.
+        messageKey: 'event',
+        // Include flowName and runId in every log line via base bindings.
+        base: { flowName: options.flowName, runId: options.runId },
+        // Custom ISO timestamp under 'ts' key instead of the default 'time'.
+        timestamp: () => `,"ts":"${new Date().toISOString()}"`,
+        formatters: {
+          // Emit the level as a string label instead of a numeric value.
+          level: (label: string) => ({ level: label }),
+          // Suppress pid and hostname from the base bindings block.
+          bindings: (bindings: pino.Bindings) => {
+            const { pid: _pid, hostname: _hostname, ...rest } = bindings as {
+              pid?: unknown;
+              hostname?: unknown;
+              [k: string]: unknown;
+            };
+            return rest;
+          },
+          // Keep the merge object as-is; pino already places these fields
+          // at the top level alongside 'event'.
+          log: (obj: Record<string, unknown>) => obj,
+        },
+      },
+      destination,
+    );
+
+    this._fileDestination = fileDestination;
+    this._pinnedStepId = undefined;
   }
 
   // -------------------------------------------------------------------------
-  // Public log methods
+  // Public log methods — signature matches the contract exactly.
   // -------------------------------------------------------------------------
 
   debug(event: string, data?: Record<string, unknown>, stepId?: string): void {
@@ -145,46 +237,45 @@ export class Logger {
   }
 
   // -------------------------------------------------------------------------
-  // child() — returns a scoped logger with a pinned stepId
+  // child() — returns an instanceof Logger pinned to a stepId.
   // -------------------------------------------------------------------------
 
   /**
-   * Returns a new Logger that emits the same runId/flowName/stream/level/console
-   * settings, but with `stepId` pinned so all calls automatically include it.
-   *
-   * The method-level stepId still takes precedence over the pinned one if both
-   * are provided to a call.
+   * Returns a new Logger that emits all the same destinations, with the
+   * given stepId included on every log line. A method-level stepId still
+   * takes precedence over the pinned one.
    */
   child(stepId: string): Logger {
-    const childOptions: LoggerOptions = {
-      runId: this.runId,
-      flowName: this.flowName,
-      console: this._console,
-      level: this._levelName(),
-    };
-    // Share the underlying WriteStream rather than opening a second one.
-    const child = new Logger(childOptions, stepId);
-    // Overwrite the private stream slot to share the parent's stream.
-    (child as WritableChild)._sharedStream = this._stream;
-    return child;
+    const childPino = this._pino.child({ stepId });
+    return new Logger(
+      { runId: this.runId, flowName: this.flowName },
+      {
+        pinoInstance: childPino,
+        fileDestination: this._fileDestination,
+        pinnedStepId: stepId,
+      },
+    );
   }
 
   // -------------------------------------------------------------------------
-  // close() — flush and close the underlying stream if owned by this logger
+  // close() — flush and close the file destination.
   // -------------------------------------------------------------------------
 
   close(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this._stream == null) {
-        resolve();
-        return;
-      }
-      this._stream.end(resolve);
+    if (this._closed) return Promise.resolve();
+    this._closed = true;
+
+    if (this._fileDestination == null) return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      this._fileDestination!.flushSync();
+      this._fileDestination!.end();
+      resolve();
     });
   }
 
   // -------------------------------------------------------------------------
-  // Internal
+  // Internal emit helper
   // -------------------------------------------------------------------------
 
   private _emit(
@@ -193,47 +284,15 @@ export class Logger {
     data: Record<string, unknown> | undefined,
     stepId: string | undefined,
   ): void {
-    const levelOrder = LEVEL_ORDER[level];
-    if (levelOrder == null || levelOrder < this._threshold) return;
-
     // Method-level stepId takes precedence over the pinned one.
     const resolvedStepId = stepId ?? this._pinnedStepId;
 
-    const logEvent: LogEvent = {
-      ts: new Date().toISOString(),
-      level,
-      flowName: this.flowName,
-      runId: this.runId,
-      ...(resolvedStepId != null ? { stepId: resolvedStepId } : {}),
-      event,
-      ...(data != null ? { data } : {}),
-    };
+    const merge: LogMergeObject = {};
+    if (resolvedStepId != null) merge.stepId = resolvedStepId;
+    if (data != null) merge.data = data;
 
-    // NDJSON to file stream (shared stream for child loggers, own stream otherwise).
-    const stream = (this as WritableChild)._sharedStream ?? this._stream;
-    if (stream != null) {
-      stream.write(JSON.stringify(logEvent) + '\n');
-    }
-
-    // Colorized line to stdout (only when console:true AND TTY).
-    if (this._console && Boolean(process.stdout.isTTY)) {
-      process.stdout.write(formatConsole(logEvent) + '\n');
-    }
+    // pino.child already carries the pinned stepId in its bindings, but we
+    // pass it explicitly so method-level override works correctly.
+    this._pino[level](merge, event);
   }
-
-  private _levelName(): LogLevel {
-    for (const [name, order] of Object.entries(LEVEL_ORDER) as Array<[LogLevel, number]>) {
-      if (order === this._threshold) return name;
-    }
-    return 'info';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Internal interface for shared-stream child loggers (avoids opening duplicate
-// WriteStreams when child() is called).
-// ---------------------------------------------------------------------------
-
-interface WritableChild {
-  _sharedStream?: fs.WriteStream | undefined;
 }
