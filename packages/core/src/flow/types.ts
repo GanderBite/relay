@@ -57,7 +57,7 @@ export interface ScriptStepSpec extends StepBase {
   onExit?: Record<string, 'abort' | 'continue' | string>;
 }
 
-export type BranchStepSpec = Omit<ScriptStepSpec, 'output'> & {
+export type BranchStepSpec = Omit<ScriptStepSpec, 'output' | 'kind'> & {
   kind: 'branch';
   onExit: Record<string, 'abort' | 'continue' | string>;
 };
