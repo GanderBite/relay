@@ -1,3 +1,6 @@
+import { err, ok, type Result } from 'neverthrow';
+
+import { type PipelineError, StepFailureError } from '../errors.js';
 import type {
   AuthState,
   InvocationContext,
@@ -39,23 +42,36 @@ export class MockProvider implements Provider {
     this.capabilities = { ...DEFAULT_CAPABILITIES, ...opts.capabilities };
   }
 
-  async authenticate(): Promise<AuthState> {
-    return { ok: true, billingSource: 'local', detail: 'mock provider' };
+  async authenticate(): Promise<Result<AuthState, PipelineError>> {
+    return ok({ ok: true, billingSource: 'local', detail: 'mock provider' });
   }
 
-  async invoke(req: InvocationRequest, ctx: InvocationContext): Promise<InvocationResponse> {
+  async invoke(
+    req: InvocationRequest,
+    ctx: InvocationContext,
+  ): Promise<Result<InvocationResponse, PipelineError>> {
     const value = this.responses[ctx.stepId];
     if (value === undefined) {
-      throw new Error(`MockProvider: no response configured for stepId "${ctx.stepId}"`);
+      return err(
+        new StepFailureError(
+          `MockProvider: no response configured for stepId "${ctx.stepId}"`,
+          ctx.stepId,
+          ctx.attempt,
+        ),
+      );
     }
     if (typeof value === 'function') {
-      return value(req, ctx);
+      return ok(value(req, ctx));
     }
-    return value;
+    return ok(value);
   }
 
   async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
-    const response = await this.invoke(req, ctx);
+    const result = await this.invoke(req, ctx);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const response = result.value;
     yield { type: 'text.delta', delta: response.text };
     yield {
       type: 'usage',

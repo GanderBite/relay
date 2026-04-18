@@ -4,11 +4,14 @@
  * The full set of provider abstraction types: capabilities, auth state,
  * invocation request/response/context, streaming events, and the Provider
  * interface itself. Pure TypeScript interfaces and type aliases — no runtime
- * logic, no classes, no imports from errors.ts.
+ * logic, no classes. The only imports are type-only.
  *
  * Consumers: Runner, ClaudeProvider, MockProvider, flow authors.
  */
 
+import type { Result } from 'neverthrow';
+
+import type { PipelineError } from '../errors.js';
 import type { Logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
@@ -51,8 +54,9 @@ export interface ProviderCapabilities {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalized auth/billing state returned by Provider.authenticate().
- * The Runner uses this for the pre-run banner and the doctor command.
+ * Normalized auth/billing state wrapped in the `ok(...)` branch of the Result
+ * returned by Provider.authenticate(). The Runner uses this for the pre-run
+ * banner and the doctor command.
  */
 export interface AuthState {
   ok: boolean;
@@ -233,13 +237,21 @@ export interface Provider {
   readonly capabilities: ProviderCapabilities;
 
   /**
-   * Pre-flight: verify the provider can be used right now.
-   * Called once per Runner.run(). Throws ProviderAuthError on misconfiguration.
+   * Pre-flight: verify the provider can be used right now. Called once per
+   * Runner.run(). Returns `ok(AuthState)` on success or `err(PipelineError)`
+   * on any misconfiguration — the Runner never sees a thrown error from this
+   * method.
    */
-  authenticate(): Promise<AuthState>;
+  authenticate(): Promise<Result<AuthState, PipelineError>>;
 
-  /** Execute a single LLM invocation. Required. */
-  invoke(req: InvocationRequest, ctx: InvocationContext): Promise<InvocationResponse>;
+  /**
+   * Execute a single LLM invocation. Required. Returns `ok(InvocationResponse)`
+   * on success or `err(PipelineError)` on failure — no throws.
+   */
+  invoke(
+    req: InvocationRequest,
+    ctx: InvocationContext,
+  ): Promise<Result<InvocationResponse, PipelineError>>;
 
   /**
    * Optional: per-token streaming for the live progress display.
