@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
 
-import { err, ok, type Result } from 'neverthrow';
+import { err, fromPromise, ok, type Result } from 'neverthrow';
 
 import { MetricsWriteError, StateCorruptError } from './errors.js';
 import { atomicWriteJson } from './util/atomic-write.js';
+import { parseWithSchema } from './util/json.js';
+import { z } from './zod.js';
 
 // ---------------------------------------------------------------------------
 // StepMetrics — one entry per completed prompt step
@@ -35,13 +37,37 @@ export interface StepMetrics {
 }
 
 // ---------------------------------------------------------------------------
+// Internal schemas — validate metrics.json on load, not exported
+// ---------------------------------------------------------------------------
+
+const StepMetricsSchema: z.ZodType<StepMetrics> = z.object({
+  stepId: z.string(),
+  flowName: z.string(),
+  runId: z.string(),
+  timestamp: z.string(),
+  model: z.string(),
+  tokensIn: z.number().int().nonnegative(),
+  tokensOut: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative(),
+  cacheCreationTokens: z.number().int().nonnegative(),
+  numTurns: z.number().int().nonnegative(),
+  durationMs: z.number().nonnegative(),
+  costUsd: z.number().nonnegative().optional(),
+  sessionId: z.string().optional(),
+  stopReason: z.string().nullable().optional(),
+  isError: z.boolean().optional(),
+});
+
+const StepMetricsArraySchema: z.ZodType<StepMetrics[]> = z.array(StepMetricsSchema);
+
+// ---------------------------------------------------------------------------
 // CostSummary — aggregate view returned by CostTracker.summary()
 // ---------------------------------------------------------------------------
 
 export interface CostSummary {
   /** Sum of all entry.costUsd values, treating absent/undefined as 0. */
   totalUsd: number;
-  /** Sum of tokensIn + tokensOut across all entries. */
+  /** Sum of tokensIn + tokensOut + cacheReadTokens + cacheCreationTokens across all entries. */
   totalTokens: number;
   /** Count of entries where costUsd is a finite number (including 0). */
   costKnown: number;
@@ -49,6 +75,20 @@ export interface CostSummary {
   costTotal: number;
   /** Defensive copy of recorded entries. */
   perStep: StepMetrics[];
+  /**
+   * Per-model aggregation keyed by the raw `StepMetrics.model` string. Each
+   * entry holds the same totals as the top-level but scoped to entries that
+   * named that model.
+   */
+  perModel: Record<
+    string,
+    {
+      totalUsd: number;
+      totalTokens: number;
+      stepCount: number;
+      costKnown: number;
+    }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,14 +137,29 @@ export class CostTracker {
    * Aggregate totals across all recorded steps.
    * Missing costUsd values are treated as 0 so totalUsd never becomes NaN.
    * Pure and synchronous — reads in-memory state only.
+   * Iterates entries exactly once to build both top-level and per-model totals.
    */
   summary(): CostSummary {
     let totalUsd = 0;
     let totalTokens = 0;
+    const perModel: CostSummary['perModel'] = {};
 
     for (const entry of this.#entries) {
+      const entryTokens =
+        entry.tokensIn + entry.tokensOut + entry.cacheReadTokens + entry.cacheCreationTokens;
       totalUsd += entry.costUsd ?? 0;
-      totalTokens += entry.tokensIn + entry.tokensOut;
+      totalTokens += entryTokens;
+
+      const bucket = (perModel[entry.model] ??= {
+        totalUsd: 0,
+        totalTokens: 0,
+        stepCount: 0,
+        costKnown: 0,
+      });
+      bucket.totalUsd += entry.costUsd ?? 0;
+      bucket.totalTokens += entryTokens;
+      bucket.stepCount += 1;
+      bucket.costKnown += isCostKnown(entry.costUsd) ? 1 : 0;
     }
 
     return {
@@ -113,6 +168,7 @@ export class CostTracker {
       costKnown: this.#costKnownCount,
       costTotal: this.#entries.length,
       perStep: [...this.#entries],
+      perModel,
     };
   }
 
@@ -122,43 +178,38 @@ export class CostTracker {
    *
    * ENOENT is treated as a fresh run — resets to an empty list and returns ok(undefined).
    * Other read errors return err(MetricsWriteError).
-   * A file that is not valid JSON returns err(StateCorruptError).
-   * A file whose top-level value is not an array returns err(StateCorruptError).
+   * A file whose JSON is malformed or does not match the StepMetrics array
+   * shape returns err(StateCorruptError).
    */
   async load(): Promise<Result<void, StateCorruptError | MetricsWriteError>> {
-    let raw: string;
-    try {
-      raw = await readFile(this.#metricsPath, { encoding: 'utf8' });
-    } catch (readErr) {
-      const e = readErr as NodeJS.ErrnoException;
+    const readResult = await fromPromise(
+      readFile(this.#metricsPath, { encoding: 'utf8' }),
+      (e) => e as NodeJS.ErrnoException,
+    );
+
+    if (readResult.isErr()) {
+      const e = readResult.error;
       if (e.code === 'ENOENT') {
         this.#entries = [];
         this.#costKnownCount = 0;
         return ok(undefined);
       }
-      const message = e instanceof Error ? e.message : String(readErr);
-      return err(new MetricsWriteError(`failed to read metrics.json: ${message}`));
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (parseErr) {
-      const message = parseErr instanceof Error ? parseErr.message : String(parseErr);
       return err(
-        new StateCorruptError(`metrics.json is malformed: ${message}`, {
-          path: this.#metricsPath,
-        }),
+        new MetricsWriteError(`failed to read metrics.json: ${e.message ?? String(e)}`),
       );
     }
 
-    if (!Array.isArray(parsed)) {
+    const parseResult = parseWithSchema(readResult.value, StepMetricsArraySchema);
+    if (parseResult.isErr()) {
       return err(
-        new StateCorruptError('metrics.json is not an array', { path: this.#metricsPath }),
+        new StateCorruptError(
+          'metrics.json is malformed: ' + parseResult.error.message,
+          { path: this.#metricsPath, cause: parseResult.error.details?.cause },
+        ),
       );
     }
 
-    const entries = parsed as StepMetrics[];
+    const entries = parseResult.value;
     this.#entries = entries;
     this.#costKnownCount = entries.filter((e) => isCostKnown(e.costUsd)).length;
     return ok(undefined);

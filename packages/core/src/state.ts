@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { err, ok, type Result } from 'neverthrow';
+import { err, ok, ResultAsync, type Result } from 'neverthrow';
 
 import {
   StateCorruptError,
@@ -9,8 +9,10 @@ import {
   StateVersionMismatchError,
   StateWriteError,
 } from './errors.js';
-import type { RunState, RunStatus, StepState, StepStatus } from './flow/types.js';
+import type { RunState, RunStatus, StepState } from './flow/types.js';
 import { atomicWriteJson } from './util/atomic-write.js';
+import { parseWithSchema } from './util/json.js';
+import { z } from './zod.js';
 
 const STATE_FILENAME = 'state.json';
 
@@ -18,86 +20,32 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+// Schema mirrors StepState from flow/types.ts. The explicit z.ZodType<StepState>
+// annotation forces a compile-time equivalence check — if flow/types.ts adds a
+// required field, this line fails typecheck.
+const stepStateSchema: z.ZodType<StepState> = z.object({
+  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
+  attempts: z.number().int().nonnegative(),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  errorMessage: z.string().optional(),
+  artifacts: z.array(z.string()).optional(),
+  handoffs: z.array(z.string()).optional(),
+});
 
-function isRunStatus(value: unknown): value is RunStatus {
-  return (
-    value === 'running' || value === 'succeeded' || value === 'failed' || value === 'aborted'
-  );
-}
-
-function isStepStatus(value: unknown): value is StepStatus {
-  return (
-    value === 'pending' ||
-    value === 'running' ||
-    value === 'succeeded' ||
-    value === 'failed' ||
-    value === 'skipped'
-  );
-}
-
-function coerceStepState(value: unknown): StepState | undefined {
-  if (!isRecord(value)) return undefined;
-  const status = value['status'];
-  const attempts = value['attempts'];
-  if (!isStepStatus(status)) return undefined;
-  if (typeof attempts !== 'number') return undefined;
-
-  const step: StepState = { status, attempts };
-  const startedAt = value['startedAt'];
-  const completedAt = value['completedAt'];
-  const errorMessage = value['errorMessage'];
-  const artifacts = value['artifacts'];
-  const handoffs = value['handoffs'];
-  if (typeof startedAt === 'string') step.startedAt = startedAt;
-  if (typeof completedAt === 'string') step.completedAt = completedAt;
-  if (typeof errorMessage === 'string') step.errorMessage = errorMessage;
-  if (Array.isArray(artifacts) && artifacts.every((a) => typeof a === 'string')) {
-    step.artifacts = artifacts;
-  }
-  if (Array.isArray(handoffs) && handoffs.every((h) => typeof h === 'string')) {
-    step.handoffs = handoffs;
-  }
-  return step;
-}
-
-function validateRunState(value: unknown): Result<RunState, string> {
-  if (!isRecord(value)) return err('root is not an object');
-  const runId = value['runId'];
-  const flowName = value['flowName'];
-  const flowVersion = value['flowVersion'];
-  const startedAt = value['startedAt'];
-  const updatedAt = value['updatedAt'];
-  const status = value['status'];
-  const stepsRaw = value['steps'];
-  if (typeof runId !== 'string') return err('runId is not a string');
-  if (typeof flowName !== 'string') return err('flowName is not a string');
-  if (typeof flowVersion !== 'string') return err('flowVersion is not a string');
-  if (typeof startedAt !== 'string') return err('startedAt is not a string');
-  if (typeof updatedAt !== 'string') return err('updatedAt is not a string');
-  if (!isRunStatus(status)) return err('status is not a valid RunStatus');
-  if (!isRecord(stepsRaw)) return err('steps is not a record');
-
-  const steps: Record<string, StepState> = {};
-  for (const [id, raw] of Object.entries(stepsRaw)) {
-    const step = coerceStepState(raw);
-    if (step === undefined) return err(`step "${id}" is not a valid StepState`);
-    steps[id] = step;
-  }
-
-  return ok({
-    runId,
-    flowName,
-    flowVersion,
-    startedAt,
-    updatedAt,
-    input: value['input'],
-    steps,
-    status,
-  });
-}
+// Schema mirrors RunState from flow/types.ts. `input: z.unknown()` matches the
+// `unknown` typing in the type declaration — the flow input shape is validated
+// by the flow's own Zod schema elsewhere, not by this state-file schema.
+const RunStateSchema: z.ZodType<RunState> = z.object({
+  runId: z.string(),
+  flowName: z.string(),
+  flowVersion: z.string(),
+  status: z.enum(['running', 'succeeded', 'failed', 'aborted']),
+  startedAt: z.string(),
+  updatedAt: z.string(),
+  input: z.unknown(),
+  steps: z.record(z.string(), stepStateSchema),
+});
 
 /**
  * StateMachine owns the in-memory RunState and the atomic persistence of
@@ -321,13 +269,37 @@ export class StateMachine {
   }
 
   /**
-   * Convenience: read state.json from disk and verify the RunState shape.
-   * Does NOT call verifyCompatibility — the Runner performs that check.
+   * Thin wrapper over loadState. Use loadAndVerify when flow-compat is required.
    */
   static async load(
     runDir: string,
   ): Promise<Result<RunState, StateNotFoundError | StateCorruptError>> {
     return loadState(runDir);
+  }
+
+  /**
+   * Canonical entry point for resuming a run: reads state.json, validates its
+   * shape, and confirms the flow name/version match before handing the RunState
+   * back. Returns `StateNotFoundError` when the run directory has no state
+   * file, `StateCorruptError` when the file is unreadable/malformed/shape-
+   * invalid, or `StateVersionMismatchError` when the run was written by a
+   * different flow or version.
+   */
+  static async loadAndVerify(opts: {
+    runDir: string;
+    flowName: string;
+    flowVersion: string;
+  }): Promise<
+    Result<RunState, StateNotFoundError | StateCorruptError | StateVersionMismatchError>
+  > {
+    const loadResult = await loadState(opts.runDir);
+    if (loadResult.isErr()) return err(loadResult.error);
+    const verifyResult = verifyCompatibility(loadResult.value, {
+      flowName: opts.flowName,
+      flowVersion: opts.flowVersion,
+    });
+    if (verifyResult.isErr()) return err(verifyResult.error);
+    return ok(loadResult.value);
   }
 
   #requireStep(id: string): Result<StepState, StateTransitionError> {
@@ -347,55 +319,60 @@ export class StateMachine {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
- * Read state.json from runDir, parse it, and validate the shape matches
- * RunState. Missing file returns StateNotFoundError so the caller can treat
- * ENOENT as "fresh run" without string-matching on error messages. A malformed
- * or shape-invalid file returns StateCorruptError with the parse reason in
- * `details` for operator diagnostics.
+ * Lower-level primitive. Most callers should use `StateMachine.loadAndVerify`
+ * which composes this with `verifyCompatibility` and correct error
+ * discrimination. Reads state.json from runDir, parses it, and validates the
+ * shape against RunStateSchema. Missing file returns StateNotFoundError so the
+ * caller can treat ENOENT as "fresh run" without string-matching on error
+ * messages. A malformed or shape-invalid file returns StateCorruptError with
+ * the parse reason in `details` for operator diagnostics.
  */
 export async function loadState(
   runDir: string,
 ): Promise<Result<RunState, StateNotFoundError | StateCorruptError>> {
   const filePath = join(runDir, STATE_FILENAME);
-  let raw: string;
-  try {
-    raw = await readFile(filePath, { encoding: 'utf8' });
-  } catch (e) {
-    const code = isRecord(e) && typeof e['code'] === 'string' ? e['code'] : undefined;
-    if (code === 'ENOENT') {
-      return err(new StateNotFoundError('state.json not found', runDir));
-    }
-    const message = e instanceof Error ? e.message : String(e);
-    return err(
-      new StateCorruptError(`state.json could not be read: ${message}`, { reason: message }),
-    );
-  }
+  const readResult = await ResultAsync.fromPromise(
+    readFile(filePath, { encoding: 'utf8' }),
+    (e) => e,
+  );
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return err(
-      new StateCorruptError(`state.json is malformed: ${message}`, { reason: message }),
-    );
-  }
-
-  const shapeResult = validateRunState(parsed);
-  if (shapeResult.isErr()) {
-    return err(
-      new StateCorruptError(`state.json is malformed: ${shapeResult.error}`, {
-        reason: shapeResult.error,
-      }),
-    );
-  }
-  return ok(shapeResult.value);
+  return readResult.match<Result<RunState, StateNotFoundError | StateCorruptError>>(
+    (raw) => {
+      const parseResult = parseWithSchema(raw, RunStateSchema);
+      if (parseResult.isErr()) {
+        const cause = parseResult.error.details?.['cause'];
+        return err(
+          new StateCorruptError(`state.json is malformed: ${parseResult.error.message}`, {
+            reason: parseResult.error.message,
+            cause,
+          }),
+        );
+      }
+      return ok(parseResult.value);
+    },
+    (caught) => {
+      const code = isRecord(caught) && typeof caught['code'] === 'string' ? caught['code'] : undefined;
+      if (code === 'ENOENT') {
+        return err(new StateNotFoundError('state.json not found', runDir));
+      }
+      const message = caught instanceof Error ? caught.message : String(caught);
+      return err(
+        new StateCorruptError(`state.json could not be read: ${message}`, { reason: message }),
+      );
+    },
+  );
 }
 
 /**
- * Compare the on-disk RunState against the currently-loaded flow definition.
- * Returns StateVersionMismatchError (carrying both expected and actual
+ * Lower-level primitive. Most callers should use `StateMachine.loadAndVerify`
+ * which composes this with `loadState` and correct error discrimination.
+ * Compares the on-disk RunState against the currently-loaded flow definition
+ * and returns StateVersionMismatchError (carrying both expected and actual
  * name/version pairs) when the run was written by a different flow or a
  * different version. The Runner treats this as an unresumable run and
  * instructs the user to start over.

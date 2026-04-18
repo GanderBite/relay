@@ -8,6 +8,7 @@ import type {
 } from './errors.js';
 import type { HandoffStore } from './handoffs.js';
 import { renderTemplate } from './template.js';
+import { safeStringify } from './util/json.js';
 
 export interface AssemblePromptArgs {
   promptBody: string;
@@ -35,13 +36,17 @@ export function assemblePrompt({
     ...(stepVars ?? {}),
   };
 
-  let contextBlocks = '';
-  for (const [id, value] of Object.entries(handoffs)) {
-    contextBlocks += `<context name="${id}">\n${JSON.stringify(value, null, 2)}\n</context>\n\n`;
+  const entries = Object.entries(handoffs);
+  let contextBlock = '';
+  if (entries.length > 0) {
+    const inner = entries
+      .map(([id, value]) => `  <c name="${id}">${safeStringify(value)}</c>`)
+      .join('\n');
+    contextBlock = `<context>\n${inner}\n</context>\n\n`;
   }
 
   return renderTemplate(promptBody, vars).map(
-    (rendered) => contextBlocks + `<prompt>\n${rendered}\n</prompt>`,
+    (rendered) => contextBlock + `<prompt>\n${rendered}\n</prompt>`,
   );
 }
 

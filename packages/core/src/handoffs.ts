@@ -11,6 +11,7 @@ import {
 } from './errors.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import type { z } from './zod.js';
+import { parseWithSchema, safeParse } from './util/json.js';
 
 // Non-empty id that starts alphanumeric and may continue with alphanumerics, dot, underscore, dash.
 // Rejects path separators, parent-dir segments, hidden-file leading dot, and any ASCII control chars.
@@ -71,6 +72,18 @@ function errnoOf(cause: unknown): string | undefined {
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+// Zod issue arrays stored in FlowDefinitionError.details.cause always have an
+// object with at least a `code` string at each position. This guard narrows the
+// retrieved unknown back to a shape the HandoffSchemaError constructor accepts.
+function isZodIssueArray(value: unknown): value is z.core.$ZodIssue[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => typeof item === 'object' && item !== null && 'code' in item,
+    )
+  );
 }
 
 type WriteError = HandoffSchemaError | HandoffWriteError | FlowDefinitionError;
@@ -167,11 +180,22 @@ export class HandoffStore {
    * HandoffNotFoundError when the file does not exist, HandoffSchemaError
    * on Zod validation failure, or HandoffIoError on any other filesystem
    * or JSON parse error.
+   *
+   * When called without a schema the ok payload is raw unknown.
+   * When called with a Zod schema the ok payload is the inferred type T and
+   * schema-mismatch is surfaced as a distinct HandoffSchemaError.
    */
-  async read<T = unknown>(
+  async read(
+    id: string,
+  ): Promise<Result<unknown, HandoffNotFoundError | HandoffIoError | FlowDefinitionError>>;
+  async read<T>(
+    id: string,
+    schema: z.ZodType<T>,
+  ): Promise<Result<T, HandoffNotFoundError | HandoffSchemaError | HandoffIoError | FlowDefinitionError>>;
+  async read<T>(
     id: string,
     schema?: z.ZodType<T>,
-  ): Promise<Result<T, ReadError>> {
+  ): Promise<Result<T | unknown, ReadError>> {
     const idCheck = validateHandoffId(id);
     if (idCheck.isErr()) return err(idCheck.error);
 
@@ -193,32 +217,25 @@ export class HandoffStore {
       );
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (cause) {
+    if (schema !== undefined) {
+      const result = parseWithSchema(raw, schema);
+      if (result.isErr()) {
+        const jsonErr = result.error;
+        const rawIssues = jsonErr.details?.['cause'];
+        const issues = isZodIssueArray(rawIssues) ? rawIssues : [];
+        return err(new HandoffSchemaError(jsonErr.message, id, issues));
+      }
+      return ok(result.value);
+    }
+
+    const result = safeParse(raw);
+    if (result.isErr()) {
+      const jsonErr = result.error;
       return err(
-        new HandoffIoError(`failed to parse handoff "${id}" as JSON`, id, {
-          cause: messageOf(cause),
-        }),
+        new HandoffIoError(jsonErr.message, id, { cause: jsonErr.details?.['cause'] }),
       );
     }
-
-    if (schema !== undefined) {
-      const validation = schema.safeParse(parsed);
-      if (!validation.success) {
-        return err(
-          new HandoffSchemaError(
-            `handoff "${id}" failed schema validation`,
-            id,
-            validation.error.issues,
-          ),
-        );
-      }
-      return ok(validation.data);
-    }
-
-    return ok(parsed as T);
+    return ok(result.value);
   }
 
   async exists(id: string): Promise<boolean> {
