@@ -1,3 +1,6 @@
+import type { Result } from 'neverthrow';
+
+import type { FlowDefinitionError } from './errors.js';
 import type { HandoffStore } from './handoffs.js';
 import { renderTemplate } from './template.js';
 
@@ -13,29 +16,28 @@ export interface AssemblePromptArgs {
  *
  * Var merge order: input first, handoffs next, stepVars last.
  * stepVars win on collision — per-step overrides beat flow-level handoffs.
+ * Returns Err if the template fails to compile or render.
  */
 export function assemblePrompt({
   promptBody,
   handoffs,
   inputVars,
   stepVars,
-}: AssemblePromptArgs): string {
+}: AssemblePromptArgs): Result<string, FlowDefinitionError> {
   const vars: Record<string, unknown> = {
     input: inputVars,
     ...handoffs,
     ...(stepVars ?? {}),
   };
 
-  const rendered = renderTemplate(promptBody, vars);
-
   let contextBlocks = '';
   for (const [id, value] of Object.entries(handoffs)) {
     contextBlocks += `<context name="${id}">\n${JSON.stringify(value, null, 2)}\n</context>\n\n`;
   }
 
-  const wrappedPrompt = `<prompt>\n${rendered}\n</prompt>`;
-
-  return contextBlocks + wrappedPrompt;
+  return renderTemplate(promptBody, vars).map(
+    (rendered) => contextBlocks + `<prompt>\n${rendered}\n</prompt>`,
+  );
 }
 
 /**
