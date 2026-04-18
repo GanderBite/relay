@@ -1,5 +1,9 @@
 // @relay/core -- library entry.
 
+// Cost tracking
+export { CostTracker } from './cost.js';
+export type { StepMetrics } from './cost.js';
+
 // Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
 export {
   err,
@@ -29,6 +33,8 @@ export {
 } from './errors.js';
 // Flow compiler
 export { defineFlow } from './flow/define.js';
+// Handoff persistence
+export { HandoffStore } from './handoffs.js';
 // Step namespace and step spec types
 export { step } from './flow/step.js';
 // Flow and step core types
@@ -52,6 +58,8 @@ export type {
 } from './flow/types.js';
 // Logger — exports both the pino instance (value) and its type
 export { Logger } from './logger.js';
+// Provider registry
+export { defaultRegistry, ProviderRegistry } from './providers/registry.js';
 // Provider and invocation types
 export type {
   AuthState,
@@ -64,6 +72,8 @@ export type {
   Provider,
   ProviderCapabilities,
 } from './providers/types.js';
+// Run state persistence
+export { StateMachine, loadState, verifyCompatibility } from './state.js';
 // Atomic write helpers
 export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 // Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly

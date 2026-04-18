@@ -1,2 +1,2 @@
-// Test helpers. MockProvider lands in a later sprint.
-export {};
+export { MockProvider } from './mock-provider.js';
+export type { MockProviderOptions } from './mock-provider.js';
