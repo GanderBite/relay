@@ -107,4 +107,5 @@ export type {
   RunOptions,
   RunResult,
   StepExecutionContext,
+  StepResult,
 } from './runner/index.js';

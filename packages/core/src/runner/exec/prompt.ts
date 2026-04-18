@@ -15,6 +15,7 @@ import {
   PipelineError,
   StepFailureError,
 } from '../../errors.js';
+import { writeLiveState } from '../live-state.js';
 import { z } from '../../zod.js';
 
 /**
@@ -139,6 +140,22 @@ export async function executePrompt(
     'prompt step started',
   );
 
+  const startedIso = new Date(started).toISOString();
+  const liveWrite = writeLiveState(ctx.runDir, stepId, {
+    status: 'running',
+    attempt,
+    startedAt: startedIso,
+    lastUpdateAt: startedIso,
+    ...(step.model !== undefined ? { model: step.model } : {}),
+  });
+  const liveStartResult = await liveWrite;
+  if (liveStartResult.isErr()) {
+    ctx.logger.warn(
+      { event: 'live-state.write_failed', stepId, error: liveStartResult.error.message },
+      'live state write failed; continuing',
+    );
+  }
+
   try {
     // 1. Load the prompt template file from the flow directory.
     const promptPath = resolvePromptPath(ctx.flowDir, step.promptFile);
@@ -203,6 +220,23 @@ export async function executePrompt(
       },
       'prompt usage recorded',
     );
+
+    const usageTokens = response.usage.inputTokens + response.usage.outputTokens;
+    const usageUpdate = await writeLiveState(ctx.runDir, stepId, {
+      status: 'running',
+      attempt,
+      startedAt: startedIso,
+      lastUpdateAt: new Date().toISOString(),
+      model: response.model,
+      tokensSoFar: usageTokens,
+      turnsSoFar: response.numTurns,
+    });
+    if (usageUpdate.isErr()) {
+      ctx.logger.warn(
+        { event: 'live-state.write_failed', stepId, error: usageUpdate.error.message },
+        'live state write failed; continuing',
+      );
+    }
 
     // Handoff routing: parse JSON, validate against schema if configured,
     // then write via the HandoffStore. Validate before persist so a

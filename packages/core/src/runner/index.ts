@@ -5,3 +5,4 @@ export type {
   RunResult,
   StepExecutionContext,
 } from './runner.js';
+export type { StepResult } from './types.js';
