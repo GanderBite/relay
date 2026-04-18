@@ -21,7 +21,9 @@
   ],
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "handlebars": "^4.7.9",
@@ -35,8 +37,10 @@
   },
   "devDependencies": {
     "@types/node": "25.6.0",
+    "@vitest/coverage-v8": "4.1.4",
     "tsup": "8.5.1",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "4.1.4"
   },
   "engines": {
     "node": ">=25.8"

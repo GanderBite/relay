@@ -1,0 +1,95 @@
+{
+  "sprint": 0,
+  "name": "Monorepo Scaffolding",
+  "description": "Bootstrap the relay monorepo. Create the pnpm workspace root and four package skeletons (core, cli, generator, examples). No runtime code yet — only project structure, build config, and empty source directories so downstream sprints can start filling them in.",
+  "spec_sections": ["§3.1"],
+  "waves": [
+    [
+      {
+        "id": "task_1",
+        "name": "Initialize monorepo root",
+        "description": "Create the root of the pnpm workspace. Produce `package.json` with name 'relay' (private:true, type:module, workspaces via pnpm), `pnpm-workspace.yaml` listing 'packages/*' and 'examples/*', `tsconfig.base.json` with strict TypeScript 5.4+ ESM config (target ES2022, module NodeNext, moduleResolution NodeNext, esModuleInterop, skipLibCheck, declaration, sourceMap), `.gitignore` covering node_modules, dist, .relay/, .DS_Store, `.npmrc` (save-exact, strict-peer-dependencies=false), and a root `README.md` stub. Node engines ≥25.8. Use latest stable versions of all packages. Do not install dependencies yet — just declare the structure.",
+        "target_files": [
+          "package.json",
+          "pnpm-workspace.yaml",
+          "tsconfig.base.json",
+          ".gitignore",
+          ".npmrc",
+          "README.md"
+        ],
+        "depends_on": [],
+        "module": "root",
+        "tags": ["scaffolding"],
+        "risk": "low"
+      }
+    ],
+    [
+      {
+        "id": "task_2",
+        "name": "Scaffold @relay/core package",
+        "description": "Create `packages/core/` with `package.json` (name: '@relay/core', version: '0.1.0', type: module, main: dist/index.js, types: dist/index.d.ts, exports map with './testing' subpath), `tsconfig.json` extending root base (rootDir:src, outDir:dist), `src/index.ts` empty stub file with export placeholder, `src/testing/index.ts` stub for MockProvider exports. Declare dependencies: `zod` (latest stable). Declare peerDependencies: `@anthropic-ai/claude-agent-sdk` (latest stable). Add `tsup.config.ts` for bundling (entry: src/index.ts + src/testing/index.ts, format: esm, dts: true, clean: true). Add build script 'tsup' and 'typecheck' script 'tsc --noEmit'. This is the library per §4.",
+        "target_files": [
+          "packages/core/package.json",
+          "packages/core/tsconfig.json",
+          "packages/core/tsup.config.ts",
+          "packages/core/src/index.ts",
+          "packages/core/src/testing/index.ts"
+        ],
+        "depends_on": ["task_1"],
+        "module": "core",
+        "tags": ["scaffolding"],
+        "risk": "low"
+      },
+      {
+        "id": "task_3",
+        "name": "Scaffold @relay/cli package",
+        "description": "Create `packages/cli/` with `package.json` (name: '@relay/cli', version: '0.1.0', type: module, bin: { relay: './bin/relay.js' }, main: dist/cli.js). Declare dependencies: `commander` (latest stable), `@relay/core` (workspace:^). Include `tsconfig.json` extending base. Add `src/cli.ts` stub entry, `bin/relay.js` shim that imports and runs `dist/cli.js`. Include `tsup.config.ts` bundling cli.ts as esm with dts. This is §5 — the runner.",
+        "target_files": [
+          "packages/cli/package.json",
+          "packages/cli/tsconfig.json",
+          "packages/cli/tsup.config.ts",
+          "packages/cli/src/cli.ts",
+          "packages/cli/bin/relay.js"
+        ],
+        "depends_on": ["task_1"],
+        "module": "cli",
+        "tags": ["scaffolding"],
+        "risk": "low"
+      },
+      {
+        "id": "task_4",
+        "name": "Scaffold @relay/generator package",
+        "description": "Create `packages/generator/` with `package.json` (name: '@relay/generator', version: '0.1.0', type: module, bin: { 'relay-generator': './bin/install.js' }, files: ['skill','templates','dist','bin']). Directory layout per §3.1 / §6: `skill/` (empty stub for SKILL.md), `templates/` with subdirs `blank/`, `linear/`, `fan-out/`, `discovery/` (each empty placeholder .gitkeep), `src/install.ts` stub, `bin/install.js` shim. Include `tsconfig.json` and `tsup.config.ts`. The generator's runtime is Claude Code's tools — this package only ships static files and an installer.",
+        "target_files": [
+          "packages/generator/package.json",
+          "packages/generator/tsconfig.json",
+          "packages/generator/tsup.config.ts",
+          "packages/generator/src/install.ts",
+          "packages/generator/bin/install.js",
+          "packages/generator/skill/.gitkeep",
+          "packages/generator/templates/blank/.gitkeep",
+          "packages/generator/templates/linear/.gitkeep",
+          "packages/generator/templates/fan-out/.gitkeep",
+          "packages/generator/templates/discovery/.gitkeep"
+        ],
+        "depends_on": ["task_1"],
+        "module": "generator",
+        "tags": ["scaffolding"],
+        "risk": "low"
+      },
+      {
+        "id": "task_5",
+        "name": "Scaffold examples directory",
+        "description": "Create the top-level `examples/` directory with two subdirectories (`hello-world/` and `hello-world-mocked/`), each with a placeholder `.gitkeep`. These are the reference flows used for M1 acceptance (§9.1). Later sprints will fill them with actual flow code. This task only ensures the workspace picks up the paths so `pnpm install` traverses them.",
+        "target_files": [
+          "examples/hello-world/.gitkeep",
+          "examples/hello-world-mocked/.gitkeep"
+        ],
+        "depends_on": ["task_1"],
+        "module": "examples",
+        "tags": ["scaffolding"],
+        "risk": "low"
+      }
+    ]
+  ]
+}

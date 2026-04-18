@@ -1,0 +1,150 @@
+{
+  "sprint": 5,
+  "name": "Runner",
+  "description": "Assemble the orchestrator. The Runner pulls every prior sprint together: it resolves providers, validates capabilities, walks the DAG, executes each step type, writes state/metrics/live-state on disk, retries on failure, and supports resume. By the end of this sprint `@relay/core` is feature-complete for M1.",
+  "spec_sections": ["§4.4", "§4.6.6", "§4.6.7", "§4.8.2", "§4.9"],
+  "waves": [
+    [
+      {
+        "id": "task_31",
+        "name": "Runner scaffold and DAG walker",
+        "description": "Create `packages/core/src/runner/runner.ts` with the `Runner` class per §4.9. Constructor accepts RunnerOptions { providers?: ProviderRegistry; defaultProvider?: string = 'claude'; logger?: Logger; runDir?: string }. `createRunner(opts?)` factory function also exported. `run(flow, input, opts?)` method skeleton that: (a) generates runId (short random), (b) resolves runDir default `./.relay/runs/<runId>`, (c) validates input against flow.input Zod schema (throw FlowDefinitionError on fail), (d) constructs HandoffStore, StateMachine, CostTracker, Logger, (e) initializes the ready queue (roots from flow.graph), (f) loops: while queue non-empty OR in-flight non-empty, pull up to opts.parallelism (default 4) from queue, dispatch each to a step executor (placeholder for now — call a stub `executeStep(step, ctx)` that throws 'not implemented'), await any-of, update state, recompute queue. (g) returns RunResult on completion. Add method stubs for `resume`, `allowApiKey` (sets internal flag). Re-export from `src/index.ts`.",
+        "target_files": [
+          "packages/core/src/runner/runner.ts",
+          "packages/core/src/runner/index.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": [
+          "task_18",
+          "task_19",
+          "task_22",
+          "task_23",
+          "task_24",
+          "task_8"
+        ],
+        "module": "core.runner",
+        "tags": ["runner"],
+        "risk": "high"
+      },
+      {
+        "id": "task_32",
+        "name": "Provider resolution and capability negotiation",
+        "description": "Create `packages/core/src/runner/capability-check.ts` per §4.6.6 + §4.6.7. Export `resolveProvider(step, flow, runner): Provider` implementing the three-layer resolution (step.provider → flow.defaultProvider → runner.defaultProvider). Export `checkCapabilities(flow, registry, runnerDefault): Map<string,Provider>` — for every prompt step, resolve provider, then validate: (a) step.output.schema set but !provider.capabilities.structuredOutput → throw ProviderCapabilityError; (b) step.tools non-empty but provider.capabilities.tools false OR builtInTools missing any referenced tool → throw; (c) step.model provided and provider.capabilities.models non-empty and model not in list → throw; (d) step.maxBudgetUsd set but !provider.capabilities.budgetCap → throw. Return the resolved map for reuse during execution. Call this early in Runner.run() before any tokens are spent.",
+        "target_files": ["packages/core/src/runner/capability-check.ts"],
+        "depends_on": ["task_11", "task_24", "task_6"],
+        "module": "core.runner",
+        "tags": ["runner", "providers"],
+        "risk": "medium"
+      }
+    ],
+    [
+      {
+        "id": "task_33",
+        "name": "Prompt step executor",
+        "description": "Create `packages/core/src/runner/exec/prompt.ts` exporting `executePrompt(step, ctx): Promise<StepResult>`. Behavior per §4.4.1: (1) load prompt template file from flow dir, (2) load handoff values via loadHandoffValues, (3) call assemblePrompt to build the final InvocationRequest.prompt, (4) if output.schema present, compute jsonSchema via zodToJsonSchema, (5) build InvocationRequest + InvocationContext (abortSignal from ctx), (6) call `provider.invoke(req, ctx)`, (7) on success: if output.handoff, parse response.text as JSON, validate against schema, write via handoffStore.write; if output.artifact, write response.text to `<runDir>/artifacts/<artifact>` using atomicWriteText; record StepMetrics via costTracker. (8) on error, wrap in StepFailureError with stepId + attempt. Emit logger events 'prompt.start', 'prompt.usage', 'prompt.done', 'prompt.failed'.",
+        "target_files": ["packages/core/src/runner/exec/prompt.ts"],
+        "depends_on": ["task_31", "task_21", "task_29"],
+        "module": "core.runner.exec",
+        "tags": ["runner", "execution"],
+        "risk": "high"
+      },
+      {
+        "id": "task_34",
+        "name": "Script step executor",
+        "description": "Create `packages/core/src/runner/exec/script.ts` exporting `executeScript(step, ctx): Promise<StepResult>`. Behavior per §4.4.2: spawn via node:child_process.spawn with stdio piped. If step.run is a string, shlex-split (use a tiny inline splitter that respects single/double quotes — don't pull in a full shlex library; document in comment). cwd defaults to ctx.runDir. env = process.env plus step.env overrides (script steps do NOT use the claude env allowlist — they are user-controlled shell commands). Enforce timeoutMs via AbortController; on timeout, kill child and throw TimeoutError. If output.artifact set, capture stdout to `<runDir>/artifacts/<artifact>`. Return { exitCode, stdout, stderr }. Exit 0 = success (unless onExit map present, in which case the map wins). Throw StepFailureError on non-zero unless the exit code has a mapped next step.",
+        "target_files": ["packages/core/src/runner/exec/script.ts"],
+        "depends_on": ["task_31"],
+        "module": "core.runner.exec",
+        "tags": ["runner", "execution"],
+        "risk": "medium"
+      },
+      {
+        "id": "task_36",
+        "name": "Parallel step executor",
+        "description": "Create `packages/core/src/runner/exec/parallel.ts` exporting `executeParallel(step, ctx, dispatch): Promise<StepResult>`. Per §4.4.4: takes a `dispatch(stepId): Promise<StepResult>` callback (wired by the Runner to its own step executor dispatcher). Calls `Promise.all(step.branches.map(dispatch))`. On rejection, aggregate errors into one AggregateError-like object, throw StepFailureError with details. On success, return { branches: results }. Do NOT execute the branch steps itself — the Runner maintains its own step-state for each branch. This executor only orchestrates fan-out/fan-in.",
+        "target_files": ["packages/core/src/runner/exec/parallel.ts"],
+        "depends_on": ["task_31"],
+        "module": "core.runner.exec",
+        "tags": ["runner", "execution"],
+        "risk": "medium"
+      },
+      {
+        "id": "task_37",
+        "name": "Terminal step executor",
+        "description": "Create `packages/core/src/runner/exec/terminal.ts` exporting `executeTerminal(step, ctx): Promise<StepResult>`. Per §4.4.5: log step.message (info), set RunResult.exitCode to step.exitCode (default 0), mark run as succeeded, short-circuit the Runner loop by returning a sentinel `{ terminal: true, exitCode }`. Trivial but kept distinct to mirror the step-type taxonomy.",
+        "target_files": ["packages/core/src/runner/exec/terminal.ts"],
+        "depends_on": ["task_31"],
+        "module": "core.runner.exec",
+        "tags": ["runner", "execution"],
+        "risk": "low"
+      }
+    ],
+    [
+      {
+        "id": "task_35",
+        "name": "Branch step executor",
+        "description": "Create `packages/core/src/runner/exec/branch.ts` exporting `executeBranch(step, ctx)`. Shares implementation with executeScript by extracting the subprocess spawning logic into a helper `packages/core/src/runner/exec/process.ts` (created as part of task_34). This task imports the helper from task_34's `process.ts`. Branch has no output (no artifact capture). Return { exitCode } only; the Runner uses onExit map to pick the next step. Throw TimeoutError as needed.",
+        "target_files": ["packages/core/src/runner/exec/branch.ts"],
+        "depends_on": ["task_34"],
+        "module": "core.runner.exec",
+        "tags": ["runner", "execution"],
+        "risk": "low"
+      },
+      {
+        "id": "task_38",
+        "name": "Retry wrapper with timeouts",
+        "description": "Create `packages/core/src/runner/retry.ts` exporting `withRetry<T>(fn: (attempt:number)=>Promise<T>, opts: {maxRetries:number; timeoutMs?: number; logger: Logger; stepId: string}): Promise<T>`. Implementation: loop 1..maxRetries+1. Each iteration wraps fn in a timeout via AbortController (if timeoutMs set) — on timeout reject TimeoutError. On non-timeout error: if attempt <= maxRetries, log 'retry' and continue; else rethrow. TimeoutError is NOT retried automatically (that is author-controlled). Used by the Runner to wrap prompt/script/branch executors per §4.4.1 `maxRetries`.",
+        "target_files": ["packages/core/src/runner/retry.ts"],
+        "depends_on": ["task_6"],
+        "module": "core.runner",
+        "tags": ["runner"],
+        "risk": "low"
+      },
+      {
+        "id": "task_39",
+        "name": "Live step-state writes",
+        "description": "Create `packages/core/src/runner/live-state.ts` exporting `writeLiveState(runDir, stepId, partial: { status; attempt; startedAt; lastUpdateAt; model?; tokensSoFar?; turnsSoFar? })`. Writes `<runDir>/live/<stepId>.json` atomically on every usage event emitted by the provider stream. The CLI's progress display (Sprint 6) consumes these files. Files are ephemeral — Runner clears `<runDir>/live/` at run start. Per §4.9 RunOptions.liveState.",
+        "target_files": ["packages/core/src/runner/live-state.ts"],
+        "depends_on": ["task_7"],
+        "module": "core.runner",
+        "tags": ["runner", "observability"],
+        "risk": "low"
+      }
+    ],
+    [
+      {
+        "id": "task_40",
+        "name": "Abort handling and cleanup",
+        "description": "Update `packages/core/src/runner/runner.ts` to own a top-level AbortController for the whole run. On SIGINT/SIGTERM (listeners installed at Runner.run start), call controller.abort() which cascades via ctx.abortSignal to every in-flight provider.invoke() call and every child_process via its own abort listener. After aborting, the Runner persists the latest state (marked 'aborted') so resume works. On completion (success OR abort), call `provider.close?()` on every provider used in this run (iterate the resolved map from task_32). Remove signal listeners in a finally block to avoid leaks across runs.",
+        "target_files": ["packages/core/src/runner/runner.ts"],
+        "depends_on": [
+          "task_33",
+          "task_34",
+          "task_35",
+          "task_36",
+          "task_37",
+          "task_38",
+          "task_39"
+        ],
+        "module": "core.runner",
+        "tags": ["runner", "lifecycle"],
+        "risk": "medium"
+      }
+    ],
+    [
+      {
+        "id": "task_41",
+        "name": "Resume protocol",
+        "description": "Implement `Runner.resume(runDir)` per §4.8.2. Load `state.json` via loadState. Call verifyCompatibility(state, flow.name, flow.version) — on mismatch, throw PipelineError with clear message to start over. Load the flow: read `<runDir>/flow-ref.json` written at run start (includes the flow file path resolved at start), re-import it. Load metrics.json back into CostTracker. Identify succeeded steps from state.steps — mark them complete in-memory, do NOT re-execute. Reinitialize the ready queue with steps whose dependencies are satisfied. Then execute the remainder via the same loop as run(). Also write `flow-ref.json` at run start (update task_31 if not done) so resume can find the flow. Return RunResult as usual.",
+        "target_files": [
+          "packages/core/src/runner/runner.ts",
+          "packages/core/src/runner/resume.ts"
+        ],
+        "depends_on": ["task_40"],
+        "module": "core.runner",
+        "tags": ["runner", "lifecycle"],
+        "risk": "high"
+      }
+    ]
+  ]
+}

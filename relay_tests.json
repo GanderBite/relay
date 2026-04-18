@@ -1,0 +1,1602 @@
+[
+  {
+    "id": "AUTH-001",
+    "name": "Blocks run when ANTHROPIC_API_KEY is set without explicit opt-in",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "The single most important non-functional requirement in the library (product spec §1.2, tech spec §8.1). A subscription user with a stale ANTHROPIC_API_KEY in their shell must not get silently API-billed. inspectClaudeAuth() must short-circuit and return err(ClaudeAuthError) BEFORE the claude binary probe runs — otherwise a misconfigured machine would spawn subprocesses at all.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx'. No RELAY_ALLOW_API_KEY, no CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY, no allowApiKey option. Mock execFile so the test fails loudly if the binary is probed (it should not be).",
+    "expected_output": "Returns err(ClaudeAuthError). The error's message contains the string 'RELAY_ALLOW_API_KEY' and mentions runner.allowApiKey(). The error's details.envObserved includes 'ANTHROPIC_API_KEY' and details.billingSource equals 'api-account'. execFile was NOT called."
+  },
+  {
+    "id": "AUTH-002",
+    "name": "Allows run when ANTHROPIC_API_KEY is set and RELAY_ALLOW_API_KEY=1",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "The explicit opt-in path. Users who want API billing must be able to override the guard via env var without code changes (tech spec §8.1.2 point 3). A warning must surface so they can audit which run paid what account.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx' and RELAY_ALLOW_API_KEY='1'. Mock execFile('claude', ['--version']) to resolve successfully.",
+    "expected_output": "Returns ok(AuthState). state.ok === true, state.billingSource === 'api-account', state.detail mentions RELAY_ALLOW_API_KEY, state.warnings is a non-empty array containing a string equal to 'billing to API account, not subscription'."
+  },
+  {
+    "id": "AUTH-003",
+    "name": "Allows run when ANTHROPIC_API_KEY is set and allowApiKey option is true",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "The programmatic opt-in path (runner.allowApiKey()). Functionally identical to RELAY_ALLOW_API_KEY=1 but the detail string differs so the user can tell how billing was authorized.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx' (no RELAY_ALLOW_API_KEY). Call inspectClaudeAuth({ allowApiKey: true }). Mock execFile success.",
+    "expected_output": "Returns ok(AuthState). billingSource === 'api-account', detail mentions 'runner.allowApiKey()', warnings contains 'billing to API account, not subscription'."
+  },
+  {
+    "id": "AUTH-004",
+    "name": "Cloud routing (Bedrock) bypasses ANTHROPIC_API_KEY guard and reports billingSource='bedrock'",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "Tech spec §3.4.1 + §8.1.2 — cloud routing takes precedence over ANTHROPIC_API_KEY in the claude binary's own auth table, so tokens route to AWS, not Anthropic API. The guard must not block this case; bedrock users are paying AWS.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx' AND CLAUDE_CODE_USE_BEDROCK='1'. No RELAY_ALLOW_API_KEY, no allowApiKey option. Mock execFile success.",
+    "expected_output": "Returns ok(AuthState). billingSource === 'bedrock', detail mentions 'AWS Bedrock' and 'CLAUDE_CODE_USE_BEDROCK=1'. No warnings array (or empty)."
+  },
+  {
+    "id": "AUTH-005",
+    "name": "Cloud routing (Vertex) bypasses ANTHROPIC_API_KEY guard and reports billingSource='vertex'",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "Same principle as AUTH-004 but via the Vertex env var. Verifies the priority rule generalizes across cloud providers.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx' AND CLAUDE_CODE_USE_VERTEX='1'. Mock execFile success.",
+    "expected_output": "ok(AuthState) with billingSource === 'vertex' and detail mentioning 'Google Vertex'."
+  },
+  {
+    "id": "AUTH-006",
+    "name": "Cloud routing (Foundry) is detected via either CLAUDE_CODE_USE_FOUNDRY or ANTHROPIC_FOUNDRY_URL",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "auth.ts treats Foundry as active when either the boolean flag is set OR the URL env var is non-empty. Both branches must work and must produce distinct detail strings so the user can tell which one activated.",
+    "input": "Two subcases. Case A: CLAUDE_CODE_USE_FOUNDRY='1' alone. Case B: ANTHROPIC_FOUNDRY_URL='https://foundry.example.com' alone. Mock execFile success in both.",
+    "expected_output": "Both return ok(AuthState) with billingSource === 'foundry'. Case A detail mentions 'CLAUDE_CODE_USE_FOUNDRY=1'. Case B detail mentions 'ANTHROPIC_FOUNDRY_URL'."
+  },
+  {
+    "id": "AUTH-007",
+    "name": "CLAUDE_CODE_OAUTH_TOKEN reports billingSource='subscription' (token mode)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "The CI-friendly subscription path (product spec §8.1.3). A long-lived OAuth token must be recognized and distinguished from interactive subscription credentials.",
+    "input": "Stub process.env so CLAUDE_CODE_OAUTH_TOKEN='oat-xxx', no ANTHROPIC_API_KEY, no cloud routing vars. Mock execFile success.",
+    "expected_output": "ok(AuthState) with billingSource === 'subscription' and detail containing 'CLAUDE_CODE_OAUTH_TOKEN'."
+  },
+  {
+    "id": "AUTH-008",
+    "name": "No relevant env vars falls back to interactive subscription",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "When nothing is configured, we optimistically assume the user has ~/.claude/credentials from `claude /login` and trust the binary to error loudly if not (tech spec §3.4.1 row 1).",
+    "input": "Stub process.env so no ANTHROPIC_API_KEY, no CLAUDE_CODE_OAUTH_TOKEN, no cloud routing vars. Mock execFile success.",
+    "expected_output": "ok(AuthState) with billingSource === 'subscription' and detail containing 'interactive'."
+  },
+  {
+    "id": "AUTH-009",
+    "name": "Missing claude binary returns ClaudeAuthError with install instructions",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "Product spec §12 — every error names the next action. If `claude --version` fails (ENOENT, non-zero exit, timeout), the user must see the npm install command in the error message.",
+    "input": "Stub process.env so the API-key guard does not fire (no ANTHROPIC_API_KEY). Mock execFile to reject with an ENOENT error ({ code: 'ENOENT' }).",
+    "expected_output": "err(ClaudeAuthError). Error message contains 'claude command not found on PATH' AND 'npm install -g @anthropic-ai/claude-code'. Error.details.cause is a non-empty string."
+  },
+  {
+    "id": "AUTH-010",
+    "name": "Empty string ANTHROPIC_API_KEY is treated as unset (not a blocker)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "isNonEmpty guard — an empty-string env var must not trigger the API-key block. Otherwise users with `export ANTHROPIC_API_KEY=` in their shell (common defensive practice) would get blocked needlessly.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='' (empty string), no other relevant vars. Mock execFile success.",
+    "expected_output": "ok(AuthState) with billingSource === 'subscription'. No ClaudeAuthError."
+  },
+  {
+    "id": "AUTH-011",
+    "name": "claude --version probe uses a filtered env, not the full inherited env",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/auth.ts",
+    "description": "Even the pre-flight probe must not leak non-allowlisted env vars to the spawned subprocess. preflightEnv() builds a narrow allowlist (PATH, HOME, USER, LANG, LC_ALL, TZ, TMPDIR, SHELL, + Windows variants). A secret like SLACK_TOKEN in the parent shell must not be forwarded to `claude --version`.",
+    "input": "Stub process.env so PATH='/usr/bin', HOME='/root', and SLACK_TOKEN='xoxb-secret-123'. No ANTHROPIC_API_KEY. Mock execFile to resolve, capture the options.env argument it received.",
+    "expected_output": "The env object passed to execFile contains PATH and HOME but does NOT contain SLACK_TOKEN (not even as undefined — it should simply not be a key)."
+  },
+  {
+    "id": "ENV-001",
+    "name": "buildEnvAllowlist includes all exact-match system vars at real values",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "The fixed POSIX allowlist (PATH, HOME, USER, LANG, LC_ALL, TZ, TMPDIR, SHELL) must forward the real host values to the subprocess. Without these the claude binary cannot resolve itself or emit correct locale/timezone output.",
+    "input": "Stub process.env so every entry in ALLOWLIST_EXACT is set to a sentinel value (e.g. PATH='/test/bin', HOME='/test/home', ...). No other vars.",
+    "expected_output": "Return value includes every ALLOWLIST_EXACT key with its sentinel value. The number of own-properties on the returned object equals ALLOWLIST_EXACT.length."
+  },
+  {
+    "id": "ENV-002",
+    "name": "buildEnvAllowlist always forwards CLAUDE_ prefixed variables",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "The CLAUDE_ family (CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_USE_BEDROCK, etc.) is how the SDK receives subscription credentials and cloud-routing flags. These must forward unconditionally even when allowApiKey is false.",
+    "input": "Stub process.env so CLAUDE_CODE_OAUTH_TOKEN='oat-xxx' and CLAUDE_CUSTOM='sentinel'. No allowApiKey option.",
+    "expected_output": "Return value contains key 'CLAUDE_CODE_OAUTH_TOKEN' === 'oat-xxx' and key 'CLAUDE_CUSTOM' === 'sentinel'."
+  },
+  {
+    "id": "ENV-003",
+    "name": "ANTHROPIC_ prefix is suppressed when allowApiKey is false",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "The second half of the billing safety guard (tech spec §4.6.11). If ANTHROPIC_API_KEY leaked through to the subprocess, the SDK would auth-precede over subscription credentials and silently API-bill. Must be emitted as undefined so SDK merge drops it.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx' and ANTHROPIC_BASE_URL='https://api.example.com'. Call buildEnvAllowlist() with allowApiKey unset (falsy).",
+    "expected_output": "Return value has key 'ANTHROPIC_API_KEY' === undefined AND key 'ANTHROPIC_BASE_URL' === undefined. The keys are PRESENT (suppression patch) but the values are literally undefined."
+  },
+  {
+    "id": "ENV-004",
+    "name": "ANTHROPIC_ prefix is forwarded when allowApiKey is true",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "When the user has explicitly opted into API billing, ANTHROPIC_* must flow through to the subprocess so the SDK can read ANTHROPIC_API_KEY. This is the only legitimate code path for those variables.",
+    "input": "Stub process.env so ANTHROPIC_API_KEY='sk-ant-xxx'. Call buildEnvAllowlist({ allowApiKey: true }).",
+    "expected_output": "Return value contains key 'ANTHROPIC_API_KEY' === 'sk-ant-xxx' (the real value, not undefined)."
+  },
+  {
+    "id": "ENV-005",
+    "name": "Non-allowlisted host env vars are emitted as undefined (suppression patch)",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "This is the test that catches the sprint 4 BLOCK-1 regression. The SDK's options.env is a merge patch on top of process.env — naive code that only copies allowlisted vars would leave secrets in place. We must explicitly set non-allowlisted vars to undefined so the SDK's merge drops them.",
+    "input": "Stub process.env with PATH='/bin', SLACK_TOKEN='xoxb-1', GITHUB_TOKEN='ghp_1', AWS_SECRET_ACCESS_KEY='secret', DATABASE_URL='postgres://...'. No ANTHROPIC_* keys.",
+    "expected_output": "Return value: PATH === '/bin'. All of SLACK_TOKEN, GITHUB_TOKEN, AWS_SECRET_ACCESS_KEY, DATABASE_URL are PRESENT as own-properties with value === undefined."
+  },
+  {
+    "id": "ENV-006",
+    "name": "Caller-supplied extra overrides win over allowlist and suppression",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "Per-step env overrides must always reach the subprocess, even when the same key would otherwise be suppressed. Example: a step-level TEST_VAR='hello' must surface even though TEST_VAR is not in the allowlist.",
+    "input": "Stub process.env so TEST_VAR='hostvalue' (not allowlisted, would otherwise be suppressed) and PATH='/bin'. Call buildEnvAllowlist({ extra: { TEST_VAR: 'stepvalue', NEW_VAR: 'fresh' } }).",
+    "expected_output": "TEST_VAR === 'stepvalue' (not 'hostvalue', not undefined). NEW_VAR === 'fresh'. PATH === '/bin' preserved."
+  },
+  {
+    "id": "ENV-007",
+    "name": "buildEnvAllowlist does not mutate process.env",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "The function must return a fresh object; the host process.env must be untouched. Otherwise subsequent calls to the function, or other parts of the codebase reading process.env, would see phantom undefined entries.",
+    "input": "Snapshot process.env (deep clone). Call buildEnvAllowlist() several times with and without opts.extra. Snapshot again.",
+    "expected_output": "Before and after snapshots are structurally equal. No key was added, deleted, or set to undefined in process.env itself."
+  },
+  {
+    "id": "ENV-008",
+    "name": "Host env keys with undefined values are skipped (not included as undefined)",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/claude/env.ts",
+    "description": "There is nothing to forward and nothing to suppress for a key the host never set. The function's for-loop over Object.entries(process.env) must tolerate undefined values without emitting them.",
+    "input": "Directly construct a process.env-like object (via Object.defineProperty if needed) where one key's value is undefined. Replace process.env temporarily and call buildEnvAllowlist().",
+    "expected_output": "The returned object does not contain that key at all (not even as undefined)."
+  },
+  {
+    "id": "DAG-001",
+    "name": "Simple linear DAG produces a deterministic topological order",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "buildGraph's Kahn topo sort uses sorted ready-queue insertion so equivalent graphs produce equivalent orders across runs. A three-step chain inventory→entities→report must topo to ['inventory','entities','report'] every call.",
+    "input": "A steps record with three prompt steps: 'inventory' (no deps), 'entities' (dependsOn ['inventory']), 'report' (dependsOn ['entities']).",
+    "expected_output": "buildGraph returns ok. graph.topoOrder deepEquals ['inventory','entities','report']. graph.rootSteps deepEquals ['inventory']. graph.entry === 'inventory'."
+  },
+  {
+    "id": "DAG-002",
+    "name": "Direct cycle between two steps returns FlowDefinitionError naming both",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "Cycles must fail at flow load with FlowDefinitionError (tech spec §4.3.3). The error message must name the cycle path so the user can fix it without running the flow.",
+    "input": "A steps record with 'a' (dependsOn ['b']) and 'b' (dependsOn ['a']).",
+    "expected_output": "buildGraph returns err(FlowDefinitionError). error.message contains 'cycle detected' and contains 'a' AND 'b'. error.details.cycle is an array containing both 'a' and 'b' where the last element equals the first (closed path)."
+  },
+  {
+    "id": "DAG-003",
+    "name": "Three-step cycle is traced and reported as a closed path",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "The traceCycle helper must follow successors through the remaining (in-degree>0) node set to reconstruct the cycle path. A→B→C→A is the canonical non-trivial case.",
+    "input": "A steps record with 'a' (dependsOn ['c']), 'b' (dependsOn ['a']), 'c' (dependsOn ['b']).",
+    "expected_output": "err(FlowDefinitionError). details.cycle has length 4 (three distinct nodes plus the closing duplicate) — e.g. ['a','b','c','a'] or another rotation of the same cycle. Every distinct node appears exactly once except the start/end."
+  },
+  {
+    "id": "DAG-004",
+    "name": "Self-dependency is rejected as a cycle",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "A step that dependsOn itself creates a length-1 cycle. Must be caught by the same Kahn algorithm that catches multi-step cycles.",
+    "input": "A steps record with 'loop' (dependsOn ['loop']).",
+    "expected_output": "err(FlowDefinitionError). details.cycle references 'loop'. error.message contains 'cycle detected'."
+  },
+  {
+    "id": "DAG-005",
+    "name": "Parallel step referencing itself in branches is rejected with a distinct message",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "Before topo sort runs, the graph validator explicitly catches parallel.branches containing the parallel step's own id. This produces a clearer error than a generic cycle trace.",
+    "input": "A steps record with one step 'fan' of kind 'parallel' whose branches === ['fan'].",
+    "expected_output": "err(FlowDefinitionError). error.message contains 'parallel step' AND 'lists itself'. It must NOT be the generic 'cycle detected' message."
+  },
+  {
+    "id": "DAG-006",
+    "name": "Unknown dependsOn reference returns helpful error naming both step and missing id",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "The product spec's error template (§12.1) mandates that every error names the exact file/line/command. The graph builder's dependsOn-missing branch must mention both the referring step id and the missing dep.",
+    "input": "A steps record with 'a' (no deps) and 'b' (dependsOn ['ghost']).",
+    "expected_output": "err(FlowDefinitionError). error.message contains 'b' (the referrer) AND 'ghost' (the missing dep) AND 'dependsOn'."
+  },
+  {
+    "id": "DAG-007",
+    "name": "Unknown onFail step id is rejected (but 'abort' and 'continue' literals pass)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "onFail accepts 'abort', 'continue', or a step id. The validator must recognize the two literals and only reject arbitrary unknown strings. Parallel steps cannot use 'continue' (enforced at type level; graph builder only needs to handle 'abort').",
+    "input": "Three subcases. Case A: prompt step 'a' with onFail='ghost' (unknown). Case B: prompt step 'a' with onFail='continue'. Case C: prompt step 'a' with onFail='abort'. Each flow has a second step to satisfy the graph.",
+    "expected_output": "Case A returns err(FlowDefinitionError) naming 'ghost'. Cases B and C return ok(FlowGraph)."
+  },
+  {
+    "id": "DAG-008",
+    "name": "Unknown onExit step id in a script/branch step is rejected",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "onExit is a Record<string, string> where each value is a step id, 'abort', or 'continue'. Unknown step ids must be caught at flow load. The validator must also skip 'abort' and 'continue' values.",
+    "input": "A steps record with 'checker' of kind 'branch' with onExit: { '0': 'ghost', '1': 'abort', '2': 'continue' }. Plus two real steps to satisfy shape.",
+    "expected_output": "err(FlowDefinitionError) naming 'ghost' and mentioning onExit key '0'. The 'abort' and 'continue' entries don't trigger additional errors."
+  },
+  {
+    "id": "DAG-009",
+    "name": "Unknown onAllComplete step id on a parallel step is rejected",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "A parallel step's onAllComplete must point to a real step. Missing references are caught before topo sort.",
+    "input": "A steps record with two prompt steps ('a','b') plus a parallel step 'fan' (branches ['a','b'], onAllComplete 'ghost').",
+    "expected_output": "err(FlowDefinitionError). error.message contains 'onAllComplete' and 'ghost'."
+  },
+  {
+    "id": "DAG-010",
+    "name": "contextFrom references handoff written by an ancestor — accepted",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "validateContextFrom must accept the normal case: step B dependsOn A, A produces handoff 'inventory', B's contextFrom includes 'inventory'. The ancestor check traverses the full DAG ancestor set, not just direct predecessors.",
+    "input": "Steps: 'a' is prompt with output { handoff: 'inventory' }. 'b' is prompt dependsOn ['a'], contextFrom: ['inventory']. 'c' is prompt dependsOn ['b'], contextFrom: ['inventory'] (transitive ancestor).",
+    "expected_output": "buildGraph returns ok(FlowGraph). No validation error."
+  },
+  {
+    "id": "DAG-011",
+    "name": "contextFrom references a handoff written by a non-ancestor — rejected",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "A prompt step cannot consume a handoff from a parallel sibling — by the time the step runs, the handoff writer may not have executed. This is a subtle graph-correctness invariant that prevents dead-end prompts.",
+    "input": "Steps: root 'r' with no output. Two leaves 'a' (dependsOn ['r'], output handoff 'alpha') and 'b' (dependsOn ['r'], contextFrom ['alpha']). 'b' is NOT a descendant of 'a'.",
+    "expected_output": "err(FlowDefinitionError). error.message mentions 'b', 'contextFrom', 'alpha', and hints at adding a dependsOn link."
+  },
+  {
+    "id": "DAG-012",
+    "name": "contextFrom references an unknown handoff — rejected",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "If no step in the flow declares output.handoff === 'inventory' but a step's contextFrom lists 'inventory', the flow is malformed. Error message must name the referring step and the missing handoff.",
+    "input": "Steps: 'a' prompt (output { artifact: 'foo.html' }), 'b' prompt (dependsOn ['a'], contextFrom ['ghostHandoff']).",
+    "expected_output": "err(FlowDefinitionError). error.message mentions 'b', 'contextFrom', 'ghostHandoff'."
+  },
+  {
+    "id": "DAG-013",
+    "name": "Multiple root steps without explicit start is rejected with helpful hint",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "When more than one step has no predecessor and the flow does not set `start`, the runner cannot pick an entry unambiguously. The error must list the root candidates so the user can fix it.",
+    "input": "Steps record with 'a' (no deps) and 'b' (no deps). No start parameter.",
+    "expected_output": "err(FlowDefinitionError). error.message contains 'multiple root steps' and lists both 'a' and 'b'. details.rootSteps deepEquals ['a','b']."
+  },
+  {
+    "id": "DAG-014",
+    "name": "Explicit start overrides root-step auto-detection",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/flow/graph.ts",
+    "description": "When the author sets start: '<id>', the graph builder accepts it as entry even if another step qualifies as root. Unknown start values are rejected with a precise error.",
+    "input": "Subcase A: steps 'a' (no deps) and 'b' (no deps), start: 'a'. Subcase B: same steps, start: 'ghost'.",
+    "expected_output": "Subcase A returns ok with graph.entry === 'a'. Subcase B returns err(FlowDefinitionError) containing 'start step' and 'ghost'."
+  },
+  {
+    "id": "STATE-001",
+    "name": "Fresh StateMachine initializes steps in 'pending' and persists state.json",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "init(steps) seeds the in-memory steps map with 'pending' status and zero attempts, then writes state.json atomically. Without this the resume protocol has nothing to read.",
+    "input": "Temp dir as runDir. Construct StateMachine(runDir, 'flowName', '0.1.0', 'runId'). Call init(['a','b']). Read the written state.json.",
+    "expected_output": "init returns ok. state.json on disk contains { runId, flowName: 'flowName', flowVersion: '0.1.0', status: 'running', steps: { a: { status: 'pending', attempts: 0 }, b: { ... } } }. startedAt and updatedAt are ISO strings."
+  },
+  {
+    "id": "STATE-002",
+    "name": "startStep('a') from 'pending' transitions to 'running' and increments attempts",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Happy-path transition. The attempts counter is crucial for retry budgets — it must increment exactly once per startStep call.",
+    "input": "StateMachine init'd with step 'a' (pending, attempts: 0). Call startStep('a') once, then getState().",
+    "expected_output": "startStep returns ok. state.steps.a.status === 'running'. state.steps.a.attempts === 1. state.steps.a.startedAt is an ISO string."
+  },
+  {
+    "id": "STATE-003",
+    "name": "Illegal transition startStep on a 'running' step returns StateTransitionError",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Double-start is a Runner bug. The state machine must refuse rather than silently accept — otherwise attempts counting drifts and retries become unbounded.",
+    "input": "StateMachine with step 'a' moved to 'running' via startStep. Call startStep('a') again.",
+    "expected_output": "Second call returns err(StateTransitionError). error.stepId === 'a'. error.details contains from === 'running' and attempted === 'start'."
+  },
+  {
+    "id": "STATE-004",
+    "name": "completeStep('a') from 'running' transitions to 'succeeded' and records artifacts/handoffs",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "When completing with an artifacts map { handoffId -> filePath }, both projections (keys as handoffs, values as artifacts) must persist so resume and doctor commands can surface either view.",
+    "input": "StateMachine init'd and step 'a' is 'running'. Call completeStep('a', { inventory: '/runs/r1/handoffs/inventory.json', services: '/runs/r1/handoffs/services.json' }).",
+    "expected_output": "ok. state.steps.a.status === 'succeeded'. state.steps.a.handoffs deepEquals ['inventory','services']. state.steps.a.artifacts deepEquals ['/runs/r1/handoffs/inventory.json','/runs/r1/handoffs/services.json']. completedAt is set."
+  },
+  {
+    "id": "STATE-005",
+    "name": "failStep('a') sets error message and does NOT escalate run-level status",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Critical invariant: step failure does not automatically fail the run — the Runner decides based on the step's onFail policy. state.ts must keep run-level status independent.",
+    "input": "StateMachine init'd with steps 'a' and 'b'. 'a' is running. Call failStep('a', 'timed out').",
+    "expected_output": "ok. state.steps.a.status === 'failed' with errorMessage 'timed out'. state.status is STILL 'running' (not 'failed'). state.steps.b is still 'pending'."
+  },
+  {
+    "id": "STATE-006",
+    "name": "skipStep works only from 'pending' and cannot skip a running step",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Skip is used by the Runner for unreachable branches after an upstream failure. It must not be allowed to hide a live step.",
+    "input": "Two subcases. Case A: step 'a' is pending; call skipStep('a'). Case B: step 'a' is running; call skipStep('a').",
+    "expected_output": "Case A: ok, state.steps.a.status === 'skipped'. Case B: err(StateTransitionError) with details.from === 'running' and attempted === 'skip'."
+  },
+  {
+    "id": "STATE-007",
+    "name": "resetStep flips 'failed' back to 'pending' and preserves attempts counter",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/state.ts",
+    "description": "The linchpin of resume + retry semantics. A step that consumed 2 of 3 attempts before a crash must have exactly 1 attempt remaining on resume. resetStep also drops startedAt/completedAt/errorMessage so observers don't see stale failure info.",
+    "input": "Step 'a' in 'failed' state with attempts: 2, startedAt set, completedAt set, errorMessage: 'boom', handoffs: ['x']. Call resetStep('a').",
+    "expected_output": "ok. state.steps.a.status === 'pending'. attempts === 2 (preserved). startedAt, completedAt, errorMessage, handoffs, artifacts are all undefined on the step state."
+  },
+  {
+    "id": "STATE-008",
+    "name": "resetStep on a non-failed step returns StateTransitionError",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Reset is only valid from failed. Reset of a succeeded step would mask completed work — the Runner must never call this on succeeded/running/pending steps.",
+    "input": "Step 'a' in 'succeeded' state. Call resetStep('a').",
+    "expected_output": "err(StateTransitionError) with attempted === 'reset' and from === 'succeeded'."
+  },
+  {
+    "id": "STATE-009",
+    "name": "markRun('aborted') sweeps dangling 'running' steps to 'failed'",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/state.ts",
+    "description": "The Ctrl-C invariant. Product spec §6.11.5 promises a paused-not-failed UX, and the on-disk snapshot must be consistent. A running step at the time of abort must be marked failed with a descriptive errorMessage so resume can decide what to retry.",
+    "input": "StateMachine with three steps: 'a' succeeded, 'b' running, 'c' pending. Call markRun('aborted').",
+    "expected_output": "state.status === 'aborted'. state.steps.a stays succeeded. state.steps.b has status 'failed', errorMessage 'run aborted', and completedAt set. state.steps.c still pending."
+  },
+  {
+    "id": "STATE-010",
+    "name": "markRun('succeeded') does NOT sweep running steps to failed",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Sweep is only for terminal-failure transitions. A programming bug that marked run succeeded while a step is still running should not silently rewrite step state — it should leave the inconsistency visible.",
+    "input": "StateMachine with one step 'a' in 'running' status. Call markRun('succeeded').",
+    "expected_output": "state.status === 'succeeded'. state.steps.a.status is still 'running' (not swept). Reveal an observable inconsistency for debuggers rather than hide it."
+  },
+  {
+    "id": "STATE-011",
+    "name": "save() writes state.json atomically and subsequent load() returns exact value",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Round-trip invariant. After several transitions, save() must produce a file that loadState() can parse and validate back to the same shape.",
+    "input": "Temp dir runDir. StateMachine init'd with steps ['a','b']. Transitions: startStep('a'), completeStep('a'), startStep('b'). Await save(). Call StateMachine.load(runDir).",
+    "expected_output": "load returns ok(state). state.steps.a.status === 'succeeded'. state.steps.b.status === 'running'. state.runId, flowName, flowVersion match the original."
+  },
+  {
+    "id": "STATE-012",
+    "name": "loadState() on missing file returns StateNotFoundError (not a generic I/O error)",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "The Runner distinguishes 'no prior run' from 'prior run corrupt'. ENOENT must surface as StateNotFoundError so callers can treat it as fresh-run without string-matching on error messages.",
+    "input": "An empty temp directory (no state.json). Call loadState(runDir).",
+    "expected_output": "err(StateNotFoundError). error.code equals ERROR_CODES.STATE_NOT_FOUND. Error is NOT a StateCorruptError."
+  },
+  {
+    "id": "STATE-013",
+    "name": "loadState() on malformed JSON returns StateCorruptError",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/state.ts",
+    "description": "A truncated state.json (e.g. from a crash mid-write — even though atomic writes prevent this, belt-and-braces) must surface as StateCorruptError. details.reason must carry the parser message so operators can diagnose.",
+    "input": "Temp dir with state.json containing 'not valid json {'.",
+    "expected_output": "err(StateCorruptError). error.message contains 'malformed' or 'could not be'. error.details.reason is a non-empty string."
+  },
+  {
+    "id": "STATE-014",
+    "name": "loadAndVerify returns StateVersionMismatchError when flowName differs",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Resume must refuse to reuse state from a different flow. The error must carry both expected and actual name/version so the CLI can render an actionable message.",
+    "input": "Write a valid state.json where flowName is 'oldFlow', flowVersion is '1.0.0'. Call StateMachine.loadAndVerify({ runDir, flowName: 'newFlow', flowVersion: '1.0.0' }).",
+    "expected_output": "err(StateVersionMismatchError). error.details or error properties carry expected === 'newFlow@1.0.0' and actual/observed === 'oldFlow@1.0.0'. error.message instructs the user to start a new run."
+  },
+  {
+    "id": "STATE-015",
+    "name": "loadAndVerify returns StateVersionMismatchError on major version bump",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/state.ts",
+    "description": "Same invariant as STATE-014 but for version. A breaking change to the flow (new major version) must refuse resume. Flow authors bump major when input schema or public outputs change (flow package spec §7.5).",
+    "input": "Write state.json with flowName 'codebase-discovery' and flowVersion '0.1.0'. Call loadAndVerify with flowVersion '1.0.0'.",
+    "expected_output": "err(StateVersionMismatchError) naming both '0.1.0' and '1.0.0'."
+  },
+  {
+    "id": "HANDOFF-001",
+    "name": "write + read round-trip preserves object shape without schema",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Foundational test. Given a handoff value with nested structure, write() must persist JSON on disk and read() without schema must return the same value structurally.",
+    "input": "Temp runDir. Construct HandoffStore. Call write('inventory', { packages: [{ name: 'x', language: 'ts' }] }). Then read('inventory').",
+    "expected_output": "Both calls return ok. read's value deepEquals the written object. File exists at <runDir>/handoffs/inventory.json and is parseable JSON."
+  },
+  {
+    "id": "HANDOFF-002",
+    "name": "Path traversal via '..' in handoff id is rejected",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Security boundary. Handoff ids come from flow definitions (authored by humans) but could also come from future dynamic sources. A write to '../../etc/passwd' must be rejected before any fs call.",
+    "input": "HandoffStore. Call write('../../etc/passwd', { x: 1 }).",
+    "expected_output": "err(FlowDefinitionError). error.message contains 'invalid handoff id'. No file was created anywhere on the filesystem."
+  },
+  {
+    "id": "HANDOFF-003",
+    "name": "Handoff id with forward or backward slash is rejected",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Ids must not contain path separators. Otherwise a malicious or buggy id could write outside the handoffs dir even without '..'.",
+    "input": "HandoffStore. Three subcases: write('a/b', {}), write('a\\\\b', {}), write('foo/', {}).",
+    "expected_output": "All three return err(FlowDefinitionError) with 'invalid handoff id'."
+  },
+  {
+    "id": "HANDOFF-004",
+    "name": "Handoff id starting with a dot (hidden file) is rejected",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Leading-dot files are hidden on POSIX and commonly used for config. Disallow them to keep the handoffs dir listing clean and predictable.",
+    "input": "HandoffStore. Call write('.hidden', {}).",
+    "expected_output": "err(FlowDefinitionError) with 'invalid handoff id'."
+  },
+  {
+    "id": "HANDOFF-005",
+    "name": "Handoff id with control chars (0x00-0x1F, 0x7F) is rejected",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Control chars in filenames are portable bugs waiting to happen. hasControlChar must reject them.",
+    "input": "HandoffStore. Subcases with ids containing \\x00, \\x1F, \\x7F respectively.",
+    "expected_output": "All three return err(FlowDefinitionError) with 'invalid handoff id'."
+  },
+  {
+    "id": "HANDOFF-006",
+    "name": "Empty handoff id is rejected",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Empty string is not a valid id; guard must catch this before pattern matching.",
+    "input": "HandoffStore. Call write('', {}).",
+    "expected_output": "err(FlowDefinitionError) with 'invalid handoff id'."
+  },
+  {
+    "id": "HANDOFF-007",
+    "name": "Schema validation on write returns HandoffSchemaError with Zod issues",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "When a value fails the provided Zod schema, no file is written and the returned error carries the ZodIssue array for machine-readable remediation (used by product spec §6.6 failure display).",
+    "input": "HandoffStore. Schema requires { name: string }. Call write('x', { name: 123 }, schema).",
+    "expected_output": "err(HandoffSchemaError). error.handoffId === 'x'. error.issues is a non-empty array whose first element has code and path fields. No file was written to the handoffs dir."
+  },
+  {
+    "id": "HANDOFF-008",
+    "name": "read() with schema on disk value that matches returns typed ok",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "Happy path for typed reads — the value is loaded from disk, parsed with the schema, and returned. Exercise the read<T>(id, schema) overload distinct from the no-schema overload.",
+    "input": "Pre-write <runDir>/handoffs/x.json containing { name: 'alice' }. Construct schema z.object({ name: z.string() }). Call read('x', schema).",
+    "expected_output": "ok. Returned value deepEquals { name: 'alice' }."
+  },
+  {
+    "id": "HANDOFF-009",
+    "name": "read() on missing handoff returns HandoffNotFoundError (not generic IO)",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "ENOENT must be discriminated from other IO failures so the Runner can distinguish 'upstream step didn't produce this' from 'disk is broken'.",
+    "input": "HandoffStore on empty runDir. Call read('never-written').",
+    "expected_output": "err(HandoffNotFoundError) (not HandoffIoError). error.code equals ERROR_CODES.HANDOFF_NOT_FOUND."
+  },
+  {
+    "id": "HANDOFF-010",
+    "name": "Concurrent write() calls to the same id serialize (last-writer-wins, no torn file)",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "The per-id write lock is the only thing preventing two overlapping writes from producing a torn file. Under 10 concurrent writes to the same id, readers must see a well-formed JSON value that matches one of the inputs — never a partial one.",
+    "input": "HandoffStore. Fire off 10 write('x', { n: i }) calls without awaiting between them, with i = 0..9. Await all. Then read('x') and also await readFile(path) directly to check parseability.",
+    "expected_output": "All 10 write promises resolve ok. readFile returns a string that parses to a valid JSON object of shape { n: number }. The final n value is one of 0..9 (deterministic or not is implementation detail; what matters is no torn file). No exceptions."
+  },
+  {
+    "id": "HANDOFF-011",
+    "name": "Concurrent writes to different ids do not block each other",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "The per-id lock must not be a global lock — parallel steps writing different handoffs must not serialize needlessly.",
+    "input": "HandoffStore. Fire off write('a', {...}) and write('b', {...}) with artificial delays injected into atomicWriteJson (via a spy/mock). Measure wall-clock time.",
+    "expected_output": "Total elapsed time is approximately max(delayA, delayB), not delayA + delayB. The lock map contains at most one entry per distinct id at any moment."
+  },
+  {
+    "id": "HANDOFF-012",
+    "name": "list() returns sorted ids and treats missing dir as empty list (not error)",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/handoffs.ts",
+    "description": "A fresh run has no handoffs dir. That's not a problem — list() returns ok([]) so the Runner can iterate without special-casing. Actual I/O failures (permissions) still surface as HandoffIoError.",
+    "input": "Two subcases. Case A: runDir exists but handoffs subdir does not. Case B: handoffs subdir contains charlie.json, alpha.json, bravo.json, readme.md (non-json).",
+    "expected_output": "Case A: ok([]). Case B: ok(['alpha','bravo','charlie']) — sorted, .json stripped, non-json ignored."
+  },
+  {
+    "id": "ATOMIC-001",
+    "name": "atomicWriteJson creates parent directories when they don't exist",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/util/atomic-write.ts",
+    "description": "A fresh runDir with no subdirs must still accept writes to <runDir>/handoffs/<id>.json. Callers should not need to pre-create every directory.",
+    "input": "Empty temp dir. Call atomicWriteJson(join(tmp, 'deep/nested/file.json'), { x: 1 }).",
+    "expected_output": "ok. The file exists, is valid JSON, and has content { x: 1 }. Intermediate directories were created."
+  },
+  {
+    "id": "ATOMIC-002",
+    "name": "atomicWriteJson renames through a temp file (no partial file visible under final name)",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/util/atomic-write.ts",
+    "description": "The atomic-write guarantee: a reader calling fs.readFile(finalPath) while atomicWriteJson is mid-write must either get the old content, the new content, or ENOENT — never a partial write. Assert this via inspecting directory state during a mocked slow write.",
+    "input": "Pre-create <tmp>/file.json containing { old: 1 }. Spy on fs/promises.rename and readdir to observe the temp-file pattern. Call atomicWriteJson(<tmp>/file.json, { new: 2 }).",
+    "expected_output": "During the call a temp file (distinct name, e.g. contains a UUID or .tmp suffix) exists in the same dir. After the call, only file.json exists; the temp is gone. file.json contains { new: 2 }."
+  },
+  {
+    "id": "ATOMIC-003",
+    "name": "atomicWriteJson leaves previous file intact when the write errors mid-way",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/util/atomic-write.ts",
+    "description": "If writeFile or fsync rejects before the rename, the previous file must remain. Otherwise a flaky disk could destroy committed state.",
+    "input": "Pre-create <tmp>/file.json with { good: true }. Mock/spy fs/promises.writeFile (or fs.write) to reject with a synthetic EIO error on first call. Call atomicWriteJson(<tmp>/file.json, { bad: true }).",
+    "expected_output": "err(AtomicWriteError). file.json on disk still contains { good: true } (unchanged). No temp file lingers in the directory after the error (cleanup succeeded)."
+  },
+  {
+    "id": "ATOMIC-004",
+    "name": "atomicWriteJson falls back to copy+unlink when rename fails with EXDEV",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/util/atomic-write.ts",
+    "description": "Cross-device rename fails on many containerized setups (temp dir on tmpfs, target on overlayfs). The util must gracefully fall back to a copy+unlink sequence rather than bubble EXDEV up.",
+    "input": "Mock fs/promises.rename to reject with { code: 'EXDEV' } the first call and delegate normally otherwise. Call atomicWriteJson(<tmp>/file.json, { x: 1 }).",
+    "expected_output": "ok. file.json exists with { x: 1 }. rename was called at least once with EXDEV, then a copy-based path completed the write."
+  },
+  {
+    "id": "ATOMIC-005",
+    "name": "atomicWriteJson returns AtomicWriteError with errno on terminal failure",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/util/atomic-write.ts",
+    "description": "The Result error type must carry errno so callers can distinguish ENOSPC (disk full, terminal) from EAGAIN (transient, retryable). Tests verify the wrapper preserves this context.",
+    "input": "Mock fs writeFile to reject with { code: 'ENOSPC' }. Call atomicWriteJson(<tmp>/file.json, {}).",
+    "expected_output": "err(AtomicWriteError). error.errno === 'ENOSPC'. error.path ends in '/file.json'."
+  },
+  {
+    "id": "COST-001",
+    "name": "record() appends StepMetrics and persists metrics.json atomically",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/cost.ts",
+    "description": "Every prompt step's metrics must be appended and durably written. The aggregate surface (summary()) reads from in-memory; resume reads from disk via load().",
+    "input": "Temp runDir. CostTracker. Record two StepMetrics entries (stepA and stepB) with realistic token counts and model names. Then read metrics.json from disk.",
+    "expected_output": "Both record() calls ok. metrics.json is a valid JSON array of length 2 with both entries preserving stepId, model, tokens, costUsd fields."
+  },
+  {
+    "id": "COST-002",
+    "name": "summary() aggregates totalUsd and totalTokens across all recorded steps",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/cost.ts",
+    "description": "The CLI's pre-run banner and end-of-run summary both rely on accurate aggregates. Sum must include tokensIn + tokensOut (not cache tokens, per spec §4.7).",
+    "input": "CostTracker. Record three StepMetrics: {tokensIn: 100, tokensOut: 50, costUsd: 0.01}, {tokensIn: 200, tokensOut: 100, costUsd: 0.02}, {tokensIn: 50, tokensOut: 25, costUsd: 0.005}.",
+    "expected_output": "summary().totalUsd === 0.035 (within floating-point tolerance). totalTokens === 525 (100+50+200+100+50+25). perStep has 3 entries."
+  },
+  {
+    "id": "COST-003",
+    "name": "summary().perModel groups metrics by model correctly",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/cost.ts",
+    "description": "perModel is what the CLI renders in the end-of-run display when a flow uses multiple models (e.g. haiku for classification, opus for synthesis). Grouping must bucket by the exact model string.",
+    "input": "CostTracker. Record three StepMetrics with models 'sonnet', 'sonnet', 'opus' and costs 0.01, 0.02, 0.05.",
+    "expected_output": "summary().perModel has two entries: 'sonnet' with totalUsd 0.03 (and 2 steps), 'opus' with totalUsd 0.05 (and 1 step)."
+  },
+  {
+    "id": "COST-004",
+    "name": "load() rebuilds in-memory state from metrics.json on resume",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/cost.ts",
+    "description": "Resume must surface the pre-crash spend in the banner. After load(), summary() equals what it was pre-crash.",
+    "input": "Temp runDir. CostTracker A: record 2 entries, then discard. CostTracker B: construct fresh, call load(runDir), then summary().",
+    "expected_output": "Both summaries are deep-equal (same totalUsd, totalTokens, perStep, perModel)."
+  },
+  {
+    "id": "COST-005",
+    "name": "costUsd undefined in a StepMetrics entry contributes 0 to totalUsd (not NaN)",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/cost.ts",
+    "description": "Spec §4.7 notes that costUsd is optional (mock providers, some cloud providers don't report). Missing cost must not NaN-poison the aggregate.",
+    "input": "CostTracker. Record { costUsd: 0.01 } and { costUsd: undefined }.",
+    "expected_output": "summary().totalUsd === 0.01 (not NaN, not undefined)."
+  },
+  {
+    "id": "CTX-001",
+    "name": "assemblePrompt wraps handoffs in <context name=\"id\"> blocks in the requested order",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "Tech spec §4.5.2 specifies the exact <context name=\"id\">JSON</context> block format. Agents receiving these blocks rely on the tag format. Order follows the handoffs argument order.",
+    "input": "assemblePrompt({ promptBody: 'body', handoffs: { alpha: { a: 1 }, beta: { b: 2 } }, inputVars: {}, stepVars: {} }).",
+    "expected_output": "ok. Returned string contains '<c name=\"alpha\">{...JSON...}</c>' and '<c name=\"beta\">{...JSON...}</c>' (in that order). Ends with '<prompt>body</prompt>' (or close equivalent matching implementation)."
+  },
+  {
+    "id": "CTX-002",
+    "name": "Variable precedence: stepVars > handoffs > inputVars (stepVars win)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "When the same key appears in multiple layers, the override order must be stepVars > handoffs > inputVars. A user's explicit step-level var must never be silently overridden by a handoff value.",
+    "input": "assemblePrompt with promptBody='{{who}}', inputVars: { who: 'input' }, handoffs: { who: 'handoff' }, stepVars: { who: 'step' }.",
+    "expected_output": "Rendered template substitutes 'step' (not 'handoff', not 'input')."
+  },
+  {
+    "id": "CTX-003",
+    "name": "loadHandoffValues returns err on the first load failure (fail-fast)",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "The Runner must not proceed to render a prompt if any required handoff is missing. loadHandoffValues must short-circuit on the first read error rather than collecting all errors.",
+    "input": "HandoffStore pre-populated with 'alpha' only. Call loadHandoffValues(store, ['alpha','beta','gamma']).",
+    "expected_output": "Returns err. The error references 'beta' (the first missing handoff). 'gamma' is not loaded (don't check the file system for it — this is about ordering, not correctness)."
+  },
+  {
+    "id": "CTX-004",
+    "name": "loadHandoffValues returns ok with a record keyed by ids in the order requested",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "Happy path — the returned record preserves the requested ordering, which context assembly relies on to produce deterministic prompts.",
+    "input": "HandoffStore with 'alpha' = {x:1}, 'beta' = {y:2}. Call loadHandoffValues(store, ['beta','alpha']).",
+    "expected_output": "ok({ beta: {y:2}, alpha: {x:1} }). Iteration order of own-properties matches ['beta','alpha']."
+  },
+  {
+    "id": "CTX-005",
+    "name": "assemblePrompt returns empty context-block section when handoffs is {}",
+    "type": "unit",
+    "severity": "LOW",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "Prompt steps without contextFrom must still work — no leading '<context>' block, just the prompt body.",
+    "input": "assemblePrompt({ promptBody: 'body', handoffs: {}, inputVars: {}, stepVars: {} }).",
+    "expected_output": "ok. Returned string does not contain '<context'. It equals (or ends with) '<prompt>body</prompt>'."
+  },
+  {
+    "id": "CTX-006",
+    "name": "assemblePrompt surfaces template errors as FlowDefinitionError",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/context-inject.ts",
+    "description": "When the underlying renderer throws (e.g. malformed template syntax), we must wrap it into a FlowDefinitionError so the Runner can classify it uniformly. Tests our wiring around Handlebars, not Handlebars itself.",
+    "input": "assemblePrompt with promptBody='{{#each unterminated' (broken block), other args empty.",
+    "expected_output": "err(FlowDefinitionError). error.message references the template problem. Does NOT throw."
+  },
+  {
+    "id": "REGISTRY-001",
+    "name": "register + get roundtrips a provider by name",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/registry.ts",
+    "description": "Basic registry functionality. Used by the Runner to resolve step-level provider refs.",
+    "input": "Fresh ProviderRegistry. Register a MockProvider (name='mock'). Call get('mock').",
+    "expected_output": "get returns the exact MockProvider instance registered (reference equality)."
+  },
+  {
+    "id": "REGISTRY-002",
+    "name": "register of a duplicate name throws (or returns err) — collision detection",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/registry.ts",
+    "description": "Registry must detect collisions to prevent a later registration silently shadowing an earlier one — that would make testing which provider handled which call impossible.",
+    "input": "Fresh ProviderRegistry. Register MockProvider (name='mock') twice.",
+    "expected_output": "Second register() call throws a well-typed error (or returns err) whose message names 'mock' as a duplicate."
+  },
+  {
+    "id": "REGISTRY-003",
+    "name": "registerIfAbsent does not override an existing entry",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/registry.ts",
+    "description": "registerIfAbsent is used to seed defaults (e.g. ClaudeProvider) while letting the user pre-register custom instances first.",
+    "input": "Fresh ProviderRegistry. register(MockProviderA, 'mock'). Then registerIfAbsent(MockProviderB, 'mock'). Then get('mock').",
+    "expected_output": "get returns MockProviderA (the first-registered instance), not B."
+  },
+  {
+    "id": "REGISTRY-004",
+    "name": "get on unknown name fails with a clear error",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/registry.ts",
+    "description": "When a flow references provider 'openai' but only 'claude' is registered, the error must name both the requested name and (ideally) the available providers so the user can fix it.",
+    "input": "Fresh ProviderRegistry with only 'claude'. Call get('openai').",
+    "expected_output": "Throws or returns err with a message containing 'openai' and hinting that it is not registered."
+  },
+  {
+    "id": "MOCK-001",
+    "name": "invoke returns the response configured for the given stepId",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/testing/mock-provider.ts",
+    "description": "Foundational test double behavior. Every other provider-dependent test relies on this working.",
+    "input": "MockProvider with responses: { inventory: { text: 'ok', usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 }, costUsd: 0.001, durationMs: 10, numTurns: 1, model: 'mock', stopReason: 'end_turn' } }. Call invoke(req, ctx) where ctx.stepId === 'inventory'.",
+    "expected_output": "ok(response). response.text === 'ok'. response.usage.inputTokens === 10."
+  },
+  {
+    "id": "MOCK-002",
+    "name": "invoke with unknown stepId returns err(StepFailureError)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/testing/mock-provider.ts",
+    "description": "The Runner consumes invoke via Result — must return err, not throw. And must wrap in StepFailureError with the stepId and attempt for diagnostic clarity.",
+    "input": "MockProvider with responses: { knownStep: {...} }. Call invoke(req, ctx) with ctx.stepId === 'unknownStep' and ctx.attempt === 2.",
+    "expected_output": "err(StepFailureError). error.stepId === 'unknownStep'. error.attempt === 2. Does NOT throw."
+  },
+  {
+    "id": "MOCK-003",
+    "name": "stream with unknown stepId throws StepFailureError (iterator termination)",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/testing/mock-provider.ts",
+    "description": "stream() is an async iterator — it can't return a Result, so it must throw. The thrown error type must match what invoke returns so a single catch clause in the Runner can handle both.",
+    "input": "MockProvider as above. Drive: `for await (const evt of provider.stream(req, ctx))` where ctx.stepId is unknown.",
+    "expected_output": "The for-await loop throws StepFailureError (same class invoke would have returned). Caller can `await` a try/catch."
+  },
+  {
+    "id": "MOCK-004",
+    "name": "stream yields exactly turn.start, text.delta, usage, turn.end in order",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/testing/mock-provider.ts",
+    "description": "Canonical event sequence. The Runner and prompt executor rely on this ordering to accumulate tokens and finalize state correctly.",
+    "input": "MockProvider configured to return a response with text 'hello' and numTurns 1. Consume stream().",
+    "expected_output": "The yielded events in order: { type: 'turn.start', turn: 1 }, { type: 'text.delta', delta: 'hello' }, { type: 'usage', usage: {...} }, { type: 'turn.end', turn: 1 }. No additional events."
+  },
+  {
+    "id": "MOCK-005",
+    "name": "Callable response receives the InvocationRequest and InvocationContext",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/testing/mock-provider.ts",
+    "description": "A response function lets tests assert on what the Runner passes into invoke(). Key capability for Runner integration tests (RUNNER-*, EXEC-PROMPT-*).",
+    "input": "MockProvider with responses: { s: (req, ctx) => { captured = { req, ctx }; return canned; } }. Call invoke with ctx.stepId='s', req containing prompt='hi', model='sonnet'.",
+    "expected_output": "ok. captured.req.prompt === 'hi', captured.req.model === 'sonnet', captured.ctx.stepId === 's'."
+  },
+  {
+    "id": "TRANSLATE-001",
+    "name": "SDK text message translates to a single text.delta InvocationEvent",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "The SDK emits incremental assistant content. Our translator must forward it as text.delta with the full chunk text — downstream accumulation happens in invoke().",
+    "input": "Invoke translateSdkMessage on a synthetic SDK assistant message containing a single text content block with text 'hello world'.",
+    "expected_output": "Yields exactly one InvocationEvent of type 'text.delta' with delta === 'hello world'."
+  },
+  {
+    "id": "TRANSLATE-002",
+    "name": "SDK tool_use content emits tool.call event with name and input",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "Tool calls are essential for progress display and for rendering 'running tool X' in the TTY live view. The translated event must carry both the tool name and the input payload.",
+    "input": "SDK assistant message with a tool_use block (name='Read', input={ path: 'x.ts' }).",
+    "expected_output": "Yields { type: 'tool.call', name: 'Read', input: { path: 'x.ts' } }."
+  },
+  {
+    "id": "TRANSLATE-003",
+    "name": "SDK tool_result content emits tool.result event with name and ok flag",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "Tool results close the loop in the live display. The ok flag must be true for successful calls and false when the tool_result is_error is truthy.",
+    "input": "Two subcases. Case A: tool_result block with is_error=false and content='ok'. Case B: tool_result block with is_error=true.",
+    "expected_output": "Case A: { type: 'tool.result', name: <resolved tool name>, ok: true }. Case B: ok: false."
+  },
+  {
+    "id": "TRANSLATE-004",
+    "name": "SDK usage events merge partial NormalizedUsage into the cumulative total",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "The SDK may emit partial usage updates (input tokens first, then output, then cache counts). Our translator must produce usage events whose cumulative sum equals the final total.",
+    "input": "Feed translateSdkMessage two usage deltas: { inputTokens: 100 } then { outputTokens: 50, cacheReadTokens: 10 }.",
+    "expected_output": "Two InvocationEvents of type 'usage'. The caller (invoke) aggregating them produces NormalizedUsage { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 0 }."
+  },
+  {
+    "id": "TRANSLATE-005",
+    "name": "SDK turn boundaries emit turn.start and turn.end events with correct counter",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "Turn counting feeds the TTY live display. The counter must be monotonically increasing and match what the SDK signals.",
+    "input": "Synthetic SDK stream with turn_start {turn:1}, text content, turn_end, turn_start {turn:2}, turn_end.",
+    "expected_output": "Translator yields turn.start (turn 1), text.delta, turn.end (turn 1), turn.start (turn 2), turn.end (turn 2), in order."
+  },
+  {
+    "id": "TRANSLATE-006",
+    "name": "Unknown SDK message types are ignored (translator never throws)",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "Forward compatibility: when the SDK adds new message shapes in a future version, our translator must not crash — it must skip unknown types and keep processing.",
+    "input": "SDK stream with an untyped object (e.g. { type: 'future.unknown.event' }) between legitimate messages.",
+    "expected_output": "Translator yields only events for known types. No exception propagates. The unknown message does not consume an output slot."
+  },
+  {
+    "id": "TRANSLATE-007",
+    "name": "Final assistant message content is not double-emitted on stream end",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "Sprint 4 review flagged that some SDK final messages contain the full assistant text AND earlier deltas already emitted the same text. Translator must deduplicate — emit deltas during stream, not a final full-text event.",
+    "input": "Synthetic SDK stream: assistant_text 'hello' (delta chunk), then assistant_final {role:'assistant', content:'hello'} at the end.",
+    "expected_output": "Translator yields exactly one text.delta with delta === 'hello'. The final message does not cause a second text.delta of the same content."
+  },
+  {
+    "id": "TRANSLATE-008",
+    "name": "cost estimate from SDK final envelope is preserved on the response",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/translate.ts",
+    "description": "The SDK's total_cost_usd field is our source of truth for per-step costUsd (tech spec §4.7). Translator (or its caller in provider.ts) must propagate it into the final InvocationResponse.",
+    "input": "SDK final message with { total_cost_usd: 0.0425, stop_reason: 'end_turn', session_id: 'sess-1' }. Invoke ClaudeProvider.invoke with a MockProvider-style pass-through and inspect the response.",
+    "expected_output": "The returned InvocationResponse has costUsd === 0.0425, stopReason === 'end_turn', sessionId === 'sess-1'."
+  },
+  {
+    "id": "CLAUDE-001",
+    "name": "ClaudeProvider.authenticate delegates to inspectClaudeAuth with opts.allowApiKey",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "ClaudeProvider must pass its allowApiKey constructor option through to auth.ts. Otherwise allowApiKey-from-code (runner.allowApiKey()) would be silently ignored.",
+    "input": "Mock inspectClaudeAuth as a spy. Construct ClaudeProvider({ allowApiKey: true }). Call authenticate().",
+    "expected_output": "inspectClaudeAuth was called exactly once with opts === { allowApiKey: true }."
+  },
+  {
+    "id": "CLAUDE-002",
+    "name": "ClaudeProvider.invoke aggregates stream events into a single InvocationResponse",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "invoke() must drive stream() to completion and fold the events: text deltas concatenate, usage deltas sum, costUsd is taken from the final envelope. This is the consumer of translate.ts.",
+    "input": "Mock @anthropic-ai/claude-agent-sdk's query() to return an async iterable yielding: text 'Hello ', text 'world', usage { inputTokens: 100, outputTokens: 50 }, final { total_cost_usd: 0.01, stop_reason: 'end_turn', session_id: 's1' }. Call ClaudeProvider.invoke({ prompt: 'x', model: 'sonnet' }, { stepId: 'a', runId: 'r1', flowName: 'f', attempt: 1, abortSignal: new AbortController().signal, logger: ... }).",
+    "expected_output": "ok(response). response.text === 'Hello world'. response.usage.inputTokens === 100. response.usage.outputTokens === 50. response.costUsd === 0.01. response.stopReason === 'end_turn'. response.sessionId === 's1'."
+  },
+  {
+    "id": "CLAUDE-003",
+    "name": "ClaudeProvider passes buildEnvAllowlist result to the SDK options.env",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "This is the integration test for the billing safety guard's second half. ClaudeProvider must invoke the SDK with options.env set to the allowlist patch (including the undefined suppressions) — not to process.env directly, and not omitted.",
+    "input": "Stub process.env with PATH='/bin', SLACK_TOKEN='secret'. Mock SDK query() as a spy. Construct ClaudeProvider. Call invoke(...) (driven to completion).",
+    "expected_output": "The SDK query() was called with options.env containing PATH='/bin' AND SLACK_TOKEN === undefined. The env object matches what buildEnvAllowlist() would return."
+  },
+  {
+    "id": "CLAUDE-004",
+    "name": "ClaudeProvider forwards abortSignal from InvocationContext to the SDK query",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "The Runner's SIGINT handler aborts the top-level controller. That abort must cascade down: Runner → context.abortSignal → provider → SDK → subprocess. If ClaudeProvider drops the signal, Ctrl-C doesn't actually stop the subprocess.",
+    "input": "Mock SDK query() as a spy that captures options.abortSignal. Construct AbortController. Call invoke with context.abortSignal = controller.signal.",
+    "expected_output": "SDK was called with options.abortSignal referentially equal to controller.signal (same object)."
+  },
+  {
+    "id": "CLAUDE-005",
+    "name": "ClaudeProvider capabilities advertise exactly the documented built-in tools",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "Capability check at flow load time (sprint 5 task_32) reads builtInTools. The exported list is a contract — changes to it must be deliberate, not accidental. Tests pin the expected set.",
+    "input": "Construct ClaudeProvider. Inspect .capabilities.",
+    "expected_output": "capabilities.tools === true, capabilities.streaming === true, capabilities.structuredOutput === true, capabilities.multimodal === true, capabilities.budgetCap === true. capabilities.builtInTools contains at minimum 'Read','Write','Edit','Glob','Grep','Bash'. capabilities.models is a non-empty array that contains 'sonnet', 'haiku', 'opus' (as shortnames)."
+  },
+  {
+    "id": "CLAUDE-006",
+    "name": "ClaudeProvider passes providerOptions through to SDK without modification",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/providers/claude/provider.ts",
+    "description": "providerOptions is the opaque escape hatch (spec §4.4.1). Any future SDK-specific option a flow author needs must flow through untouched — otherwise we're a leaky abstraction.",
+    "input": "Mock SDK query() as a spy. Invoke with req.providerOptions === { customFlag: true, maxTurns: 10 }.",
+    "expected_output": "SDK was called with options containing customFlag === true and maxTurns === 10 (merged onto our own options)."
+  },
+  {
+    "id": "LOG-001",
+    "name": "Logger redacts ANTHROPIC_API_KEY when it appears in a log event payload",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/logger.ts",
+    "description": "A badly-placed console.log or structured log in flow code must not leak the API key to run.log. The redaction path list must include common secret-bearing keys.",
+    "input": "Construct logger with a captured stream. Log an event with data: { ANTHROPIC_API_KEY: 'sk-ant-xxx', ok: true }.",
+    "expected_output": "The emitted NDJSON line contains ok=true but does NOT contain 'sk-ant-xxx' anywhere. The key appears redacted (e.g. '[Redacted]' or '***')."
+  },
+  {
+    "id": "LOG-002",
+    "name": "Logger redacts authorization header and *_TOKEN fields",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/logger.ts",
+    "description": "Generalized secret redaction. Any key matching the configured paths (authorization, *_TOKEN, *_SECRET, *_PASSWORD, cookie) must be redacted. Tests our path-list configuration.",
+    "input": "Log an event with data: { authorization: 'Bearer abc123', SLACK_TOKEN: 'xoxb-xxx', my_secret: 'shh', regular: 'visible' }.",
+    "expected_output": "'abc123', 'xoxb-xxx', 'shh' are absent from the output. 'visible' is present."
+  },
+  {
+    "id": "LOG-003",
+    "name": "Logger binds flowName and runId so every emitted event carries them automatically",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/logger.ts",
+    "description": "Operators filtering run.log must be able to grep by runId alone. Every event must carry flowName and runId without the caller threading them on every log call.",
+    "input": "createLogger({ flowName: 'codebase-discovery', runId: 'f9c3a2', ... }). Emit logger.info({ event: 'step.start', stepId: 'inventory' }).",
+    "expected_output": "The emitted NDJSON line contains flowName='codebase-discovery', runId='f9c3a2', stepId='inventory', event='step.start'. Caller didn't pass flowName/runId explicitly."
+  },
+  {
+    "id": "ERROR-001",
+    "name": "Every concrete PipelineError subclass exposes a stable code matching ERROR_CODES",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/errors.ts",
+    "description": "CLI exit-code mapping (product spec §8.2) and structured log filtering both rely on stable machine-readable codes. Adding a new error must update ERROR_CODES; tests pin the current set.",
+    "input": "For each exported error class (FlowDefinitionError, StepFailureError, ClaudeAuthError, HandoffSchemaError, HandoffIoError, HandoffNotFoundError, HandoffWriteError, StateCorruptError, StateNotFoundError, StateTransitionError, StateVersionMismatchError, StateWriteError, TimeoutError, ProviderAuthError, ProviderCapabilityError, AtomicWriteError, MetricsWriteError), instantiate with a message and inspect .code.",
+    "expected_output": "Each instance's .code is a non-empty string and matches one of the constants in ERROR_CODES. No two classes share a code."
+  },
+  {
+    "id": "ERROR-002",
+    "name": "StepFailureError preserves stepId and attempt on details",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/errors.ts",
+    "description": "When the Runner logs a failure and the CLI formats the end-of-run banner, they need stepId and attempt from the error. Must be accessible as properties, not buried in an untyped details bag.",
+    "input": "new StepFailureError('nope', 'inventory', 3).",
+    "expected_output": "error.stepId === 'inventory'. error.attempt === 3. error.code === ERROR_CODES.STEP_FAILURE."
+  },
+  {
+    "id": "ERROR-003",
+    "name": "parseWithSchema on invalid JSON returns err with cause",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/util/json.ts",
+    "description": "parseWithSchema wraps JSON.parse + Zod validation into a single Result. Invalid JSON must surface as err with a descriptive cause (parser message).",
+    "input": "parseWithSchema('not json {', z.object({ x: z.string() })).",
+    "expected_output": "err. error.message contains parser info (e.g. 'Unexpected'). error.details.cause is a non-empty string."
+  },
+  {
+    "id": "ERROR-004",
+    "name": "safeStringify escapes < and > characters to prevent HTML-like injection",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/util/json.ts",
+    "description": "Prevents < and > from appearing literally in embedded context blocks (which use <context> tags). Escaping makes the output safe to embed inside those tags.",
+    "input": "safeStringify({ body: '<script>alert(1)</script>' }).",
+    "expected_output": "Returned string contains '\\u003cscript\\u003e' (or equivalent escape), does NOT contain the literal substring '<script>'."
+  },
+  {
+    "id": "ERROR-005",
+    "name": "lookup() on a Map returns err when key is absent (no throw)",
+    "type": "unit",
+    "severity": "LOW",
+    "target_file": "packages/core/src/util/map-utils.ts",
+    "description": "Wrapper that converts Map.get undefined into a Result — avoids sprinkling optional chaining across graph-building code.",
+    "input": "lookup(new Map([['a', 1]]), 'b').",
+    "expected_output": "err. error.message references 'b'. Does NOT throw."
+  },
+  {
+    "id": "RUNNER-001",
+    "name": "Runner.run executes steps in topological order with a pure-linear DAG",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31 core behavior. A three-step linear flow must invoke each step executor in order and return RunResult.success with all steps succeeded.",
+    "input": "Temp runDir. MockProvider with responses for steps 'a','b','c'. defineFlow with three prompt steps a→b→c (chain). Runner({ providers: registry with MockProvider, defaultProvider: 'mock' }).run(flow, input={}).",
+    "expected_output": "RunResult { status: 'succeeded', runId: ..., runDir: tmp, cost: {...}, durationMs: >0 }. Steps' invoke calls happened in order a,b,c (assert via spy recording call timestamps or sequence)."
+  },
+  {
+    "id": "RUNNER-002",
+    "name": "Runner enforces opts.parallelism — never more than N in-flight steps",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. The Runner's ready-queue loop must pull at most opts.parallelism (default 4) steps concurrently. Without this a large parallel fan-out saturates the machine.",
+    "input": "A fan-out flow: root 'r' plus 10 leaf prompt steps (l0..l9 each dependsOn ['r']). MockProvider where each leaf response is a function that records concurrency count on entry, awaits a delay, then returns. Runner.run with opts.parallelism=3.",
+    "expected_output": "RunResult.status === 'succeeded'. Max observed concurrent in-flight steps (recorded during the run) is <= 3."
+  },
+  {
+    "id": "RUNNER-003",
+    "name": "Runner aborts the run when a required step fails with onFail:'abort'",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. Step with onFail:'abort' (or undefined — default is abort) must stop the entire run when it fails. Dependents must not execute.",
+    "input": "Linear flow a→b. MockProvider: a throws (err), b is configured. Runner.run.",
+    "expected_output": "RunResult.status === 'failed'. b was NOT invoked (assert no call to MockProvider.invoke with ctx.stepId='b'). state.json on disk shows a='failed', b='pending'."
+  },
+  {
+    "id": "RUNNER-004",
+    "name": "Runner continues after a step failure when onFail:'continue'",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. Step with onFail:'continue' fails soft — dependents marked accordingly but the overall run keeps going. Rare but necessary for best-effort pipelines.",
+    "input": "Linear flow a→b→c. Step a has onFail:'continue'. MockProvider: a throws, b has no dependency on a's handoff, c succeeds.",
+    "expected_output": "Run reaches c and returns status='succeeded' (or 'failed' with partial, depending on semantics — tie-break per final implementation, but the key is that b and c ran)."
+  },
+  {
+    "id": "RUNNER-005",
+    "name": "Runner.run validates input against flow.input Zod schema, fails fast on mismatch",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. Input shape is declared on the flow; wrong input type must fail before any tokens spent — FlowDefinitionError per spec.",
+    "input": "Flow with input schema z.object({ repoPath: z.string() }). Runner.run(flow, { repoPath: 123 }).",
+    "expected_output": "Rejects with FlowDefinitionError. No provider invoke call happens. No state.json is written (or an init-only state.json is written then deleted)."
+  },
+  {
+    "id": "RUNNER-006",
+    "name": "Runner writes handoffs/artifacts as steps complete and persists state after each step",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. state.json and handoffs/*.json must be atomically updated between every step so a crash at any point leaves a resumable state. Tests observes the disk state mid-run.",
+    "input": "Two-step flow a→b. After step a completes in MockProvider, synchronously capture state.json from disk (via a spy that runs after MockProvider.invoke for a resolves but before b starts).",
+    "expected_output": "After a completes and before b starts: state.json has a='succeeded' and b='pending'. handoffs/<a-handoff>.json exists with a's output."
+  },
+  {
+    "id": "RUNNER-007",
+    "name": "Runner calls provider.authenticate() exactly once per unique provider before any invoke",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31 + §4.9 step 3. authenticate is the gate — if it returns err, the run aborts without spending tokens. Must be called once per provider (not once per step).",
+    "input": "Flow with 5 prompt steps all on the same provider. Runner.run.",
+    "expected_output": "MockProvider.authenticate was called exactly 1 time total. It was called before any invoke call (assert via sequence of spy calls)."
+  },
+  {
+    "id": "RUNNER-008",
+    "name": "Runner aborts before tokens when authenticate returns err",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_31. If authenticate fails (e.g. ClaudeAuthError from the API-key guard), the Runner must surface it and NOT call invoke. This is the runtime half of the billing safety contract.",
+    "input": "MockProvider overridden so authenticate returns err(ClaudeAuthError). A simple flow. Runner.run.",
+    "expected_output": "Runner.run rejects or returns err containing the ClaudeAuthError. MockProvider.invoke was called zero times."
+  },
+  {
+    "id": "CAP-001",
+    "name": "Capability check rejects a prompt step with output.schema on a provider with structuredOutput:false",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32, spec §4.6.7. The whole point of capabilities is failing fast before tokens are spent. Schema-on-non-structured-provider is the canonical example.",
+    "input": "MockProvider with capabilities.structuredOutput=false. Flow with a prompt step whose output is { handoff: 'x', schema: z.object({...}) }. Call checkCapabilities.",
+    "expected_output": "Throws or returns err ProviderCapabilityError. Error message mentions the step id, 'structuredOutput', and the provider name."
+  },
+  {
+    "id": "CAP-002",
+    "name": "Capability check rejects a step requesting tools the provider doesn't advertise",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32. Step says tools: ['Read','CustomTool']. Provider.builtInTools lists only ['Read']. Must reject naming 'CustomTool'.",
+    "input": "MockProvider with capabilities.builtInTools=['Read','Grep']. Flow step with tools=['Read','UnknownTool']. Call checkCapabilities.",
+    "expected_output": "err(ProviderCapabilityError). Message mentions 'UnknownTool'."
+  },
+  {
+    "id": "CAP-003",
+    "name": "Capability check rejects an unknown model when the provider's models list is non-empty",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32. If provider.capabilities.models is ['sonnet','haiku','opus'] and step.model is 'gpt-5', we fail at flow load. Empty models list means 'any model allowed' (for providers that accept any string).",
+    "input": "MockProvider with capabilities.models=['sonnet']. Flow step with model='opus'. Call checkCapabilities.",
+    "expected_output": "err(ProviderCapabilityError). Message mentions 'opus' and the provider."
+  },
+  {
+    "id": "CAP-004",
+    "name": "Capability check rejects maxBudgetUsd on a provider with budgetCap:false",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32. Budget cap is a provider-side enforcement — if the provider can't enforce, we must refuse rather than silently run without a cap.",
+    "input": "MockProvider with capabilities.budgetCap=false. Flow step with maxBudgetUsd: 1.00. Call checkCapabilities.",
+    "expected_output": "err(ProviderCapabilityError). Message mentions 'budgetCap' or 'budget'."
+  },
+  {
+    "id": "CAP-005",
+    "name": "Provider resolution precedence: step-level beats flow-level beats runner default",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32, spec §4.6.6. The three-layer resolution (step → flow → runner) must be honored in that order. Tests with all three set to different values verify step wins.",
+    "input": "Registry with three distinct MockProviders named 'stepProv','flowProv','runnerProv'. Flow has defaultProvider 'flowProv'. Step has provider 'stepProv'. Runner constructor gets defaultProvider 'runnerProv'. Call resolveProvider(step, flow, runner).",
+    "expected_output": "Returns the stepProv instance."
+  },
+  {
+    "id": "CAP-006",
+    "name": "Provider resolution falls back to runner default when step and flow both omit it",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/capability-check.ts",
+    "description": "Sprint 5 task_32. When neither step nor flow specifies provider, the runner's default applies. If the runner was also not configured, 'claude' is the ultimate fallback.",
+    "input": "Flow with no defaultProvider. Step with no provider. Runner({ defaultProvider: 'claude' }). Call resolveProvider.",
+    "expected_output": "Returns the claude provider (registered in the registry)."
+  },
+  {
+    "id": "EXEC-PROMPT-001",
+    "name": "executePrompt loads the prompt file, loads handoffs, calls assemblePrompt, then provider.invoke",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33 — the canonical prompt step lifecycle. Tests that the executor composes the four core building blocks (template render, handoff injection, invoke, output persistence) in the right order.",
+    "input": "Flow dir with prompts/01_hi.md containing 'Hello {{input.name}}'. HandoffStore with 'prior' → { note: 'ok' }. Step: prompt(promptFile='prompts/01_hi.md', contextFrom=['prior'], output={handoff:'greeted'}). MockProvider spy. Call executePrompt(step, ctx).",
+    "expected_output": "MockProvider.invoke was called with req.prompt containing both '<c name=\"prior\">' and 'Hello <input name>'. After resolution, handoff 'greeted' is written on disk with the provider's response.text (parsed as JSON if handoff output)."
+  },
+  {
+    "id": "EXEC-PROMPT-002",
+    "name": "executePrompt converts Zod schema to JSON schema and passes it on InvocationRequest.jsonSchema",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. When output.schema is set, providers that advertise structuredOutput receive the JSON schema (via Zod v4's native z.toJSONSchema). Tests our wiring of zod-to-json-schema, not Zod itself.",
+    "input": "Step with output: { handoff: 'x', schema: z.object({ name: z.string() }) }. MockProvider spy. Call executePrompt.",
+    "expected_output": "MockProvider.invoke received req.jsonSchema that is a plain object with 'type':'object' and 'properties' containing 'name'."
+  },
+  {
+    "id": "EXEC-PROMPT-003",
+    "name": "executePrompt validates JSON response against Zod schema and fails with HandoffSchemaError on mismatch",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. After invoke, if the step declares output.schema, the response.text is parsed as JSON and validated. Mismatches surface as HandoffSchemaError (not StepFailureError) — matches product spec §6.6 error display.",
+    "input": "Step with output { handoff: 'entities', schema: z.object({entities: z.array(z.object({name: z.string()}))}) }. MockProvider returns text='{\"entities\":[{\"name\":1}]}' (name is number).",
+    "expected_output": "executePrompt returns err (or rejects). Error is a HandoffSchemaError whose handoffId === 'entities' and issues is non-empty."
+  },
+  {
+    "id": "EXEC-PROMPT-004",
+    "name": "executePrompt writes an artifact file when output.artifact is set",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. Free-form text output (HTML, markdown) goes to <runDir>/artifacts/<name>. Uses atomicWriteText.",
+    "input": "Step with output: { artifact: 'report.html' }. MockProvider returns text='<html>...</html>'. Call executePrompt with ctx runDir.",
+    "expected_output": "File <runDir>/artifacts/report.html exists and contains '<html>...</html>'. No handoff JSON file was written."
+  },
+  {
+    "id": "EXEC-PROMPT-005",
+    "name": "executePrompt emits StepMetrics to the CostTracker",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. Every prompt step records one metrics entry via ctx.costTracker.record. Without this the run-end cost banner is wrong.",
+    "input": "Spy on ctx.costTracker.record. MockProvider returns usage {inputTokens:100, outputTokens:50,...} and costUsd 0.01. Call executePrompt.",
+    "expected_output": "costTracker.record was called once with a StepMetrics object where stepId matches, tokensIn=100, tokensOut=50, costUsd=0.01, model=<resolved model>, isError=false."
+  },
+  {
+    "id": "EXEC-PROMPT-006",
+    "name": "executePrompt wraps provider errors in StepFailureError with stepId and attempt",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. Any failure path (SDK error, invocation err, response parse error) must be normalized into StepFailureError so the Runner can classify and format consistently.",
+    "input": "MockProvider that returns err(new Error('network blip')) from invoke. Call executePrompt with ctx.attempt=2.",
+    "expected_output": "Rejects with (or returns err) StepFailureError whose stepId matches the step and attempt === 2. The underlying error is present in details.cause or details.reason."
+  },
+  {
+    "id": "EXEC-PROMPT-007",
+    "name": "executePrompt passes ctx.abortSignal into InvocationContext",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. The abort signal must pass through so the provider can cancel the SDK mid-invoke on Ctrl-C. If the executor allocates a new AbortController, the Runner's Ctrl-C can't cancel a mid-flight step.",
+    "input": "MockProvider.invoke spy. Call executePrompt with an AbortController().signal as ctx.abortSignal.",
+    "expected_output": "The InvocationContext passed to MockProvider.invoke has abortSignal referentially equal (same object) to the signal passed in."
+  },
+  {
+    "id": "EXEC-PROMPT-008",
+    "name": "executePrompt emits logger events: prompt.start, prompt.done (and prompt.failed on error)",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/exec/prompt.ts",
+    "description": "Sprint 5 task_33. Observability — the run.log must show structured events for each prompt step's lifecycle.",
+    "input": "Spy on ctx.logger.info / ctx.logger.error. Call executePrompt on a happy path. Separately call executePrompt forcing a failure.",
+    "expected_output": "Happy path: logger received exactly one event 'prompt.start' and one 'prompt.done' (with usage data). Failure path: logger received 'prompt.start' and 'prompt.failed' (with error message). All events include stepId."
+  },
+  {
+    "id": "EXEC-SCRIPT-001",
+    "name": "executeScript spawns a process, captures stdout/stderr, returns exit code 0 on success",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/script.ts",
+    "description": "Sprint 5 task_34 foundational behavior. Spawn a real child process (echo or a short Node one-liner) and observe exit and output.",
+    "input": "Step: script(run='node -e \"console.log(1+1)\"'). Temp runDir. Call executeScript.",
+    "expected_output": "Returns StepResult with exitCode=0 and stdout containing '2'."
+  },
+  {
+    "id": "EXEC-SCRIPT-002",
+    "name": "executeScript's run as string is shlex-split and preserves quoted segments",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/script.ts",
+    "description": "Sprint 5 task_34. A string run value must split on spaces while respecting single and double quotes. Without this, paths with spaces break.",
+    "input": "Step: script(run='node -e \"console.log(\\\"hello world\\\")\"').",
+    "expected_output": "exitCode=0. stdout contains 'hello world' (one substring). The shell did not split 'hello world' into two args."
+  },
+  {
+    "id": "EXEC-SCRIPT-003",
+    "name": "executeScript's timeoutMs kills the child and throws TimeoutError",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/exec/script.ts",
+    "description": "Sprint 5 task_34. A stuck shell must not hang the Runner. TimeoutError distinct from StepFailureError so the CLI can map to exit code 5 (per spec §8.2).",
+    "input": "Step: script(run='sleep 10', timeoutMs=200).",
+    "expected_output": "Rejects with TimeoutError within roughly 200-400 ms wall-clock time. TimeoutError.stepId matches. The child process has been signalled (no zombies left behind)."
+  },
+  {
+    "id": "EXEC-SCRIPT-004",
+    "name": "executeScript does NOT use the Claude env allowlist — script steps get the full process.env plus step.env overrides",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/script.ts",
+    "description": "Sprint 5 task_34. Script steps are user-controlled shell commands — they legitimately need user env like NPM_TOKEN, custom PATH entries, etc. The env allowlist only applies to Claude subprocesses.",
+    "input": "Stub process.env with NODE_ENV='test'. Step: script(run='node -e \"console.log(process.env.NODE_ENV)\"', env={CUSTOM:'x'}).",
+    "expected_output": "stdout contains 'test'. Additionally the subprocess saw CUSTOM='x' (verify with a second spawn that logs CUSTOM)."
+  },
+  {
+    "id": "EXEC-SCRIPT-005",
+    "name": "executeScript routes via onExit map when exit code has a mapping",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/script.ts",
+    "description": "Sprint 5 task_34. onExit { '0': 'nextStep', '1': 'abort' } — the executor returns the mapping so the Runner can route. Non-mapped exit codes fall back to success/failure semantics.",
+    "input": "Step: script(run='node -e \"process.exit(2)\"', onExit={'2': 'altStep'}).",
+    "expected_output": "StepResult indicates exitCode=2 and next='altStep' (or equivalent). Does NOT throw StepFailureError (onExit handled it)."
+  },
+  {
+    "id": "EXEC-SCRIPT-006",
+    "name": "executeBranch shares spawn logic with executeScript but returns only exit code (no artifact)",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/exec/branch.ts",
+    "description": "Sprint 5 task_35. Branch steps differ from script only in output shape. Ensure the shared process-spawn helper is reused (import from process.ts).",
+    "input": "Step: branch(run='node -e \"process.exit(0)\"', onExit={'0':'nextStep','1':'abort'}).",
+    "expected_output": "Returns { exitCode: 0 } (not { stdout, stderr, exitCode }). Next step = 'nextStep'. No artifact file written."
+  },
+  {
+    "id": "EXEC-PARALLEL-001",
+    "name": "executeParallel dispatches all branches concurrently via the injected dispatcher",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/parallel.ts",
+    "description": "Sprint 5 task_36. The parallel executor orchestrates — it calls dispatch(branchId) for each branch using Promise.all. Tests that dispatches start roughly simultaneously (assert via timestamps).",
+    "input": "Parallel step with branches ['x','y','z']. dispatch spy: each call logs timestamp and returns after a 100ms delay.",
+    "expected_output": "All three dispatches happen within a few ms of each other (max(tx,ty,tz) - min(tx,ty,tz) < 50ms). Total wall clock < 250ms (not 300ms sequential)."
+  },
+  {
+    "id": "EXEC-PARALLEL-002",
+    "name": "executeParallel fails fast on any branch rejection and surfaces as StepFailureError with aggregate details",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/exec/parallel.ts",
+    "description": "Sprint 5 task_36. Promise.all semantics — any branch rejecting rejects the whole. Must wrap the errors into a single StepFailureError carrying branch-level context.",
+    "input": "Branches ['x','y']. dispatch for 'x' resolves, 'y' rejects with Error('boom').",
+    "expected_output": "executeParallel rejects with StepFailureError. The error's details reference branch 'y' and 'boom'. 'x' result is either included (aggregate) or dropped — depends on spec, but error is thrown."
+  },
+  {
+    "id": "EXEC-PARALLEL-003",
+    "name": "executeParallel returns aggregated branch results on all-succeed",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/exec/parallel.ts",
+    "description": "Sprint 5 task_36. Successful fan-in — each branch result is preserved so the Runner knows what each branch produced.",
+    "input": "Branches ['x','y']. dispatch returns {name: id, ok:true} for each.",
+    "expected_output": "StepResult.branches is an object/map keyed by branchId with each dispatch return value. Length matches number of branches."
+  },
+  {
+    "id": "EXEC-PARALLEL-004",
+    "name": "executeParallel does NOT itself execute branch step logic — only dispatches",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/exec/parallel.ts",
+    "description": "Sprint 5 task_36. The Runner maintains per-branch step state; the parallel executor must not duplicate that work. Test the executor with a dispatch spy only — no provider.invoke should be called from within parallel's code.",
+    "input": "Parallel step with branches ['a','b']. dispatch spy + provider spy. Call executeParallel (do not involve a Runner).",
+    "expected_output": "dispatch was called twice (once per branch). provider.invoke was never called directly from executeParallel code."
+  },
+  {
+    "id": "EXEC-TERMINAL-001",
+    "name": "executeTerminal marks the run succeeded and returns a terminal sentinel",
+    "type": "unit",
+    "severity": "LOW",
+    "target_file": "packages/core/src/runner/exec/terminal.ts",
+    "description": "Sprint 5 task_37. Trivial by design. Verify the sentinel shape so the Runner loop can short-circuit on it.",
+    "input": "Step: terminal(message='done', exitCode=0). Spy on ctx.logger. Call executeTerminal.",
+    "expected_output": "Returns { terminal: true, exitCode: 0 }. Logger.info received an event carrying 'done'."
+  },
+  {
+    "id": "EXEC-TERMINAL-002",
+    "name": "executeTerminal with non-zero exitCode propagates it on RunResult (via the sentinel)",
+    "type": "unit",
+    "severity": "LOW",
+    "target_file": "packages/core/src/runner/exec/terminal.ts",
+    "description": "Sprint 5 task_37. Terminal steps can signal intentional non-zero exit (e.g. 'validation failed, exit 2'). Must be preserved end-to-end.",
+    "input": "Step: terminal(exitCode=2). Call executeTerminal.",
+    "expected_output": "Returns { terminal: true, exitCode: 2 }. The Runner's code will take this to RunResult."
+  },
+  {
+    "id": "RETRY-001",
+    "name": "withRetry succeeds on the first attempt without retries",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/retry.ts",
+    "description": "Sprint 5 task_38. The simplest happy-path. fn resolves immediately, withRetry returns its value after exactly one call.",
+    "input": "withRetry(attempt => Promise.resolve('ok'), { maxRetries: 3, logger, stepId: 's' }).",
+    "expected_output": "Resolves to 'ok'. fn was called exactly once with attempt=1."
+  },
+  {
+    "id": "RETRY-002",
+    "name": "withRetry retries a rejected promise up to maxRetries times before rethrowing",
+    "type": "unit",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/retry.ts",
+    "description": "Sprint 5 task_38. Core retry semantics. maxRetries=2 means up to 3 total attempts (1 initial + 2 retries). After final failure the underlying error propagates.",
+    "input": "withRetry(attempt => Promise.reject(new Error('boom-'+attempt)), { maxRetries: 2, logger, stepId: 's' }).",
+    "expected_output": "Rejects with Error. Message is 'boom-3' (attempt 3 — the final one). fn was called exactly 3 times (attempts 1,2,3)."
+  },
+  {
+    "id": "RETRY-003",
+    "name": "withRetry does NOT retry a TimeoutError automatically",
+    "type": "unit",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/retry.ts",
+    "description": "Sprint 5 task_38 (explicit spec). Timeout is author-controlled — the step's own timeoutMs ran out. Silently retrying would double or triple the wall clock time the user was trying to cap.",
+    "input": "withRetry(attempt => Promise.reject(new TimeoutError('timed out','s', 200)), { maxRetries: 3, logger, stepId: 's' }).",
+    "expected_output": "Rejects with TimeoutError immediately. fn was called exactly 1 time (no retries)."
+  },
+  {
+    "id": "RETRY-004",
+    "name": "withRetry enforces timeoutMs per attempt via AbortController",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/retry.ts",
+    "description": "Sprint 5 task_38. Each attempt gets its own timeout. A hanging fn is aborted and a TimeoutError is raised — critical for robustness against flaky providers.",
+    "input": "withRetry(attempt => new Promise(() => {}), { maxRetries: 0, timeoutMs: 100, logger, stepId: 's' }). (fn never resolves.)",
+    "expected_output": "Rejects with TimeoutError within ~100-200 ms. Error.stepId === 's' and error.timeoutMs === 100."
+  },
+  {
+    "id": "RETRY-005",
+    "name": "withRetry passes the attempt number to fn on each call",
+    "type": "unit",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/retry.ts",
+    "description": "Sprint 5 task_38. fn receives the 1-based attempt index so callers can log 'attempt 2 of 3' or apply different logic per attempt.",
+    "input": "Spy fn rejecting on attempts 1 and 2, resolving on 3. withRetry with maxRetries=3.",
+    "expected_output": "fn received attempt=1, then attempt=2, then attempt=3 on successive calls."
+  },
+  {
+    "id": "LIVE-001",
+    "name": "writeLiveState atomically persists <runDir>/live/<stepId>.json with current progress",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/live-state.ts",
+    "description": "Sprint 5 task_39. The CLI's TTY progress display (sprint 6) reads these files. Writes must be atomic so the TTY never shows a torn file.",
+    "input": "Temp runDir. Call writeLiveState(runDir, 'inventory', { status: 'running', attempt: 1, startedAt: iso, lastUpdateAt: iso, tokensSoFar: 100, turnsSoFar: 2 }).",
+    "expected_output": "File <runDir>/live/inventory.json exists and parses to the exact payload."
+  },
+  {
+    "id": "LIVE-002",
+    "name": "writeLiveState is invoked on each provider usage event during a prompt step",
+    "type": "integration",
+    "severity": "MEDIUM",
+    "target_file": "packages/core/src/runner/live-state.ts",
+    "description": "Sprint 5 task_39 + task_33. The prompt executor must call writeLiveState on every usage event (from the provider stream). Without this the TTY display freezes.",
+    "input": "Spy on writeLiveState. MockProvider returns a stream with 3 usage events. Call executePrompt.",
+    "expected_output": "writeLiveState was called at least 3 times (one per usage event) with monotonically increasing tokensSoFar."
+  },
+  {
+    "id": "LIVE-003",
+    "name": "Runner clears <runDir>/live/ at run start so stale files from a prior run don't confuse the display",
+    "type": "integration",
+    "severity": "LOW",
+    "target_file": "packages/core/src/runner/live-state.ts",
+    "description": "Sprint 5 task_39. Live-state files are ephemeral. A new run must start with a clean slate (prior run's live files removed) so the TTY doesn't show stale 'running' states.",
+    "input": "Pre-populate <runDir>/live/old-step.json. Then Runner.run(flow, ...).",
+    "expected_output": "After Runner.run completes, <runDir>/live/ contains only files written during this run (old-step.json is gone or overwritten if reused)."
+  },
+  {
+    "id": "ABORT-001",
+    "name": "SIGINT flips run status to 'aborted' and persists state before Runner.run resolves",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_40. The 'ctrl-c saves state' promise (product spec §6.11.5). Test by dispatching a synthetic SIGINT during a long-running step and verifying state.json on disk after Runner.run.",
+    "input": "Flow with one slow prompt step. MockProvider.invoke hangs for 10s. Start Runner.run; after 100ms, call process.emit('SIGINT'). Await the returned promise.",
+    "expected_output": "Runner.run resolves (or rejects) with RunResult indicating aborted status. state.json on disk has status='aborted'. The running step has been swept to 'failed' with errorMessage 'run aborted'."
+  },
+  {
+    "id": "ABORT-002",
+    "name": "SIGTERM produces the same abort behavior as SIGINT",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_40. SIGTERM is how most CI systems kill jobs. The Runner must treat it identically to SIGINT — persist state, mark aborted, exit cleanly.",
+    "input": "Same flow as ABORT-001. Emit SIGTERM instead of SIGINT.",
+    "expected_output": "Same final state: status='aborted', state.json persisted, running step swept to failed."
+  },
+  {
+    "id": "ABORT-003",
+    "name": "Abort cascades ctx.abortSignal to every in-flight provider.invoke and child_process",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_40. A top-level AbortController is the aborting mechanism. When aborted, it signals every derived signal. Tests via spies on MockProvider.invoke abortSignal handlers.",
+    "input": "Flow with two parallel prompt steps. MockProvider spies on ctx.abortSignal for each invocation, registering an 'abort' listener. Emit SIGINT.",
+    "expected_output": "Both signal listeners fired. Both invocations aborted (invoke rejects with a 'aborted' or AbortError)."
+  },
+  {
+    "id": "ABORT-004",
+    "name": "Runner removes SIGINT/SIGTERM listeners on run completion to avoid leaks across sequential runs",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_40. If listeners leak, a second Runner.run() would register a second listener — SIGINT then fires both, aborting the second run with stale state from the first.",
+    "input": "Snapshot process.listeners('SIGINT').length before Runner.run. Run a simple flow to completion. Snapshot again.",
+    "expected_output": "Before and after counts are equal. No net listeners leaked."
+  },
+  {
+    "id": "ABORT-005",
+    "name": "Runner calls provider.close?() on every provider used in the run (in success and abort paths)",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/runner.ts",
+    "description": "Sprint 5 task_40. Providers may hold long-lived resources (sockets, child processes). close() must be called exactly once per provider per run, regardless of run outcome.",
+    "input": "Two subcases. Case A: happy-path run. Case B: SIGINT abort mid-run. MockProvider with a close() spy. Registry has two distinct MockProviders; flow uses both (heterogeneous step.provider).",
+    "expected_output": "Both cases: each MockProvider's close() was called exactly 1 time after the run completed/aborted."
+  },
+  {
+    "id": "RESUME-001",
+    "name": "Runner.resume re-runs ONLY pending and failed steps — succeeded steps are not re-invoked",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41. The core resume promise (product spec §1.1 'Claude forgot' moment). A step that already succeeded must keep its state on resume, with no second provider.invoke call.",
+    "input": "Pre-populate runDir with state.json where 'a'=succeeded, 'b'=failed. flow-ref.json written. Re-import flow. MockProvider spy. Call Runner.resume(runDir).",
+    "expected_output": "MockProvider.invoke was called with ctx.stepId='b' only (not 'a'). Final state: a=succeeded, b=succeeded (assuming the mock returns ok). RunResult.status='succeeded'."
+  },
+  {
+    "id": "RESUME-002",
+    "name": "Runner.resume reinitializes CostTracker from metrics.json so spent-so-far is accurate",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41. The pre-run 'spent so far' banner (product spec §6.7) needs the cost from the pre-crash portion. metrics.json must be loaded and the CostTracker seeded.",
+    "input": "Pre-populate metrics.json with 2 StepMetrics (totalUsd=0.05). Resume a run. After resume completes (with one more step added), inspect CostTracker.summary().",
+    "expected_output": "summary().totalUsd includes the pre-crash 0.05 PLUS whatever the resumed step spent."
+  },
+  {
+    "id": "RESUME-003",
+    "name": "Runner.resume loads flow-ref.json and re-imports the flow module",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41. flow-ref.json is written at run start and tells resume where the flow.ts lives. Without it, resume can't validate or re-execute.",
+    "input": "Pre-populate runDir with state.json + flow-ref.json pointing at a real flow file. Call Runner.resume(runDir).",
+    "expected_output": "resume invokes the flow's steps correctly. If flow-ref.json is missing, resume returns a clear error ('flow-ref.json missing — cannot resume')."
+  },
+  {
+    "id": "RESUME-004",
+    "name": "Runner.resume refuses on flowName mismatch and instructs the user to start over",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41 + §4.8.2 step 2. State written by flow X cannot be resumed by flow Y. The error must be unambiguous so the CLI can format product spec §6.7's resume-refused copy.",
+    "input": "state.json with flowName='oldFlow'. Re-import flow named 'newFlow'. Runner.resume(runDir) with that flow.",
+    "expected_output": "Returns err or rejects with StateVersionMismatchError (via loadAndVerify). Error message mentions both 'oldFlow' and 'newFlow' and tells the user to start a new run. No provider.invoke call happens."
+  },
+  {
+    "id": "RESUME-005",
+    "name": "Runner.resume preserves retry attempts — a step with attempts:2 on a failed resumes with 1 retry remaining (given maxRetries:3)",
+    "type": "integration",
+    "severity": "CRITICAL",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41 + resetStep semantics (STATE-007). Retry budgets must survive crashes. If a step burned 2 of 3 attempts before a crash, resume must only allow 1 more attempt, not 3 fresh ones.",
+    "input": "state.json with step 'a': { status:'failed', attempts:2 }. Flow defines step a with maxRetries:3. MockProvider always returns err. Runner.resume.",
+    "expected_output": "MockProvider.invoke was called exactly 1 more time (attempt 3 of 3). After that, run ends with a='failed' and run status='failed'. Not 4 invocations, not 3."
+  },
+  {
+    "id": "RESUME-006",
+    "name": "Runner.resume recomputes the ready queue from the DAG — succeeded steps unblock their descendants immediately",
+    "type": "integration",
+    "severity": "HIGH",
+    "target_file": "packages/core/src/runner/resume.ts",
+    "description": "Sprint 5 task_41. Resume's ready queue must seed with steps whose ancestors are all succeeded. A dependent of a pre-crash-succeeded step must run first on resume, not wait for its predecessor to be re-executed.",
+    "input": "Flow a→b→c. state.json: a=succeeded, b=failed (or pending), c=pending. Resume.",
+    "expected_output": "First dispatch on resume is step 'b' (not 'a'). After b succeeds, c dispatches. Eventually all three are succeeded with one execution each beyond the pre-crash work."
+  }
+]

@@ -22,17 +22,19 @@ Audit sprint <SPRINT_NUMBER> after the fact. Verify every task committed atomica
 Invoke the `sprint-workflow` skill — its sprint-summary format and agent picker (for routing any follow-up re-dispatch) are what you need.
 
 If the code-reviewer surfaces issues that require re-work, remind the follow-up agent to invoke:
+
 - `relay-brand-grammar` for user-visible copy issues
 - `billing-safety` for auth/env/doctor issues
 - `flow-package-format` for flow package issues
 - `claude-agent-sdk` for SDK wiring issues
 - `typescript` or `vitest` for generic code or test issues
-</skills_to_use>
+  </skills_to_use>
 
 <agents>
 The only agent this template dispatches is `@code-reviewer (agent)` — it reads the diff and spec sections, returns structured findings, and does not modify code.
 
 If the reviewer surfaces BLOCK findings that need re-work, dispatch a follow-up via the picker rules (for reference; do not dispatch without user confirmation):
+
 - `@systems-engineer (agent)` — high-risk core
 - `@cli-ux-engineer (agent)` — `cli.*` modules
 - `@flow-author (agent)` — `prompts/`, `flow.ts`, templates
@@ -40,7 +42,7 @@ If the reviewer surfaces BLOCK findings that need re-work, dispatch a follow-up 
 - `@doc-writer (agent)` — `docs/` or `README.md`
 - `@catalog-builder (agent)` — `catalog/` or lint/registry
 - `@task-implementer (agent)` — everything else
-</agents>
+  </agents>
 
 <process>
 1. Invoke the `sprint-workflow` skill. Read `_work/sprint-<SPRINT_NUMBER>.json` in full.
@@ -71,13 +73,14 @@ If the reviewer surfaces BLOCK findings that need re-work, dispatch a follow-up 
 </do>
 
 <do_not>
+
 - Do NOT modify production code, tests, or docs.
 - Do NOT commit anything — this is audit-only.
 - Do NOT fix typecheck or test failures yourself. Report them; let the user decide whether to re-dispatch.
 - Do NOT edit `_specs/` or `_work/sprint-*.json`.
 - Do NOT use emojis, the word "simply", or trailing exclamation marks.
 - Do NOT dispatch a follow-up fix without user confirmation — a failed audit belongs to the user's next decision, not yours.
-</do_not>
+  </do_not>
 
 <verification>
 Before declaring the audit complete, confirm ALL of the following have been reported to the user (pass or fail, but reported):

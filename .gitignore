@@ -25,5 +25,5 @@ coverage/
 Thumbs.db
 
 # AI artifacts
-_work/
-_specs/
+# _work/
+# _specs/

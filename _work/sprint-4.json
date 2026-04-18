@@ -1,0 +1,69 @@
+{
+  "sprint": 4,
+  "name": "ClaudeProvider",
+  "description": "Implement the only concrete Provider shipped in v1: ClaudeProvider, built on @anthropic-ai/claude-agent-sdk. The bulk of this sprint is the subscription-billing safety guard (§8.1), the env allowlist, and the SDK → InvocationEvent translator. The provider itself is a thin adapter on top of these pieces.",
+  "spec_sections": ["§3.4", "§4.6.8", "§4.6.10", "§4.6.11", "§8.1"],
+  "waves": [
+    [
+      {
+        "id": "task_26",
+        "name": "Claude auth inspection with API-key safety guard",
+        "description": "Create `packages/core/src/providers/claude/auth.ts` implementing the §8.1 safety contract. Export `inspectClaudeAuth(opts: { allowApiKey?: boolean }): Promise<AuthState>`. Logic: (1) if `process.env.ANTHROPIC_API_KEY` is set AND !allowApiKey AND !process.env.relay_ALLOW_API_KEY, throw ClaudeAuthError with the remediation message ('ANTHROPIC_API_KEY is set; relay defaults to subscription billing. Unset it, or call runner.allowApiKey(), or set relay_ALLOW_API_KEY=1.'). (2) Check bedrock/vertex/foundry env vars and return appropriate billingSource. (3) If CLAUDE_CODE_OAUTH_TOKEN present, billingSource='subscription', detail notes token mode. (4) Otherwise assume interactive subscription (can't verify without calling claude). (5) Use child_process to run `claude --version` (short timeout) to confirm the binary exists; on missing binary, throw ClaudeAuthError with install instructions. Return AuthState with ok:true on success. If allowApiKey is active AND ANTHROPIC_API_KEY present, emit a single warning in the returned AuthState.warnings array ('billing to API account, not subscription').",
+        "target_files": ["packages/core/src/providers/claude/auth.ts"],
+        "depends_on": ["task_6", "task_10"],
+        "module": "core.providers.claude",
+        "tags": ["providers", "security", "critical"],
+        "risk": "high"
+      },
+      {
+        "id": "task_27",
+        "name": "Env allowlist builder",
+        "description": "Create `packages/core/src/providers/claude/env.ts` exporting `buildEnvAllowlist(opts: { allowApiKey?: boolean; extra?: Record<string,string> }): Record<string,string>`. Start from a constant allowlist: PATH, HOME, USER, LANG, LC_ALL, TZ, TMPDIR, SHELL plus every env var starting with CLAUDE_ (CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_USE_BEDROCK, etc.). When `allowApiKey` is true, also include ANTHROPIC_API_KEY and any ANTHROPIC_* vars. Merge `extra` on top. Drop everything else. Return a fresh object (do NOT mutate process.env). Also export the readonly allowlist prefix list for tests. Per §4.6.11 + §8.1.",
+        "target_files": ["packages/core/src/providers/claude/env.ts"],
+        "depends_on": ["task_2"],
+        "module": "core.providers.claude",
+        "tags": ["providers", "security"],
+        "risk": "medium"
+      },
+      {
+        "id": "task_28",
+        "name": "SDK message translator",
+        "description": "Create `packages/core/src/providers/claude/translate.ts` exporting `translateSdkMessage(msg: unknown): InvocationEvent | null` and `mergeUsage(a: NormalizedUsage, b: Partial<NormalizedUsage>): NormalizedUsage`. Accept the raw message shapes emitted by @anthropic-ai/claude-agent-sdk's `query()` async iterator (assistant text deltas, tool_use, tool_result, usage metadata in message.usage, system/turn events). Map each to the correct InvocationEvent variant or return null if the message is purely informational. Include careful handling of stream-json envelope types: input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens. Leave the camelCase normalization here per §4.6.3 rule 1.",
+        "target_files": ["packages/core/src/providers/claude/translate.ts"],
+        "depends_on": ["task_10"],
+        "module": "core.providers.claude",
+        "tags": ["providers"],
+        "risk": "medium"
+      },
+      {
+        "id": "task_29",
+        "name": "Zod-to-JSON-schema helper",
+        "description": "Create `packages/core/src/util/zod-to-json-schema.ts` exporting `zodToJsonSchema(schema: ZodSchema): object`. Use the `zod-to-json-schema` npm package (add to deps in packages/core/package.json). Configure target: 'jsonSchema7', no $ref by default (inline everything — Claude's structured-output expects a single inlined schema object). If the package fails for a given schema, throw FlowDefinitionError with context. Pure function. Referenced by ClaudeProvider when a prompt step declares an output schema (§4.4.1).",
+        "target_files": [
+          "packages/core/src/util/zod-to-json-schema.ts",
+          "packages/core/package.json"
+        ],
+        "depends_on": ["task_6"],
+        "module": "core.util",
+        "tags": ["providers", "util"],
+        "risk": "low"
+      }
+    ],
+    [
+      {
+        "id": "task_30",
+        "name": "ClaudeProvider implementation",
+        "description": "Create `packages/core/src/providers/claude/provider.ts` implementing `ClaudeProvider` class per §4.6.8. Constructor accepts `ClaudeProviderOptions { allowApiKey?: boolean; extraEnv?: Record<string,string>; binaryPath?: string }`. Set capabilities per §4.6.8 exactly (streaming:true, structuredOutput:true, tools:true, builtInTools list covering 'Read','Write','Edit','Glob','Grep','Bash','WebFetch','WebSearch','Task','TodoWrite', multimodal:true, budgetCap:true, models:['haiku','sonnet','opus'] plus fully-qualified ids, maxContextTokens:200000). `authenticate()` delegates to inspectClaudeAuth. `invoke()` aggregates `stream()` into one InvocationResponse (accumulate text, merge usage, count turns from turn.end events). `stream()` calls @anthropic-ai/claude-agent-sdk's `query({prompt, options})` with: model, allowedTools, systemPrompt, output:{schema} when jsonSchema present, env (from buildEnvAllowlist), abortSignal from ctx. Iterate SDK output through translateSdkMessage and yield non-null events. Track duration from Date.now() stamps. Compute costUsd from final usage (simple per-token math; add a TODO for reading usage.total_cost_usd from SDK if available). Return InvocationResponse with raw: lastMessage for debugging. Register this provider into `defaultRegistry` on module import. Re-export from `src/index.ts`.",
+        "target_files": [
+          "packages/core/src/providers/claude/provider.ts",
+          "packages/core/src/providers/claude/index.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_26", "task_27", "task_28", "task_29", "task_24"],
+        "module": "core.providers.claude",
+        "tags": ["providers", "claude"],
+        "risk": "high"
+      }
+    ]
+  ]
+}

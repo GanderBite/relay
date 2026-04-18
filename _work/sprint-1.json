@@ -1,0 +1,75 @@
+{
+  "sprint": 1,
+  "name": "Core Foundation Primitives",
+  "description": "Land the five foundational building blocks of @relay/core that everything downstream imports: error hierarchy, atomic file writes, logger, zod re-export, and the Provider/Invocation interface types. No runtime logic that depends on these is built yet — this sprint only produces the typed contracts and small utilities.",
+  "spec_sections": ["§4.2", "§4.6", "§4.10", "§8.2", "§8.3", "§8.5"],
+  "waves": [
+    [
+      {
+        "id": "task_6",
+        "name": "Error hierarchy",
+        "description": "Create `packages/core/src/errors.ts` implementing the full error hierarchy from §4.2 + §8.2. Classes: `PipelineError` (extends Error, fields: code:string, details?:Record<string,unknown>, captures stack trace), `FlowDefinitionError`, `StepFailureError` (adds stepId, attempt), `ClaudeAuthError`, `HandoffSchemaError` (adds handoffId, issues:ZodIssue[]), `TimeoutError` (adds stepId, timeoutMs), `ProviderAuthError` (adds providerName), `ProviderCapabilityError` (extends FlowDefinitionError, adds providerName, capability). Each error sets a stable `code` (e.g. 'relay_FLOW_DEFINITION'). Re-export all from `src/index.ts`. Zod is imported for the ZodIssue type.",
+        "target_files": [
+          "packages/core/src/errors.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_2"],
+        "module": "core",
+        "tags": ["foundation", "errors"],
+        "risk": "low"
+      },
+      {
+        "id": "task_7",
+        "name": "Atomic write helper",
+        "description": "Create `packages/core/src/util/atomic-write.ts` exporting `atomicWriteJson(path: string, value: unknown): Promise<void>` and `atomicWriteText(path: string, data: string): Promise<void>`. Implementation: write to `<path>.tmp-<random>` then `fs.rename` to final path (rename is atomic on POSIX). Pretty-print JSON with 2-space indent. Create parent directories with `fs.mkdir({recursive:true})` before writing. On error, clean up temp file. Use only node:fs/promises, node:path, node:crypto (randomUUID for temp suffix). Per §8.5 this is used by state.json, handoffs, metrics, and exposed to flow authors. Re-export from `src/index.ts`.",
+        "target_files": [
+          "packages/core/src/util/atomic-write.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_2"],
+        "module": "core",
+        "tags": ["foundation", "util"],
+        "risk": "low"
+      },
+      {
+        "id": "task_8",
+        "name": "Logger class",
+        "description": "Create `packages/core/src/logger.ts` per §4.10. Export `LogEvent` type (ts, level, flowName, runId, stepId?, event, data?) and `Logger` class. Constructor accepts `{ runId, flowName, logFile?: string, console?: boolean, level?: 'debug'|'info'|'warn'|'error' }`. Methods: `debug/info/warn/error(event: string, data?: Record<string,unknown>, stepId?: string): void`. Writes NDJSON to `logFile` via an append WriteStream (if provided) AND emits a colorized human-readable line to stdout when `console:true` and TTY. No external log library — plain JSON.stringify. Provide a `child(stepId: string): Logger` helper that returns a scoped logger. Export via `src/index.ts`.",
+        "target_files": [
+          "packages/core/src/logger.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_2"],
+        "module": "core",
+        "tags": ["foundation", "observability"],
+        "risk": "low"
+      },
+      {
+        "id": "task_9",
+        "name": "Zod re-export module",
+        "description": "Create `packages/core/src/zod.ts` that does `export { z } from 'zod'` and `export type { ZodSchema, ZodIssue, ZodTypeAny, infer as Infer } from 'zod'`. Re-export these from `src/index.ts` so flow authors can `import { z } from '@relay/core'` (per §8.3). Purpose: keep Zod version pinned through the library, avoiding author-vs-library mismatch.",
+        "target_files": [
+          "packages/core/src/zod.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_2"],
+        "module": "core",
+        "tags": ["foundation"],
+        "risk": "low"
+      },
+      {
+        "id": "task_10",
+        "name": "Provider and invocation interface types",
+        "description": "Create `packages/core/src/providers/types.ts` with the full set of provider abstraction types from §4.6.1–§4.6.4. Declare interfaces only (no runtime logic, no error classes): `Provider` (name, capabilities, authenticate, invoke, optional stream, optional estimateCost, optional close), `ProviderCapabilities` (streaming, structuredOutput, tools, builtInTools: readonly string[], multimodal, budgetCap, models: readonly string[], maxContextTokens), `AuthState` (ok, billingSource union, detail, account?, warnings?), `InvocationRequest` (prompt, model?, systemPrompt?, tools?, jsonSchema?, maxBudgetUsd?, timeoutMs?, providerOptions?), `InvocationResponse` (text, usage, costUsd, durationMs, numTurns, sessionId?, model, stopReason, raw?), `InvocationContext` (flowName, runId, stepId, attempt, abortSignal, logger), `NormalizedUsage` (inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens), `InvocationEvent` discriminated union (turn.start, text.delta, tool.call, tool.result, usage, turn.end), `CostEstimate` (minUsd, maxUsd, basis). Re-export all from `src/index.ts`. This task produces pure TypeScript types — no classes, no imports from errors.",
+        "target_files": [
+          "packages/core/src/providers/types.ts",
+          "packages/core/src/index.ts"
+        ],
+        "depends_on": ["task_2"],
+        "module": "core",
+        "tags": ["foundation", "providers", "types"],
+        "risk": "low"
+      }
+    ]
+  ]
+}
