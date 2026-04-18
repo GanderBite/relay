@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { CostTracker } from '../cost.js';
 import {
@@ -14,7 +14,7 @@ import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
 import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
-import { StateMachine } from '../state.js';
+import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
 
 import { checkCapabilities } from './capability-check.js';
@@ -24,6 +24,7 @@ import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
 import { executeTerminal } from './exec/terminal.js';
 import { clearLiveDir } from './live-state.js';
+import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { withRetry } from './retry.js';
 import type { StepResult } from './types.js';
 
@@ -51,6 +52,14 @@ export interface RunOptions {
    * is not the flow's directory.
    */
   flowDir?: string;
+  /**
+   * Absolute path to the flow module that produced the supplied Flow. When
+   * present, persisted in `flow-ref.json` so `Runner.resume(runDir)` can
+   * re-import the flow in a fresh process. When absent, run() still proceeds
+   * — resume later rejects with an actionable message if the caller omitted
+   * the path and the run crashes.
+   */
+  flowPath?: string;
 }
 
 export interface RunResult {
@@ -176,7 +185,7 @@ export class Runner {
     await clearLiveDir(runDir);
     await mkdir(join(runDir, 'live'), { recursive: true });
 
-    await this.#writeFlowRef(runDir, flow);
+    await this.#writeFlowRef(runDir, flow, opts.flowPath);
 
     const logger =
       this.#logger ??
@@ -242,6 +251,7 @@ export class Runner {
           logger,
           providerByStep,
           validatedInput,
+          initialQueue: [...flow.graph.rootSteps],
         });
       }
     } finally {
@@ -279,25 +289,191 @@ export class Runner {
   }
 
   /**
-   * Resume a run from its persisted state. Implementation lands in a later
-   * task; the stub rejects so callers fail fast until the real protocol is
-   * wired through.
+   * Resume a run from its persisted state. Loads state.json + flow-ref.json
+   * from `runDir`, re-imports the flow module, rehydrates the state machine
+   * and cost tracker, and executes any remaining steps through the same DAG
+   * walker as run(). Succeeded steps are never re-invoked; failed steps are
+   * reset to pending so the retry loop can take another attempt (the prior
+   * `attempts` counter survives so retry budgets are honored).
    */
-  async resume(_runDir: string): Promise<RunResult> {
-    throw new PipelineError(
-      'Runner.resume is not implemented yet',
-      ERROR_CODES.STEP_FAILURE,
+  async resume(runDir: string, opts: RunOptions = {}): Promise<RunResult> {
+    const parallelism = opts.parallelism ?? DEFAULT_PARALLELISM;
+
+    const stateResult = await loadState(runDir);
+    if (stateResult.isErr()) throw stateResult.error;
+    const persistedState = stateResult.value;
+
+    const flowRefResult = await loadFlowRef(runDir);
+    if (flowRefResult.isErr()) {
+      throw new PipelineError(
+        `resume could not read flow-ref.json at "${runDir}": ${flowRefResult.error.message}. ` +
+          'A resumable run records flow-ref.json at run start; without it the Runner cannot re-import the flow.',
+        ERROR_CODES.STATE_NOT_FOUND,
+        { runDir },
+      );
+    }
+    const flowRef = flowRefResult.value;
+
+    // Catch mismatches recorded in flow-ref.json vs. state.json before doing
+    // any disk import — the state file is authoritative on what ran, so an
+    // inconsistent flow-ref is also a resume-blocker.
+    if (
+      flowRef.flowName !== persistedState.flowName ||
+      flowRef.flowVersion !== persistedState.flowVersion
+    ) {
+      throw new PipelineError(
+        `flow-ref.json refers to "${flowRef.flowName}@${flowRef.flowVersion}" but state.json was written by "${persistedState.flowName}@${persistedState.flowVersion}". ` +
+          'Start a fresh run.',
+        ERROR_CODES.STATE_VERSION_MISMATCH,
+        { runDir },
+      );
+    }
+
+    if (flowRef.flowPath === null) {
+      throw new PipelineError(
+        'resume requires the original flow file path; pass `flowPath` to run() or re-invoke the CLI with the flow path.',
+        ERROR_CODES.STATE_NOT_FOUND,
+        { runDir, flowName: flowRef.flowName },
+      );
+    }
+
+    const flow = await importFlow(flowRef.flowPath);
+
+    const verify = verifyCompatibility(persistedState, {
+      flowName: flow.name,
+      flowVersion: flow.version,
+    });
+    if (verify.isErr()) throw verify.error;
+
+    const runId = persistedState.runId;
+    const flowDir = opts.flowDir ?? dirname(flowRef.flowPath);
+
+    const logger =
+      this.#logger ??
+      createLogger({
+        flowName: flow.name,
+        runId,
+        logFile: join(runDir, RUN_LOG_FILENAME),
+      });
+
+    const handoffStore = new HandoffStore(runDir);
+    const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
+    const loadMetricsResult = await costTracker.load();
+    if (loadMetricsResult.isErr()) throw loadMetricsResult.error;
+
+    const stateMachine = new StateMachine(runDir, flow.name, flow.version, runId);
+    stateMachine.hydrate(persistedState);
+
+    // Flip failed steps back to pending so the retry loop can take another
+    // attempt. resetStep preserves the attempts counter so maxRetries budgets
+    // carry across resume. Steps still in 'running' (from a crash) are left
+    // alone — markRun('aborted')/markRun('failed') on the prior run swept them
+    // to 'failed'; if a caller somehow persisted a live 'running' step, we
+    // treat it as already re-entered and let the DAG walker handle it.
+    for (const [stepId, stepState] of Object.entries(persistedState.steps)) {
+      if (stepState.status === 'failed') {
+        const resetResult = stateMachine.resetStep(stepId);
+        if (resetResult.isErr()) throw resetResult.error;
+      }
+    }
+
+    const markRunning = stateMachine.markRun('running');
+    if (markRunning.isErr()) throw markRunning.error;
+    const savedStart = await stateMachine.save();
+    if (savedStart.isErr()) throw savedStart.error;
+
+    const providerByStep = checkCapabilities(
+      flow as Flow<unknown>,
+      this.#providers,
+      this.#defaultProvider,
     );
+    const uniqueProviders = new Set<Provider>(providerByStep.values());
+
+    const abortController = new AbortController();
+    let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
+    const onSigint = (): void => {
+      if (abortSource === null) abortSource = 'SIGINT';
+      abortController.abort();
+    };
+    const onSigterm = (): void => {
+      if (abortSource === null) abortSource = 'SIGTERM';
+      abortController.abort();
+    };
+    process.on('SIGINT', onSigint);
+    process.on('SIGTERM', onSigterm);
+
+    const start = Date.now();
+    let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+
+    try {
+      for (const provider of uniqueProviders) {
+        const auth = await provider.authenticate();
+        if (auth.isErr()) throw auth.error;
+      }
+
+      if (abortController.signal.aborted) {
+        runStatus = 'aborted';
+      } else {
+        const initialQueue = seedReadyQueueForResume(flow, stateMachine.getState());
+        runStatus = await this.#walkDag({
+          flow: flow as Flow<unknown>,
+          runDir,
+          runId,
+          flowDir,
+          parallelism,
+          abortController,
+          handoffStore,
+          costTracker,
+          stateMachine,
+          logger,
+          providerByStep,
+          validatedInput: stateMachine.getState().input,
+          initialQueue,
+        });
+      }
+    } finally {
+      process.removeListener('SIGINT', onSigint);
+      process.removeListener('SIGTERM', onSigterm);
+      await this.#closeProviders(uniqueProviders, logger);
+    }
+
+    const markResult = stateMachine.markRun(runStatus);
+    if (markResult.isErr()) throw markResult.error;
+    const finalSave = await stateMachine.save();
+    if (finalSave.isErr()) throw finalSave.error;
+
+    if (runStatus === 'aborted') {
+      logger.warn(
+        { event: 'run.aborted', runId, source: abortSource ?? 'unknown' },
+        'run aborted',
+      );
+    }
+
+    const summary = costTracker.summary();
+    const artifacts: string[] = [];
+    for (const state of Object.values(stateMachine.getState().steps)) {
+      if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
+    }
+
+    return {
+      runId,
+      runDir,
+      status: runStatus,
+      cost: { totalUsd: summary.totalUsd, totalTokens: summary.totalTokens },
+      artifacts,
+      durationMs: Date.now() - start,
+    };
   }
 
-  async #writeFlowRef<TInput>(runDir: string, flow: Flow<TInput>): Promise<void> {
-    // Flow objects carry no path back to their source module today, so
-    // flowPath is persisted as null. A later task plumbs the origin through
-    // defineFlow so resume can locate the flow without cwd guesses.
+  async #writeFlowRef<TInput>(
+    runDir: string,
+    flow: Flow<TInput>,
+    flowPath: string | undefined,
+  ): Promise<void> {
     const payload = {
       flowName: flow.name,
       flowVersion: flow.version,
-      flowPath: null,
+      flowPath: flowPath ?? null,
     };
     const result = await atomicWriteJson(join(runDir, FLOW_REF_FILENAME), payload);
     if (result.isErr()) throw result.error;
@@ -337,6 +513,7 @@ export class Runner {
     logger: Logger;
     providerByStep: Map<string, Provider>;
     validatedInput: unknown;
+    initialQueue: string[];
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
     const {
       flow,
@@ -351,11 +528,12 @@ export class Runner {
       logger,
       providerByStep,
       validatedInput,
+      initialQueue,
     } = args;
 
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
 
-    const queue: string[] = [...flow.graph.rootSteps];
+    const queue: string[] = [...initialQueue];
     const inflight = new Set<string>();
     const completions: Array<{ stepId: string; error?: unknown }> = [];
     let notify: (() => void) | null = null;

@@ -89,6 +89,16 @@ export class StateMachine {
     return this.save();
   }
 
+  /**
+   * Replace the in-memory state with a previously persisted snapshot — used
+   * when resuming a run. Caller is responsible for invoking save() afterwards
+   * if the mutation needs to land on disk. Skips the pending-step seeding
+   * that `init()` performs so prior attempts/artifacts/handoffs survive.
+   */
+  hydrate(state: RunState): void {
+    this.#state = state;
+  }
+
   startStep(id: string): Result<void, StateTransitionError> {
     const stepResult = this.#requireStep(id);
     if (stepResult.isErr()) return err(stepResult.error);
