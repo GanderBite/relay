@@ -5,6 +5,7 @@ import { StepFailureError } from '../../errors.js';
 import type { ScriptStepSpec } from '../../flow/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { runProcess } from './process.js';
+import { splitShell } from './shlex.js';
 
 export interface ScriptExecContext {
   runDir: string;
@@ -12,7 +13,7 @@ export interface ScriptExecContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
-  step?: unknown; // reserved for future convenience; not used by executeScript
+  step?: unknown;
 }
 
 export interface ScriptStepResult {
@@ -23,53 +24,6 @@ export interface ScriptStepResult {
 }
 
 type ScriptStepInput = Omit<ScriptStepSpec, 'id'> & { id?: string };
-
-/**
- * Parse a shell command string into [cmd, ...args] respecting single and
- * double quotes. No shell interpolation is performed — this is intentional:
- * script steps run with shell: false for safety and determinism.
- */
-function splitShell(cmd: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | null = null;
-  let i = 0;
-
-  while (i < cmd.length) {
-    const ch = cmd[i];
-    if (ch === undefined) { i++; continue; }
-    if (quote !== null) {
-      if (ch === '\\' && quote === '"' && cmd[i + 1] === '"') {
-        current += '"';
-        i += 2;
-        continue;
-      }
-      if (ch === '\\' && quote === "'" && cmd[i + 1] === "'") {
-        current += "'";
-        i += 2;
-        continue;
-      }
-      if (ch === quote) {
-        quote = null;
-      } else {
-        current += ch;
-      }
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === ' ' || ch === '\t') {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = '';
-      }
-    } else {
-      current += ch;
-    }
-    i++;
-  }
-
-  if (current.length > 0) tokens.push(current);
-  return tokens;
-}
 
 export async function executeScript(
   step: ScriptStepInput,

@@ -2,6 +2,7 @@ import type { Logger } from '../../logger.js';
 import { StepFailureError } from '../../errors.js';
 import type { BranchStepSpec } from '../../flow/types.js';
 import { runProcess } from './process.js';
+import { splitShell } from './shlex.js';
 
 export interface BranchExecContext {
   runDir: string;
@@ -9,7 +10,7 @@ export interface BranchExecContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
-  step?: unknown; // reserved for future convenience; not used by executeBranch
+  step?: unknown;
 }
 
 export interface BranchStepResult {
@@ -18,56 +19,6 @@ export interface BranchStepResult {
 }
 
 type BranchStepInput = Omit<BranchStepSpec, 'id'> & { id?: string };
-
-/**
- * Parse a shell command string into [cmd, ...args] respecting single and
- * double quotes. Shared logic with executeScript; extracted to process.ts
- * handles subprocess concerns. This inline version avoids a circular import.
- *
- * No shell interpolation is performed — intentional: branch steps run with
- * shell: false for safety and determinism.
- */
-function splitShell(cmd: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | null = null;
-  let i = 0;
-
-  while (i < cmd.length) {
-    const ch = cmd[i];
-    if (ch === undefined) { i++; continue; }
-    if (quote !== null) {
-      if (ch === '\\' && quote === '"' && cmd[i + 1] === '"') {
-        current += '"';
-        i += 2;
-        continue;
-      }
-      if (ch === '\\' && quote === "'" && cmd[i + 1] === "'") {
-        current += "'";
-        i += 2;
-        continue;
-      }
-      if (ch === quote) {
-        quote = null;
-      } else {
-        current += ch;
-      }
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === ' ' || ch === '\t') {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = '';
-      }
-    } else {
-      current += ch;
-    }
-    i++;
-  }
-
-  if (current.length > 0) tokens.push(current);
-  return tokens;
-}
 
 export async function executeBranch(
   step: BranchStepInput,
@@ -87,7 +38,6 @@ export async function executeBranch(
 
   const cwd = step.cwd ?? runDir;
 
-  // user-controlled shell; claude env allowlist does not apply.
   const baseEnv = Object.fromEntries(
     Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
