@@ -22,7 +22,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { err, ok, type Result } from 'neverthrow';
 
-import { PipelineError, StepFailureError, type FlowDefinitionError } from '../../errors.js';
+import { PipelineError, StepFailureError } from '../../errors.js';
 import { defaultRegistry, ProviderRegistry } from '../registry.js';
 import type {
   AuthState,
@@ -384,11 +384,11 @@ function isResultMessage(msg: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Registers the built-in ClaudeProvider. Call once during application
- * bootstrap. Idempotency is the caller's responsibility via registry.has('claude').
+ * Idempotent — safe to call multiple times. Returns 'registered' on first
+ * call, 'already-present' thereafter.
  */
 export function registerDefaultProviders(
   registry: ProviderRegistry = defaultRegistry,
-): Result<void, FlowDefinitionError> {
-  return registry.register(new ClaudeProvider());
+): Result<'registered' | 'already-present', never> {
+  return registry.registerIfAbsent(new ClaudeProvider());
 }

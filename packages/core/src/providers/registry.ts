@@ -13,6 +13,15 @@ export class ProviderRegistry {
     return ok(undefined);
   }
 
+  /** No-op when the provider name is already present — double-registration is not an error. */
+  registerIfAbsent(provider: Provider): Result<'registered' | 'already-present', never> {
+    if (this.#providers.has(provider.name)) {
+      return ok('already-present');
+    }
+    this.#providers.set(provider.name, provider);
+    return ok('registered');
+  }
+
   get(name: string): Result<Provider, FlowDefinitionError> {
     const provider = this.#providers.get(name);
     if (provider === undefined) {

@@ -6,7 +6,7 @@ export type { AssemblePromptArgs } from './context-inject.js';
 
 // Cost tracking
 export { CostTracker } from './cost.js';
-export type { StepMetrics } from './cost.js';
+export type { CostSummary, StepMetrics } from './cost.js';
 
 // Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
 export {

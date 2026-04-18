@@ -64,6 +64,13 @@ export class MockProvider implements Provider {
     return ok(response);
   }
 
+  /**
+   * Invokes the mock for a given step and returns a Result.
+   *
+   * Failures return `err(StepFailureError)`. The paired `stream()` method
+   * signals the same failure by throwing inside the generator (iterator
+   * termination).
+   */
   async invoke(
     req: InvocationRequest,
     ctx: InvocationContext,
@@ -71,12 +78,21 @@ export class MockProvider implements Provider {
     return this.resolveResponse(req, ctx);
   }
 
+  /**
+   * Streams invocation events for a given step.
+   *
+   * Missing stepId configuration causes `stream()` to throw `StepFailureError`
+   * (via iterator termination) — the same error class `invoke()` would have
+   * returned on its `err` branch. Consumers that call both must handle the two
+   * surfaces consistently.
+   */
   async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
     const result = this.resolveResponse(req, ctx);
     if (result.isErr()) {
       throw result.error;
     }
     const response = result.value;
+    yield { type: 'turn.start', turn: 1 };
     yield { type: 'text.delta', delta: response.text };
     yield {
       type: 'usage',
