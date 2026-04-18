@@ -2,12 +2,21 @@
  * Environment allowlist for ClaudeProvider subprocess invocations.
  *
  * The `claude` binary inherits whatever env the parent process had, which may
- * include `ANTHROPIC_API_KEY`. Passing raw `process.env` to the subprocess
- * would defeat the billing-safety guard in auth.ts — the key would reach the
- * SDK even after we verified the user opted in, and any future call that
- * skipped the guard would silently bill the API account.
+ * include `ANTHROPIC_API_KEY`. The claude-agent-sdk merges its `options.env`
+ * on top of `process.env` rather than using it as the authoritative spawn env.
+ * That means a naive keep-list leaves every unlisted parent var in place — the
+ * billing-safety guard in auth.ts would be silently defeated and any secret
+ * in the caller's environment would leak to the subprocess.
  *
- * The two-phase design (exact names + prefixes) reflects two different
+ * To get true containment we must both:
+ *   - include: copy every allowlisted host env var at its real value, and
+ *   - suppress: set every non-allowlisted host env var to `undefined`.
+ *
+ * The SDK documents `undefined` values as the way to remove an inherited var
+ * during the merge. The returned object is therefore `Record<string, string
+ * | undefined>` — a patch, not a standalone env.
+ *
+ * The two-phase allowlist (exact names + prefixes) reflects two different
  * requirements:
  *
  *   Exact names: a fixed set of POSIX/system variables the binary needs to
@@ -16,8 +25,8 @@
  *   without enumerating them one-by-one — the family can grow without this
  *   file changing.
  *
- * Everything else is dropped. Caller-supplied `extra` values are merged last
- * so per-step env overrides always win over host env.
+ * Caller-supplied `extra` values are merged last, so per-step env overrides
+ * always win over host env and are never suppressed.
  */
 
 // ---------------------------------------------------------------------------
@@ -71,51 +80,53 @@ export interface BuildEnvAllowlistOptions {
 
   /**
    * Per-step or per-run env overrides merged on top of the filtered host env.
-   * Keys here take precedence over anything in process.env.
+   * Keys here take precedence over anything in process.env and are never
+   * suppressed.
    */
   extra?: Record<string, string>;
 }
 
 /**
- * Build a safe env object for a ClaudeProvider subprocess invocation.
+ * Build a safe env patch for a ClaudeProvider subprocess invocation.
  *
- * Iterates process.env once, copying only keys that pass the two-phase filter:
- *   1. Exact match against ALLOWLIST_EXACT.
- *   2. Prefix match against the active prefix list.
+ * Walks process.env once and for each key either:
+ *   - copies the real value (allowlisted via exact match or prefix), or
+ *   - emits `undefined` (instructs the SDK merge to strip the inherited var).
  *
- * Undefined values (which Node can produce for env vars set without a value on
- * some platforms) are silently dropped — the subprocess always receives strings.
+ * Caller-supplied extras are merged last and always carry a string value.
  *
  * Never mutates process.env. Always returns a fresh plain object.
  */
-export function buildEnvAllowlist(opts: BuildEnvAllowlistOptions = {}): Record<string, string> {
-  const prefixes = opts.allowApiKey === true ? ALLOWLIST_PREFIX_WITH_API : ALLOWLIST_PREFIX_BASE;
-
-  const result: Record<string, string> = {};
+export function buildEnvAllowlist(
+  opts: BuildEnvAllowlistOptions = {},
+): Record<string, string | undefined> {
+  const prefixes =
+    opts.allowApiKey === true ? ALLOWLIST_PREFIX_WITH_API : ALLOWLIST_PREFIX_BASE;
+  const exact = new Set<string>(ALLOWLIST_EXACT);
+  const result: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
-    // Drop undefined values — they cannot be safely passed as env strings.
+    // Skip keys the host never actually set — there is nothing to suppress
+    // and no value to forward.
     if (value === undefined) {
       continue;
     }
 
-    // Phase 1: exact-name match.
-    if ((ALLOWLIST_EXACT as readonly string[]).includes(key)) {
-      result[key] = value;
-      continue;
-    }
+    const isExact = exact.has(key);
+    const isPrefix = prefixes.some((p) => key.startsWith(p));
 
-    // Phase 2: prefix match against the active prefix list.
-    for (const prefix of prefixes) {
-      if (key.startsWith(prefix)) {
-        result[key] = value;
-        break;
-      }
+    if (isExact || isPrefix) {
+      // Include: forward the real host value.
+      result[key] = value;
+    } else {
+      // Suppress: tell the SDK merge to drop this inherited var.
+      result[key] = undefined;
     }
   }
 
   // Merge caller-supplied overrides last. These always win — they represent
-  // explicit per-step or per-run env that must reach the subprocess unchanged.
+  // explicit per-step or per-run env that must reach the subprocess unchanged,
+  // even if the same key would otherwise have been suppressed above.
   if (opts.extra !== undefined) {
     for (const [key, value] of Object.entries(opts.extra)) {
       result[key] = value;

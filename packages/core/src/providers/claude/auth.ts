@@ -20,11 +20,11 @@ import type { AuthState } from '../types.js';
 const execFileAsync = promisify(execFile);
 
 /** Short wall-clock limit for `claude --version`. Enough for a cold binary, not so long that a stuck PATH entry stalls the run. */
-const CLAUDE_VERSION_TIMEOUT_MS = 3_000;
+const CLAUDE_VERSION_TIMEOUT_MS = 5_000;
 
 /** Human-readable remediation for the API-key safety guard. Must render verbatim — no trailing punctuation, no emojis. */
 const API_KEY_REMEDIATION =
-  'ANTHROPIC_API_KEY is set; relay defaults to subscription billing. Unset it, or call runner.allowApiKey(), or set relay_ALLOW_API_KEY=1.';
+  'ANTHROPIC_API_KEY is set; relay defaults to subscription billing. Unset it, or call runner.allowApiKey(), or set RELAY_ALLOW_API_KEY=1.';
 
 /** Warning surfaced exactly once per run when the user has opted into API billing with `ANTHROPIC_API_KEY` present. */
 const API_ACCOUNT_WARNING = 'billing to API account, not subscription';
@@ -63,7 +63,7 @@ export async function inspectClaudeAuth(
 ): Promise<Result<AuthState, ClaudeAuthError>> {
   const env = process.env;
   const hasApiKey = isNonEmpty(env.ANTHROPIC_API_KEY);
-  const envAllowsApiKey = isNonEmpty(env.relay_ALLOW_API_KEY);
+  const envAllowsApiKey = isNonEmpty(env.RELAY_ALLOW_API_KEY);
   const allowApiKey = opts.allowApiKey === true || envAllowsApiKey;
 
   const useBedrock = env.CLAUDE_CODE_USE_BEDROCK === '1';
@@ -126,7 +126,7 @@ export async function inspectClaudeAuth(
       ok: true,
       billingSource: 'api-account',
       detail: envAllowsApiKey
-        ? 'API account (relay_ALLOW_API_KEY=1)'
+        ? 'API account (RELAY_ALLOW_API_KEY=1)'
         : 'API account (runner.allowApiKey())',
       warnings: [API_ACCOUNT_WARNING],
     });
@@ -152,6 +152,25 @@ export async function inspectClaudeAuth(
 }
 
 /**
+ * Env keys forwarded to the `claude --version` preflight probe. Mirrors the
+ * vars that `buildEnvAllowlist` always includes. PATH/Path covers both POSIX
+ * and Windows binary resolution; HOME/USERPROFILE covers user-config lookup on
+ * both platforms; the rest prevent locale and temp-dir surprises.
+ */
+const PREFLIGHT_ENV_KEYS = [
+  'PATH', 'Path', 'HOME', 'USERPROFILE', 'USER', 'LANG', 'LC_ALL', 'TZ', 'TMPDIR', 'SHELL',
+] as const;
+
+function preflightEnv(): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const key of PREFLIGHT_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+/**
  * Spawn `claude --version` with a short timeout. Returns `ok(void)` on a clean
  * exit, `err(ClaudeAuthError)` with install instructions on any failure —
  * missing binary, non-zero exit, timeout, or permission error.
@@ -160,9 +179,7 @@ async function ensureClaudeBinary(): Promise<Result<void, ClaudeAuthError>> {
   try {
     await execFileAsync('claude', ['--version'], {
       timeout: CLAUDE_VERSION_TIMEOUT_MS,
-      // Minimal env; we only need PATH to resolve the binary. The rest of the
-      // env stays out to keep this probe side-effect-free.
-      env: { PATH: process.env.PATH ?? '' },
+      env: preflightEnv(),
     });
     return ok(undefined);
   } catch (e) {

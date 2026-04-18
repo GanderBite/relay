@@ -84,5 +84,5 @@ export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 export { z } from './zod.js';
 
 // ClaudeProvider
-export { ClaudeProvider } from './providers/claude/index.js';
+export { ClaudeProvider, registerDefaultProviders } from './providers/claude/index.js';
 export type { ClaudeProviderOptions } from './providers/claude/index.js';

@@ -5,6 +5,7 @@ export {
   ALLOWLIST_PREFIX_WITH_API,
   buildEnvAllowlist,
 } from './env.js';
-export { ClaudeProvider } from './provider.js';
+export { ClaudeProvider, registerDefaultProviders } from './provider.js';
 export type { ClaudeProviderOptions } from './provider.js';
-export { mergeUsage, translateSdkMessage } from './translate.js';
+export { extractSdkResultSummary, mergeUsage, translateSdkMessage } from './translate.js';
+export type { SdkResultSummary } from './translate.js';

@@ -46,10 +46,10 @@ export class MockProvider implements Provider {
     return ok({ ok: true, billingSource: 'local', detail: 'mock provider' });
   }
 
-  async invoke(
+  private resolveResponse(
     req: InvocationRequest,
     ctx: InvocationContext,
-  ): Promise<Result<InvocationResponse, PipelineError>> {
+  ): Result<InvocationResponse, PipelineError> {
     const value = this.responses[ctx.stepId];
     if (value === undefined) {
       return err(
@@ -60,14 +60,19 @@ export class MockProvider implements Provider {
         ),
       );
     }
-    if (typeof value === 'function') {
-      return ok(value(req, ctx));
-    }
-    return ok(value);
+    const response = typeof value === 'function' ? value(req, ctx) : value;
+    return ok(response);
+  }
+
+  async invoke(
+    req: InvocationRequest,
+    ctx: InvocationContext,
+  ): Promise<Result<InvocationResponse, PipelineError>> {
+    return this.resolveResponse(req, ctx);
   }
 
   async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
-    const result = await this.invoke(req, ctx);
+    const result = this.resolveResponse(req, ctx);
     if (result.isErr()) {
       throw result.error;
     }
