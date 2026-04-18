@@ -1,22 +1,24 @@
+import { err, ok, type Result } from 'neverthrow';
 import { FlowDefinitionError } from '../errors.js';
 import type { Provider } from './types.js';
 
 export class ProviderRegistry {
   readonly #providers = new Map<string, Provider>();
 
-  register(provider: Provider): void {
+  register(provider: Provider): Result<void, FlowDefinitionError> {
     if (this.#providers.has(provider.name)) {
-      throw new FlowDefinitionError(`provider "${provider.name}" already registered`);
+      return err(new FlowDefinitionError(`provider "${provider.name}" already registered`));
     }
     this.#providers.set(provider.name, provider);
+    return ok(undefined);
   }
 
-  get(name: string): Provider {
+  get(name: string): Result<Provider, FlowDefinitionError> {
     const provider = this.#providers.get(name);
     if (provider === undefined) {
-      throw new FlowDefinitionError(`unknown provider: ${name}`);
+      return err(new FlowDefinitionError(`unknown provider: ${name}`));
     }
-    return provider;
+    return ok(provider);
   }
 
   has(name: string): boolean {

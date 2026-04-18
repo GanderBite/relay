@@ -59,6 +59,11 @@ export interface ProviderCapabilities {
  * banner and the doctor command.
  */
 export interface AuthState {
+  /**
+   * True when authentication succeeded. Retained for consumer code that checks
+   * the boolean directly; callers using the Result wrapper already have the
+   * success signal from the Result branch and do not need to inspect this field.
+   */
   ok: boolean;
 
   /**
@@ -119,8 +124,8 @@ export interface InvocationRequest {
   /** Names from provider.capabilities.builtInTools. */
   tools?: string[];
 
-  /** Already converted from Zod via zod-to-json-schema. */
-  jsonSchema?: object;
+  /** Already converted from Zod via zod-to-json-schema. Keys are schema property names. */
+  jsonSchema?: Record<string, unknown>;
 
   maxBudgetUsd?: number;
   timeoutMs?: number;
@@ -164,10 +169,11 @@ export interface InvocationResponse {
 
   /**
    * API-equivalent cost estimate in USD.
+   * Omit when the provider has no reliable estimate (subscription-billed runs).
    * For subscription-billed providers this reflects a compute-equivalent
    * estimate, not a charge; the Runner surfaces it as informational only.
    */
-  costUsd: number;
+  costUsd?: number;
 
   durationMs: number;
   numTurns: number;
@@ -195,8 +201,16 @@ export interface InvocationResponse {
 export type InvocationEvent =
   | { type: 'turn.start'; turn: number }
   | { type: 'text.delta'; delta: string }
-  | { type: 'tool.call'; name: string; input?: unknown }
-  | { type: 'tool.result'; name: string; ok: boolean }
+  /**
+   * `toolUseId` pairs a `tool.call` event with its later `tool.result`.
+   * Providers populate this when the SDK exposes a correlation id.
+   */
+  | { type: 'tool.call'; name: string; input?: unknown; toolUseId?: string }
+  /**
+   * `toolUseId` pairs a `tool.call` event with its later `tool.result`.
+   * Providers populate this when the SDK exposes a correlation id.
+   */
+  | { type: 'tool.result'; name: string; ok: boolean; toolUseId?: string }
   | { type: 'usage'; usage: Partial<NormalizedUsage> }
   | { type: 'turn.end'; turn: number };
 
