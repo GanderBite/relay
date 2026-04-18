@@ -2,13 +2,22 @@ import { z } from './zod.js';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
-  FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
-  STEP_FAILURE: 'relay_STEP_FAILURE',
   CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
+  FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
+  HANDOFF_IO: 'relay_HANDOFF_IO',
+  HANDOFF_NOT_FOUND: 'relay_HANDOFF_NOT_FOUND',
   HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
-  TIMEOUT: 'relay_TIMEOUT',
+  HANDOFF_WRITE: 'relay_HANDOFF_WRITE',
+  METRICS_WRITE: 'relay_METRICS_WRITE',
   PROVIDER_AUTH: 'relay_PROVIDER_AUTH',
   PROVIDER_CAPABILITY: 'relay_PROVIDER_CAPABILITY',
+  STATE_CORRUPT: 'relay_STATE_CORRUPT',
+  STATE_NOT_FOUND: 'relay_STATE_NOT_FOUND',
+  STATE_TRANSITION: 'relay_STATE_TRANSITION',
+  STATE_VERSION_MISMATCH: 'relay_STATE_VERSION_MISMATCH',
+  STATE_WRITE: 'relay_STATE_WRITE',
+  STEP_FAILURE: 'relay_STEP_FAILURE',
+  TIMEOUT: 'relay_TIMEOUT',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -111,6 +120,153 @@ export class HandoffSchemaError extends PipelineError {
     this.name = 'HandoffSchemaError';
     this.handoffId = handoffId;
     this.issues = issues;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised during handoff read or list operations when the underlying filesystem
+ * call fails for a reason other than ENOENT or a schema validation failure.
+ */
+export class HandoffIoError extends PipelineError {
+  readonly handoffId: string | undefined;
+
+  constructor(message: string, handoffId: string | undefined, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.HANDOFF_IO, details);
+    this.name = 'HandoffIoError';
+    this.handoffId = handoffId;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when a handoff file is expected to exist but is absent on disk.
+ */
+export class HandoffNotFoundError extends PipelineError {
+  readonly handoffId: string;
+
+  constructor(message: string, handoffId: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.HANDOFF_NOT_FOUND, details);
+    this.name = 'HandoffNotFoundError';
+    this.handoffId = handoffId;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when a handoff write (atomic or otherwise) fails with a filesystem error.
+ */
+export class HandoffWriteError extends PipelineError {
+  readonly handoffId: string;
+
+  constructor(message: string, handoffId: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.HANDOFF_WRITE, details);
+    this.name = 'HandoffWriteError';
+    this.handoffId = handoffId;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when CostTracker fails to persist metrics.json via an atomic write.
+ */
+export class MetricsWriteError extends PipelineError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.METRICS_WRITE, details);
+    this.name = 'MetricsWriteError';
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when state.json exists but cannot be parsed or does not match the
+ * expected shape. Indicates a corrupt or manually-edited state file.
+ */
+export class StateCorruptError extends PipelineError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.STATE_CORRUPT, details);
+    this.name = 'StateCorruptError';
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when state.json is absent in the run directory, indicating a fresh run
+ * rather than a resumable one.
+ */
+export class StateNotFoundError extends PipelineError {
+  readonly runDir: string;
+
+  constructor(message: string, runDir: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.STATE_NOT_FOUND, details);
+    this.name = 'StateNotFoundError';
+    this.runDir = runDir;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when the StateMachine is asked to apply an illegal transition or
+ * references a step id that does not exist in the loaded flow.
+ */
+export class StateTransitionError extends PipelineError {
+  readonly stepId: string | undefined;
+
+  constructor(message: string, stepId: string | undefined, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.STATE_TRANSITION, details);
+    this.name = 'StateTransitionError';
+    this.stepId = stepId;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when persisted state was written by a different flow name or version
+ * than the one currently loaded, making safe resumption impossible.
+ */
+export class StateVersionMismatchError extends PipelineError {
+  readonly expected: { flowName: string; flowVersion: string };
+  readonly actual: { flowName: string; flowVersion: string };
+
+  constructor(
+    message: string,
+    expected: { flowName: string; flowVersion: string },
+    actual: { flowName: string; flowVersion: string },
+    details?: Record<string, unknown>,
+  ) {
+    super(message, ERROR_CODES.STATE_VERSION_MISMATCH, details);
+    this.name = 'StateVersionMismatchError';
+    this.expected = expected;
+    this.actual = actual;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Raised when StateMachine fails to persist state.json via an atomic write.
+ */
+export class StateWriteError extends PipelineError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.STATE_WRITE, details);
+    this.name = 'StateWriteError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
