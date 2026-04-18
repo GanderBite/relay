@@ -99,3 +99,12 @@ export { z } from './zod.js';
 // ClaudeProvider
 export { ClaudeProvider, registerDefaultProviders } from './providers/claude/index.js';
 export type { ClaudeProviderOptions } from './providers/claude/index.js';
+
+// Runner — orchestrates flow execution
+export { createRunner, Runner } from './runner/index.js';
+export type {
+  RunnerOptions,
+  RunOptions,
+  RunResult,
+  StepExecutionContext,
+} from './runner/index.js';
