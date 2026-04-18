@@ -1,4 +1,4 @@
-import type { z } from './zod.js';
+import { z } from './zod.js';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
@@ -164,6 +164,10 @@ export class ProviderAuthError extends PipelineError {
  * provider does not support. Extends `FlowDefinitionError` so the CLI maps it
  * to exit code 2.
  */
+export function toFlowDefError(err: z.core.$ZodError, prefix: string): FlowDefinitionError {
+  return new FlowDefinitionError(`${prefix}: ${z.prettifyError(err)}`);
+}
+
 export class ProviderCapabilityError extends FlowDefinitionError {
   readonly providerName: string;
   readonly capability: string;

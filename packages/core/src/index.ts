@@ -1,6 +1,32 @@
 // @relay/core -- library entry.
 
+// Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
+export {
+  err,
+  errAsync,
+  fromPromise,
+  fromSafePromise,
+  fromThrowable,
+  ok,
+  okAsync,
+  type Result,
+  type ResultAsync,
+} from 'neverthrow';
+
 export type { ErrorCode } from './errors.js';
+// Error hierarchy
+export {
+  ClaudeAuthError,
+  ERROR_CODES,
+  FlowDefinitionError,
+  HandoffSchemaError,
+  PipelineError,
+  ProviderAuthError,
+  ProviderCapabilityError,
+  StepFailureError,
+  TimeoutError,
+  toFlowDefError,
+} from './errors.js';
 // Flow compiler
 export { defineFlow } from './flow/define.js';
 // Step namespace and step spec types
@@ -24,18 +50,6 @@ export type {
   StepStatus,
   TerminalStepSpec,
 } from './flow/types.js';
-// Error hierarchy
-export {
-  ClaudeAuthError,
-  ERROR_CODES,
-  FlowDefinitionError,
-  HandoffSchemaError,
-  PipelineError,
-  ProviderAuthError,
-  ProviderCapabilityError,
-  StepFailureError,
-  TimeoutError,
-} from './errors.js';
 // Logger — exports both the pino instance (value) and its type
 export { Logger } from './logger.js';
 // Provider and invocation types

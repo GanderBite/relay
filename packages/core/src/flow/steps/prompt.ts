@@ -1,57 +1,18 @@
-import { z } from '../../zod.js';
-import { FlowDefinitionError } from '../../errors.js';
+import { err, ok, type Result } from 'neverthrow';
+import { toFlowDefError, type FlowDefinitionError } from '../../errors.js';
+import { promptStepSpecSchema } from '../schemas.js';
 import type { PromptStep, PromptStepSpec } from '../types.js';
 
-const ALLOWED_OUTPUT_KEYS = new Set(['handoff', 'artifact', 'schema']);
+export function promptStep(spec: PromptStepSpec): Result<PromptStep, FlowDefinitionError> {
+  const result = promptStepSpecSchema.safeParse(spec);
+  if (!result.success) return err(toFlowDefError(result.error, 'invalid prompt step'));
 
-function validateOutput(output: PromptStepSpec['output']): void {
-  const keys = Object.keys(output);
-  const unknown = keys.filter(k => !ALLOWED_OUTPUT_KEYS.has(k));
-  if (unknown.length > 0) {
-    throw new FlowDefinitionError(
-      `prompt step output has unknown keys: ${unknown.join(', ')}`,
-    );
-  }
-
-  const hasHandoff = 'handoff' in output;
-  const hasArtifact = 'artifact' in output;
-
-  if (!hasHandoff && !hasArtifact) {
-    throw new FlowDefinitionError(
-      'prompt step output must declare at least one of "handoff" or "artifact"',
-    );
-  }
-
-  if ('schema' in output && output.schema !== undefined) {
-    if (!(output.schema instanceof z.ZodType)) {
-      throw new FlowDefinitionError(
-        'prompt step output.schema must be a Zod schema when provided',
-      );
-    }
-  }
-}
-
-export function promptStep(spec: PromptStepSpec): PromptStep {
-  if (!spec.promptFile || spec.promptFile.trim() === '') {
-    throw new FlowDefinitionError(
-      'prompt step requires a non-empty "promptFile"',
-    );
-  }
-
-  if (spec.maxRetries !== undefined && spec.maxRetries < 0) {
-    throw new FlowDefinitionError(
-      `prompt step "maxRetries" must be >= 0, got ${spec.maxRetries}`,
-    );
-  }
-
-  validateOutput(spec.output);
-
-  return {
+  return ok({
     ...spec,
     kind: 'prompt',
     id: '',
     maxRetries: spec.maxRetries ?? 0,
     timeoutMs: spec.timeoutMs ?? 600_000,
     onFail: spec.onFail ?? 'abort',
-  };
+  });
 }

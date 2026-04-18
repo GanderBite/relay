@@ -1,19 +1,16 @@
-import { FlowDefinitionError } from '../../errors.js';
+import { err, ok, type Result } from 'neverthrow';
+import { toFlowDefError, type FlowDefinitionError } from '../../errors.js';
+import { terminalStepSpecSchema } from '../schemas.js';
 import type { TerminalStep, TerminalStepSpec } from '../types.js';
 
-export function terminalStep(spec: TerminalStepSpec): TerminalStep {
-  if (spec.exitCode !== undefined) {
-    if (!Number.isInteger(spec.exitCode) || spec.exitCode < 0 || spec.exitCode > 255) {
-      throw new FlowDefinitionError(
-        `terminal step "exitCode" must be a non-negative integer <= 255, got ${spec.exitCode}`,
-      );
-    }
-  }
+export function terminalStep(spec: TerminalStepSpec): Result<TerminalStep, FlowDefinitionError> {
+  const result = terminalStepSpecSchema.safeParse(spec);
+  if (!result.success) return err(toFlowDefError(result.error, 'invalid terminal step'));
 
-  return {
+  return ok({
     ...spec,
     kind: 'terminal',
     id: '',
     exitCode: spec.exitCode ?? 0,
-  };
+  });
 }

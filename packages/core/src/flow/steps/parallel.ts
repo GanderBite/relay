@@ -1,32 +1,17 @@
-import { FlowDefinitionError } from '../../errors.js';
+import { err, ok, type Result } from 'neverthrow';
+import { toFlowDefError, type FlowDefinitionError } from '../../errors.js';
+import { parallelStepSpecSchema } from '../schemas.js';
 import type { ParallelStep, ParallelStepSpec } from '../types.js';
 
-export function parallelStep(spec: ParallelStepSpec): ParallelStep {
-  if (!Array.isArray(spec.branches) || spec.branches.length === 0) {
-    throw new FlowDefinitionError(
-      'parallel step "branches" must be a non-empty array',
-    );
-  }
+export function parallelStep(spec: ParallelStepSpec): Result<ParallelStep, FlowDefinitionError> {
+  const result = parallelStepSpecSchema.safeParse(spec);
+  if (!result.success) return err(toFlowDefError(result.error, 'invalid parallel step'));
 
-  for (const branch of spec.branches) {
-    if (typeof branch !== 'string' || branch.trim() === '') {
-      throw new FlowDefinitionError(
-        'parallel step "branches" must contain only non-empty strings',
-      );
-    }
-  }
-
-  if (spec.maxRetries !== undefined && spec.maxRetries < 0) {
-    throw new FlowDefinitionError(
-      `parallel step "maxRetries" must be >= 0, got ${spec.maxRetries}`,
-    );
-  }
-
-  return {
+  return ok({
     ...spec,
     kind: 'parallel',
     id: '',
     maxRetries: spec.maxRetries ?? 0,
     onFail: spec.onFail ?? 'abort',
-  };
+  });
 }
