@@ -126,7 +126,9 @@ export class CostTracker {
     if (writeResult.isErr()) {
       return err(
         new MetricsWriteError(`failed to write metrics.json: ${writeResult.error.message}`, {
-          cause: writeResult.error.message,
+          cause: writeResult.error,
+          errno: writeResult.error.errno,
+          path: writeResult.error.path,
         }),
       );
     }

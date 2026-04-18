@@ -24,6 +24,7 @@ export {
 export type { ErrorCode } from './errors.js';
 // Error hierarchy
 export {
+  AtomicWriteError,
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
@@ -69,8 +70,9 @@ export type {
   StepStatus,
   TerminalStepSpec,
 } from './flow/types.js';
-// Logger — exports both the pino instance (value) and its type
-export { Logger } from './logger.js';
+// Logger — factory that returns a scoped pino instance with flowName/runId bindings.
+export { createLogger } from './logger.js';
+export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
 // Provider registry
 export { defaultRegistry, ProviderRegistry } from './providers/registry.js';
 // Provider and invocation types

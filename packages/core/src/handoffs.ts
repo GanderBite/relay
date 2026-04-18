@@ -163,7 +163,9 @@ export class HandoffStore {
     if (writeResult.isErr()) {
       return err(
         new HandoffWriteError(`failed to write handoff "${id}"`, id, {
-          cause: messageOf(writeResult.error),
+          cause: writeResult.error,
+          errno: writeResult.error.errno,
+          path: writeResult.error.path,
         }),
       );
     }

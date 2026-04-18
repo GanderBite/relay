@@ -2,6 +2,7 @@ import { z } from './zod.js';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
+  ATOMIC_WRITE: 'relay_ATOMIC_WRITE',
   CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
   FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
   HANDOFF_IO: 'relay_HANDOFF_IO',
@@ -27,10 +28,10 @@ export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
  * Carries a stable machine-readable `code` and optional structured `details`.
  */
 export class PipelineError extends Error {
-  readonly code: string;
+  readonly code: ErrorCode;
   readonly details: Record<string, unknown> | undefined;
 
-  constructor(message: string, code: string, details?: Record<string, unknown>) {
+  constructor(message: string, code: ErrorCode, details?: Record<string, unknown>) {
     super(message);
     this.name = 'PipelineError';
     this.code = code;
@@ -53,7 +54,7 @@ export class FlowDefinitionError extends PipelineError {
     message: string,
     details?: Record<string, unknown>,
     /** Override the code for subclasses that extend FlowDefinitionError. */
-    code: string = ERROR_CODES.FLOW_DEFINITION,
+    code: ErrorCode = ERROR_CODES.FLOW_DEFINITION,
   ) {
     super(message, code, details);
     this.name = 'FlowDefinitionError';
@@ -88,6 +89,9 @@ export class StepFailureError extends PipelineError {
  * Thrown when the environment is unsafe to spawn Claude — either
  * `ANTHROPIC_API_KEY` is present without an explicit opt-in, or the
  * subscription token is absent. Checked before any subprocess is launched.
+ *
+ * This is the subscription-billing safety guard specific to the Claude backend.
+ * Generic provider auth misconfiguration uses `ProviderAuthError` instead.
  *
  * CLI exit code: 3
  */
@@ -301,6 +305,11 @@ export class TimeoutError extends PipelineError {
 /**
  * Thrown by a provider's `authenticate()` method when credentials are missing
  * or invalid for that provider.
+ *
+ * Maps to CLI exit code 6 (provider auth / environment error). Distinct from
+ * `ClaudeAuthError` (exit 3) — that one is the subscription-billing safety
+ * guard for the specific Claude backend; `ProviderAuthError` is the generic
+ * fall-through for every other provider's auth misconfiguration.
  */
 export class ProviderAuthError extends PipelineError {
   readonly providerName: string;
@@ -316,14 +325,41 @@ export class ProviderAuthError extends PipelineError {
 }
 
 /**
- * Thrown at flow-load time when a step requests a capability the configured
- * provider does not support. Extends `FlowDefinitionError` so the CLI maps it
- * to exit code 2.
+ * Thrown (via Result.err) when atomicWriteText / atomicWriteJson fails
+ * irrecoverably. Carries the underlying Node errno (EXDEV, EACCES, etc.)
+ * so callers can discriminate transient-vs-terminal cases.
+ * Maps to CLI exit code 7 (I/O error).
  */
+export class AtomicWriteError extends PipelineError {
+  readonly path: string;
+  readonly errno: string | undefined;
+
+  constructor(
+    message: string,
+    path: string,
+    errno: string | undefined,
+    details?: Record<string, unknown>,
+  ) {
+    super(message, ERROR_CODES.ATOMIC_WRITE, details);
+    this.name = 'AtomicWriteError';
+    this.path = path;
+    this.errno = errno;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/** Wrap a Zod parse error into a FlowDefinitionError with a prettified message. */
 export function toFlowDefError(err: z.core.$ZodError, prefix: string): FlowDefinitionError {
   return new FlowDefinitionError(`${prefix}: ${z.prettifyError(err)}`);
 }
 
+/**
+ * Thrown at flow-load time when a step requests a capability the configured
+ * provider does not support. Extends `FlowDefinitionError` so the CLI maps it
+ * to exit code 2.
+ */
 export class ProviderCapabilityError extends FlowDefinitionError {
   readonly providerName: string;
   readonly capability: string;
