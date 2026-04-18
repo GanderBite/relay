@@ -11,12 +11,3 @@ export const step = {
   parallel: parallelStep,
   terminal: terminalStep,
 } as const;
-
-export type {
-  BranchStepSpec,
-  ParallelStepSpec,
-  PromptStepOutput,
-  PromptStepSpec,
-  ScriptStepSpec,
-  TerminalStepSpec,
-} from './types.js';

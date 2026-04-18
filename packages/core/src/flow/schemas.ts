@@ -1,77 +1,123 @@
 import { z } from '../zod.js';
+import type {
+  BranchStepSpec,
+  ParallelStepSpec,
+  PromptStepOutput,
+  PromptStepSpec,
+  ScriptStepSpec,
+  TerminalStepSpec,
+} from './types.js';
 
-const stepId = z.string().min(1);
-const stepIdList = z.array(stepId);
-const onExitKey = z.union([z.literal('default'), z.string().regex(/^\d+$/)]);
-const onExitValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
-const onFailValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
-const runCommand = z.union([stepId, z.array(stepId).min(1)]);
+// Primitive building blocks — semantically distinct even though both require
+// a non-empty string today. Keep them separate so tightening one does not
+// silently affect the other.
+const nonEmptyString = z.string().min(1);
+const stepId = nonEmptyString;
+const runCommand = z.union([nonEmptyString, z.array(nonEmptyString).min(1)]);
+
 const zodSchemaValue = z.custom<z.ZodType>((v) => v instanceof z.ZodType, {
   error: 'expected a Zod schema (instance of z.ZodType)',
 });
 
-const stepBase = {
-  dependsOn: stepIdList.optional(),
-  onFail: onFailValue.optional(),
-  maxRetries: z.number().int().nonnegative().optional(),
-  timeoutMs: z.number().int().nonnegative().optional(),
-  contextFrom: stepIdList.optional(),
-};
+// onExit key: either the literal "default" or a numeric exit-code string.
+const onExitKey = z.union([z.literal('default'), z.string().regex(/^\d+$/)]);
 
-export const promptOutputSchema = z
-  .strictObject({
-    handoff: stepId.optional(),
-    artifact: stepId.optional(),
+// onExit/onFail values shared by prompt, script, and branch steps.
+const onExitValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
+const onFailValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
+
+// Output variant for prompt steps. Modelled as an explicit union of the three
+// shapes the spec enumerates — no single-object-with-refine shortcut that
+// could admit a fourth combination.
+export const promptOutputSchema: z.ZodType<PromptStepOutput> = z.union([
+  z.strictObject({
+    handoff: nonEmptyString,
     schema: zodSchemaValue.optional(),
-  })
-  .refine((o) => o.handoff !== undefined || o.artifact !== undefined, {
-    error: 'prompt step output must declare at least one of "handoff" or "artifact"',
-  });
+  }),
+  z.strictObject({
+    artifact: nonEmptyString,
+  }),
+  z.strictObject({
+    handoff: nonEmptyString,
+    artifact: nonEmptyString,
+    schema: zodSchemaValue.optional(),
+  }),
+]);
 
-export const promptStepSpecSchema = z.object({
-  ...stepBase,
-  promptFile: stepId,
-  output: promptOutputSchema,
+export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('prompt'),
+  promptFile: nonEmptyString,
+  dependsOn: z.array(stepId).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
   tools: z.array(z.string()).optional(),
   systemPrompt: z.string().optional(),
+  contextFrom: z.array(stepId).optional(),
+  output: promptOutputSchema,
+  maxRetries: z.number().int().nonnegative().optional(),
   maxBudgetUsd: z.number().optional(),
+  timeoutMs: z.number().int().nonnegative().optional(),
+  onFail: onFailValue.optional(),
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const scriptStepSpecSchema = z.object({
-  ...stepBase,
+export const scriptStepSpecSchema: z.ZodType<ScriptStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('script'),
   run: runCommand,
-  cwd: z.string().optional(),
+  dependsOn: z.array(stepId).optional(),
   env: z.record(z.string(), z.string()).optional(),
-  output: z.object({ artifact: stepId.optional() }).optional(),
+  cwd: z.string().optional(),
+  output: z.strictObject({ artifact: stepId.optional() }).optional(),
   onExit: z.record(onExitKey, onExitValue).optional(),
+  maxRetries: z.number().int().nonnegative().optional(),
+  timeoutMs: z.number().int().nonnegative().optional(),
+  onFail: onFailValue.optional(),
 });
 
-export const branchStepSpecSchema = z.object({
-  ...stepBase,
+export const branchStepSpecSchema: z.ZodType<BranchStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('branch'),
   run: runCommand,
-  cwd: z.string().optional(),
+  dependsOn: z.array(stepId).optional(),
   env: z.record(z.string(), z.string()).optional(),
-  onExit: z.record(onExitKey, onExitValue).refine((o) => Object.keys(o).length > 0, {
-    error: 'branch step requires a non-empty `onExit` map',
-  }),
+  cwd: z.string().optional(),
+  onExit: z.record(onExitKey, onExitValue).refine(
+    (o) => Object.keys(o).length > 0,
+    { message: 'branch step requires a non-empty `onExit` map' },
+  ),
+  maxRetries: z.number().int().nonnegative().optional(),
+  timeoutMs: z.number().int().nonnegative().optional(),
+  onFail: onFailValue.optional(),
 });
 
-export const parallelStepSpecSchema = z.object({
-  ...stepBase,
-  branches: z.array(stepId).min(1),
-  onAllComplete: stepId.optional(),
-});
+// Parallel steps do not support retry, timeout, context injection, or
+// `onFail: 'continue'`. The onFail union matches the spec exactly.
+export const parallelStepSpecSchema: z.ZodType<ParallelStepSpec> = z
+  .strictObject({
+    id: z.string(),
+    kind: z.literal('parallel'),
+    branches: z.array(stepId).min(1),
+    dependsOn: z.array(stepId).optional(),
+    onAllComplete: stepId.optional(),
+    onFail: z.union([z.literal('abort'), stepId]).optional(),
+  })
+  .refine(
+    (spec) => new Set(spec.branches).size === spec.branches.length,
+    { message: 'parallel branches must be unique', path: ['branches'] },
+  );
 
-export const terminalStepSpecSchema = z.object({
-  ...stepBase,
+// Terminal steps end the flow — no retry, timeout, output, or onFail.
+export const terminalStepSpecSchema: z.ZodType<TerminalStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('terminal'),
+  dependsOn: z.array(stepId).optional(),
   message: z.string().optional(),
   exitCode: z.number().int().min(0).max(255).optional(),
 });
 
-export const flowSpecInputSchema = z.object({
+export const flowSpecInputSchema = z.strictObject({
   name: z
     .string()
     .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, { error: 'flow name must be kebab-case' }),
@@ -82,7 +128,7 @@ export const flowSpecInputSchema = z.object({
   defaultProvider: z.string().optional(),
   input: zodSchemaValue,
   steps: z.record(stepId, z.unknown()).refine((o) => Object.keys(o).length > 0, {
-    error: 'flow "steps" must be a non-empty object',
+    message: 'flow "steps" must be a non-empty object',
   }),
   start: stepId.optional(),
 });

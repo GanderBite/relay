@@ -2,12 +2,17 @@ import type { z } from '../zod.js';
 
 export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal';
 
+/**
+ * The minimum fields shared by every step type.
+ * Each per-kind spec explicitly opts in to the additional fields (retry,
+ * timeout, contextFrom, onFail, etc.) that apply to it — nothing is silently
+ * inherited here.
+ */
 export interface StepBase {
+  /** The step's stable identifier. Set by the flow compiler, not the builder. */
+  id: string;
+  /** Ids of steps that must succeed before this one runs. */
   dependsOn?: string[];
-  onFail?: 'abort' | 'continue' | string;
-  maxRetries?: number;
-  timeoutMs?: number;
-  contextFrom?: string[];
 }
 
 export type PromptStepOutput =
@@ -15,44 +20,81 @@ export type PromptStepOutput =
   | { artifact: string }
   | { handoff: string; artifact: string; schema?: z.ZodType };
 
+/**
+ * Specification for a step that invokes a Claude prompt via a provider.
+ * Supports retry, timeout, budget cap, context injection, and structured
+ * output routing (handoff and/or artifact).
+ */
 export interface PromptStepSpec extends StepBase {
+  kind: 'prompt';
   promptFile: string;
-  output: PromptStepOutput;
   provider?: string;
   model?: string;
   tools?: string[];
   systemPrompt?: string;
+  contextFrom?: string[];
+  output: PromptStepOutput;
+  maxRetries?: number;
   maxBudgetUsd?: number;
+  timeoutMs?: number;
+  onFail?: 'abort' | 'continue' | string;
   providerOptions?: Record<string, unknown>;
 }
 
+/**
+ * Specification for a step that runs a shell command or script.
+ * Supports retry, timeout, exit-code routing, and optional artifact output.
+ */
 export interface ScriptStepSpec extends StepBase {
+  kind: 'script';
   run: string | string[];
-  cwd?: string;
   env?: Record<string, string>;
+  cwd?: string;
   output?: { artifact?: string };
   onExit?: Record<string, 'abort' | 'continue' | string>;
+  maxRetries?: number;
+  timeoutMs?: number;
+  onFail?: 'abort' | 'continue' | string;
 }
 
-export type BranchStepSpec = Omit<ScriptStepSpec, 'output'> & {
+/**
+ * Specification for a step that runs a script and routes control flow based
+ * on its exit code. Shares all ScriptStepSpec fields except `output` (branch
+ * steps produce no artifact or handoff) and requires a non-empty `onExit` map.
+ */
+export interface BranchStepSpec extends Omit<ScriptStepSpec, 'output' | 'kind'> {
+  kind: 'branch';
   onExit: Record<string, 'abort' | 'continue' | string>;
-};
+}
 
+/**
+ * Specification for a step that fans out to multiple named sub-steps and
+ * waits for all of them. Per spec, parallel steps do not support retry,
+ * timeout, or context injection. `onFail` is limited to `'abort'` or a
+ * step id — `'continue'` is not a valid option for a parallel step.
+ */
 export interface ParallelStepSpec extends StepBase {
+  kind: 'parallel';
   branches: string[];
   onAllComplete?: string;
+  onFail?: 'abort' | string;
 }
 
+/**
+ * Specification for a terminal step that ends the flow with an optional
+ * message and exit code. Terminal steps have no retry, timeout, or output.
+ */
 export interface TerminalStepSpec extends StepBase {
+  kind: 'terminal';
   message?: string;
   exitCode?: number;
 }
 
-export type PromptStep = PromptStepSpec & { kind: 'prompt'; id: string };
-export type ScriptStep = ScriptStepSpec & { kind: 'script'; id: string };
-export type BranchStep = BranchStepSpec & { kind: 'branch'; id: string };
-export type ParallelStep = ParallelStepSpec & { kind: 'parallel'; id: string };
-export type TerminalStep = TerminalStepSpec & { kind: 'terminal'; id: string };
+export type PromptStep = PromptStepSpec & { id: string };
+export type ScriptStep = ScriptStepSpec & { id: string };
+export type BranchStep = BranchStepSpec & { id: string };
+export type ParallelStep = ParallelStepSpec & { id: string };
+export type TerminalStep = TerminalStepSpec & { id: string };
 
 export type Step = PromptStep | ScriptStep | BranchStep | ParallelStep | TerminalStep;
 

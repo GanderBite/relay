@@ -45,6 +45,8 @@ export {
   TimeoutError,
   toFlowDefError,
 } from './errors.js';
+// Constants
+export { GITHUB_ISSUES_URL, GITHUB_URL } from './constants.js';
 // Flow compiler
 export { defineFlow } from './flow/define.js';
 // Handoff persistence
