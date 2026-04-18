@@ -13,10 +13,7 @@ export function atomicWriteJson(path: string, value: unknown): ResultAsync<void,
 export function atomicWriteText(path: string, data: string): ResultAsync<void, Error> {
   const tempPath = `${path}.tmp-${randomUUID()}`;
 
-  const writeAndRename = ResultAsync.fromPromise(
-    mkdir(dirname(path), { recursive: true }),
-    toErr,
-  )
+  const writeAndRename = ResultAsync.fromPromise(mkdir(dirname(path), { recursive: true }), toErr)
     .andThen(() => ResultAsync.fromPromise(writeFile(tempPath, data, { encoding: 'utf8' }), toErr))
     .andThen(() => ResultAsync.fromPromise(rename(tempPath, path), toErr));
 
