@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import { toFlowDefError, type FlowDefinitionError } from '../../errors.js';
+import { type FlowDefinitionError, toFlowDefError } from '../../errors.js';
 import { promptStepSpecSchema } from '../schemas.js';
 import type { PromptStep, PromptStepSpec } from '../types.js';
 

@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import { toFlowDefError, type FlowDefinitionError } from '../../errors.js';
+import { type FlowDefinitionError, toFlowDefError } from '../../errors.js';
 import { terminalStepSpecSchema } from '../schemas.js';
 import type { TerminalStep, TerminalStepSpec } from '../types.js';
 
