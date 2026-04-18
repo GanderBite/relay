@@ -1,5 +1,9 @@
 // @relay/core -- library entry.
 
+// Context injection
+export { assemblePrompt, loadHandoffValues } from './context-inject.js';
+export type { AssemblePromptArgs } from './context-inject.js';
+
 // Cost tracking
 export { CostTracker } from './cost.js';
 export type { StepMetrics } from './cost.js';
