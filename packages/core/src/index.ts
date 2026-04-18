@@ -82,3 +82,7 @@ export { StateMachine, loadState, verifyCompatibility } from './state.js';
 export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 // Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly
 export { z } from './zod.js';
+
+// ClaudeProvider
+export { ClaudeProvider } from './providers/claude/index.js';
+export type { ClaudeProviderOptions } from './providers/claude/index.js';
