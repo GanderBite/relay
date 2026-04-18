@@ -4,9 +4,12 @@ import { buildGraph } from './graph.js';
 import { flowSpecInputSchema } from './schemas.js';
 import type { Flow, FlowSpec, Step } from './types.js';
 
-export function defineFlow<TInput>(spec: FlowSpec<TInput>): Result<Flow<TInput>, FlowDefinitionError> {
+export function defineFlow<TInput>(
+  spec: FlowSpec<TInput>,
+): Result<Flow<TInput>, FlowDefinitionError> {
   const parseResult = flowSpecInputSchema.safeParse(spec);
-  if (!parseResult.success) return err(toFlowDefError(parseResult.error, 'invalid flow definition'));
+  if (!parseResult.success)
+    return err(toFlowDefError(parseResult.error, 'invalid flow definition'));
 
   const specSteps = spec.steps;
 

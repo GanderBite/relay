@@ -5,7 +5,10 @@ import type { FlowGraph, Step } from './types.js';
 
 export type { FlowGraph } from './types.js';
 
-export function buildGraph(steps: Record<string, Step>, start?: string): Result<FlowGraph, FlowDefinitionError> {
+export function buildGraph(
+  steps: Record<string, Step>,
+  start?: string,
+): Result<FlowGraph, FlowDefinitionError> {
   const keys = Object.keys(steps);
 
   if (keys.length === 0) {
@@ -19,7 +22,9 @@ export function buildGraph(steps: Record<string, Step>, start?: string): Result<
       return err(new FlowDefinitionError(`step "${key}" is undefined`));
     }
     if (step.id !== key && step.id !== '') {
-      return err(new FlowDefinitionError(`step key "${key}" does not match injected id "${step.id}"`));
+      return err(
+        new FlowDefinitionError(`step key "${key}" does not match injected id "${step.id}"`),
+      );
     }
     stepMap.set(key, step);
   }
