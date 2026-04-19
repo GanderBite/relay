@@ -660,6 +660,12 @@ export class Runner {
       abortController.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    // Everything past the registration runs inside a try/finally so the abort
+    // listener is removed even when the walker throws before reaching a normal
+    // return (e.g. a state.json save failure). Without this guard, listeners
+    // leak onto the shared AbortController and node eventually warns with
+    // MaxListenersExceededWarning on long or frequently-failing runs.
+    try {
     // Named handler + finally cleanup so each raceAbort call removes its own
     // listener on the happy path. Without removal, listeners accumulate on the
     // shared AbortController for the lifetime of the run — node prints a
@@ -977,10 +983,11 @@ export class Runner {
       if (!runFailed && !abortController.signal.aborted) enqueueReady();
     }
 
-    abortController.signal.removeEventListener('abort', onAbort);
-
     if (abortController.signal.aborted) return 'aborted';
     return runFailed ? 'failed' : 'succeeded';
+    } finally {
+      abortController.signal.removeEventListener('abort', onAbort);
+    }
   }
 }
 
