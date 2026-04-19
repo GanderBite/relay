@@ -1,0 +1,16 @@
+{
+  "name": "@relay/smoke-mini-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal two-step flow for smoke testing relay run end-to-end",
+  "main": "dist/flow.js",
+  "scripts": {
+    "build": "tsc --outDir dist --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck"
+  },
+  "relay": {
+    "displayName": "smoke-mini",
+    "estimatedCostUsd": { "min": 0.001, "max": 0.01 },
+    "estimatedDurationMin": { "min": 1, "max": 2 }
+  }
+}
