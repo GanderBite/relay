@@ -27,8 +27,10 @@ describe('withRetry backoff + jitter', () => {
 
     // Two retries means two backoff waits. With base=100 and factor=2, the
     // minimum possible pause is 100ms (attempt 1 -> 2) + 200ms (attempt 2 -> 3)
-    // = 300ms. Jitter can only extend, never shorten.
+    // = 300ms. Jitter can only extend, never shorten. Upper bound guards
+    // against regressions that accidentally blow up the retry window.
     expect(elapsed).toBeGreaterThanOrEqual(300);
+    expect(elapsed).toBeLessThan(2000);
     expect(fn).toHaveBeenCalledTimes(3);
   });
 
@@ -44,6 +46,7 @@ describe('withRetry backoff + jitter', () => {
 
     expect(result).toBe('ok');
     expect(elapsed).toBeGreaterThanOrEqual(100);
+    expect(elapsed).toBeLessThan(1000);
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
@@ -106,7 +109,7 @@ describe('shouldRetry predicate', () => {
 });
 
 describe('withRetry rate-limit backoff', () => {
-  it('honors retryAfterMs when present on ProviderRateLimitError', async () => {
+  it('retries ProviderRateLimitError using p-retry backoff regardless of retryAfterMs', async () => {
     const retryAfterMs = 250;
     const fn = vi.fn(async (attempt: number) => {
       if (attempt === 1) {
@@ -120,13 +123,17 @@ describe('withRetry rate-limit backoff', () => {
     const elapsed = Date.now() - start;
 
     expect(result).toBe('ok');
-    // The extra retry-after sleep runs before p-retry's own backoff, so the
-    // minimum total pause is retryAfterMs (250) + baseDelay (100) = 350ms.
-    expect(elapsed).toBeGreaterThanOrEqual(retryAfterMs);
+    // p-retry is the sole backoff source: attempt 1 -> 2 waits
+    // BASE_DELAY_MS * factor^0 = 100ms, with randomize=true multiplying by
+    // 1x-2x for a 100-200ms window. retryAfterMs is surfaced on the error
+    // for observability but is not honored at the retry layer, so the pause
+    // is bounded by p-retry's own schedule.
+    expect(elapsed).toBeGreaterThanOrEqual(100);
+    expect(elapsed).toBeLessThan(1500);
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it('uses a doubled base delay when retryAfterMs is absent', async () => {
+  it('retries ProviderRateLimitError when retryAfterMs is absent', async () => {
     const fn = vi.fn(async (attempt: number) => {
       if (attempt === 1) {
         throw new ProviderRateLimitError('rate limited', 'p', 's', 1, undefined);
@@ -139,10 +146,11 @@ describe('withRetry rate-limit backoff', () => {
     const elapsed = Date.now() - start;
 
     expect(result).toBe('ok');
-    // Vanilla backoff for attempt 1 is 100-200ms with randomize; the extra
-    // rate-limit delay adds another 100ms on top, so the minimum total pause
-    // is 100 (built-in) + 100 (extra) = 200ms.
-    expect(elapsed).toBeGreaterThanOrEqual(200);
+    // Same p-retry window as the retryAfterMs case: 100-200ms for attempt
+    // 1 -> 2. Upper bound guards against a regression that reintroduces an
+    // extra manual sleep on top of p-retry's schedule.
+    expect(elapsed).toBeGreaterThanOrEqual(100);
+    expect(elapsed).toBeLessThan(1500);
     expect(fn).toHaveBeenCalledTimes(2);
   });
 });

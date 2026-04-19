@@ -7,7 +7,6 @@ import {
   FlowDefinitionError,
   HandoffSchemaError,
   ProviderAuthError,
-  ProviderRateLimitError,
   TimeoutError,
 } from '../errors.js';
 
@@ -19,8 +18,9 @@ export interface WithRetryOptions {
 }
 
 /**
- * Base backoff for a vanilla retryable error. Doubled for rate-limit errors
- * without an explicit retry-after hint.
+ * Base backoff delay handed to p-retry as `minTimeout`. p-retry multiplies by
+ * `factor^(attemptNumber-1)` and, with `randomize: true`, applies a 1x-2x
+ * jitter multiplier on top.
  */
 const BASE_DELAY_MS = 100;
 
@@ -37,10 +37,6 @@ export function shouldRetry(err: unknown): boolean {
   return true;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Runs fn up to maxRetries+1 times total. TimeoutError and auth/definition
  * errors are never retried; other errors are retried with exponential backoff
@@ -50,8 +46,13 @@ function sleep(ms: number): Promise<void> {
  * because fn's signature carries no AbortSignal. The step-level abortSignal on
  * the Runner context is what actually stops in-flight work.
  *
- * ProviderRateLimitError honors `retryAfterMs` from the error if present; else
- * the next-attempt delay is doubled relative to the vanilla backoff.
+ * Backoff is delegated entirely to p-retry (exponential with jitter, starting
+ * at BASE_DELAY_MS). ProviderRateLimitError is retried like any other transient
+ * error; the `retryAfterMs` hint is surfaced on the error instance for
+ * observability but is not used to extend the pause, because p-retry v7 exposes
+ * no per-attempt delay override and layering a manual sleep on top would double
+ * the effective wait. If a provider needs to enforce a longer cool-down, raise
+ * BASE_DELAY_MS here rather than reintroducing a parallel sleep path.
  */
 export async function withRetry<T>(
   fn: (attempt: number) => Promise<T>,
@@ -79,7 +80,7 @@ export async function withRetry<T>(
     }
   };
 
-  const onFailedAttempt = async (context: RetryContext): Promise<void> => {
+  const onFailedAttempt = (context: RetryContext): void => {
     const { error, attemptNumber, retriesLeft } = context;
 
     if (!shouldRetry(error) || retriesLeft === 0) {
@@ -102,17 +103,6 @@ export async function withRetry<T>(
       },
       `retrying step "${stepId}" (attempt ${attemptNumber} failed)`,
     );
-
-    // Rate-limit-aware backoff: honor Retry-After if the provider supplied it,
-    // otherwise add an extra BASE_DELAY_MS*2^(attempt-1) on top of p-retry's
-    // backoff so the effective base delay is doubled for rate-limit errors.
-    if (error instanceof ProviderRateLimitError) {
-      if (typeof error.retryAfterMs === 'number' && error.retryAfterMs > 0) {
-        await sleep(error.retryAfterMs);
-      } else {
-        await sleep(BASE_DELAY_MS * 2 ** (attemptNumber - 1));
-      }
-    }
   };
 
   return pRetry(attempt, {
