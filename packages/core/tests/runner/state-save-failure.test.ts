@@ -135,6 +135,34 @@ describe('Runner — state save failure escalation', () => {
     expect(failStateSave.consumed).toBe(true);
   });
 
+  it('rejects with StateWriteError when the step startSave fails and does not hang', async () => {
+    // StateMachine.init() renames state.json once and the explicit initialSave
+    // renames it once more before the walker dispatches any step. failAfter=2
+    // lets those two pre-execution writes through and trips step-a's startSave
+    // — the first save that runs inside dispatchStep. The leak guarded here:
+    // if dispatchStep reserved an inflight slot before the save, the walker
+    // would hang waiting on a phantom in-flight count after the error drains
+    // into the completions queue. This test asserts the rejection surfaces
+    // within the vitest per-test timeout instead of requiring the fallback.
+    failStateSave.target = tmp;
+    failStateSave.failAfter = 2;
+
+    const provider = new MockProvider({ responses: { a: canned, b: canned } });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const runner = createRunner({
+      providers: registry,
+      defaultProvider: 'mock',
+      runDir: tmp,
+    });
+
+    const thrown = await runner.run(twoStepFlow(), {}).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(StateWriteError);
+    expect(failStateSave.consumed).toBe(true);
+  }, 5_000);
+
   it('rejects with StateWriteError when the walker completion save fails', async () => {
     // StateMachine.init() + the explicit initialSave after input validation
     // both rename state.json before any step dispatches. Then step-a's

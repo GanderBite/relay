@@ -9,9 +9,24 @@ import type { Logger } from '../../logger.js';
 export type StepResult = unknown;
 
 /**
+ * Status snapshot for a branch as seen by the parallel executor. The executor
+ * consults this before dispatching to avoid re-running a branch that already
+ * succeeded on a prior attempt of the parent parallel step.
+ */
+export type BranchStatusSnapshot =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped'
+  | 'unknown';
+
+/**
  * Minimum context required by the parallel executor. The `dispatch` callback
  * is the only coupling to the Runner — it handles state updates, retries, and
- * the actual step logic for each branch.
+ * the actual step logic for each branch. `getBranchStatus` and
+ * `getBranchResult` let the executor short-circuit branches that already
+ * succeeded on a previous attempt of the parent step (see resume / retry).
  */
 export interface ParallelExecutorContext {
   stepId: string;
@@ -20,6 +35,8 @@ export interface ParallelExecutorContext {
   abortSignal: AbortSignal;
   logger: Logger;
   dispatch: (branchStepId: string) => Promise<StepResult>;
+  getBranchStatus?: (branchStepId: string) => BranchStatusSnapshot;
+  getBranchResult?: (branchStepId: string) => StepResult | undefined;
 }
 
 export interface ParallelStepResult {
@@ -29,7 +46,7 @@ export interface ParallelStepResult {
 
 interface BranchOutcome {
   branchId: string;
-  status: 'fulfilled' | 'rejected';
+  status: 'fulfilled' | 'rejected' | 'skipped';
   value?: StepResult;
   reason?: unknown;
 }
@@ -43,24 +60,38 @@ interface BranchOutcome {
  * Abort propagation is passive — individual dispatch calls observe the abort
  * signal through their own execution context and reject accordingly. Those
  * rejections are captured in the aggregate failure path.
+ *
+ * Branches whose persisted status is already `succeeded` (e.g. when the parent
+ * parallel step is being retried after a mixed-outcome first attempt) are
+ * skipped without a dispatch call so the StateMachine does not reject the
+ * transition. When a cached result is available it is carried into the
+ * aggregate branch map; otherwise the branch is represented by `undefined`.
  */
 export async function executeParallel(
   step: ParallelStepSpec,
   ctx: ParallelExecutorContext,
 ): Promise<ParallelStepResult> {
-  const branchPromises: Promise<BranchOutcome>[] = step.branches.map((branchId) =>
-    ctx
-      .dispatch(branchId)
-      .then(
-        (value): BranchOutcome => ({ branchId, status: 'fulfilled', value }),
-        (reason: unknown): BranchOutcome => ({ branchId, status: 'rejected', reason }),
-      ),
-  );
+  const branchPromises: Promise<BranchOutcome>[] = step.branches.map((branchId) => {
+    const status = ctx.getBranchStatus?.(branchId) ?? 'unknown';
+    if (status === 'succeeded') {
+      const cached = ctx.getBranchResult?.(branchId);
+      return Promise.resolve<BranchOutcome>({
+        branchId,
+        status: 'skipped',
+        value: cached,
+      });
+    }
+    return ctx.dispatch(branchId).then(
+      (value): BranchOutcome => ({ branchId, status: 'fulfilled', value }),
+      (reason: unknown): BranchOutcome => ({ branchId, status: 'rejected', reason }),
+    );
+  });
 
   const outcomes = await Promise.all(branchPromises);
 
-  const failures = outcomes.filter((o): o is BranchOutcome & { status: 'rejected' } => o.status === 'rejected');
-  const successes = outcomes.filter((o): o is BranchOutcome & { status: 'fulfilled' } => o.status === 'fulfilled');
+  const failures = outcomes.filter(
+    (o): o is BranchOutcome & { status: 'rejected' } => o.status === 'rejected',
+  );
 
   if (failures.length > 0) {
     const branchFailures = failures.map(({ branchId, reason }) => {
@@ -82,8 +113,9 @@ export async function executeParallel(
   }
 
   const branchResults: Record<string, StepResult> = {};
-  for (const { branchId, value } of successes) {
-    branchResults[branchId] = value;
+  for (const outcome of outcomes) {
+    if (outcome.status === 'rejected') continue;
+    branchResults[outcome.branchId] = outcome.value;
   }
 
   return { kind: 'parallel', branches: branchResults };

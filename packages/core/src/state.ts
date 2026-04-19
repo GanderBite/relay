@@ -64,6 +64,14 @@ export class StateMachine {
   // the current state at the moment it runs (not at submission time), so
   // last-writer-wins matches the in-memory ordering.
   readonly #saveSerializer = createWriteSerializer();
+  // In-memory cache of completed-step outcomes, keyed by step id. Scoped to
+  // the life of this StateMachine instance — intentionally not serialized to
+  // state.json. Used by the parallel executor on in-process retry so a parent
+  // parallel step that the Runner retries can reconstruct the results of
+  // already-succeeded branches without re-dispatching them. A fresh resume in
+  // another process starts with an empty cache; executors treat missing
+  // entries as "no cached value" and rely on the on-disk step status.
+  readonly #stepResults = new Map<string, unknown>();
 
   constructor(runDir: string, flowName: string, flowVersion: string, runId: string) {
     this.#runDir = runDir;
@@ -82,6 +90,34 @@ export class StateMachine {
 
   getState(): RunState {
     return this.#state;
+  }
+
+  /**
+   * Record a step's executor return value keyed by step id. Callers invoke
+   * this alongside completeStep so downstream logic (currently the parallel
+   * executor on retry) can read the value without re-dispatching.
+   */
+  recordStepResult(id: string, result: unknown): void {
+    this.#stepResults.set(id, result);
+  }
+
+  /**
+   * Retrieve a previously-recorded step result, or `undefined` when none has
+   * been recorded in this StateMachine instance. A fresh process that resumed
+   * from on-disk state starts with an empty cache, so a return of `undefined`
+   * is not equivalent to "the step did not produce a value" — callers must
+   * cross-check the step's persisted status to disambiguate.
+   */
+  getStepResult(id: string): unknown {
+    return this.#stepResults.get(id);
+  }
+
+  /**
+   * Drop every cached step result. Invoked by the Runner on terminal run
+   * completion to release references held by succeeded steps.
+   */
+  clearStepResults(): void {
+    this.#stepResults.clear();
   }
 
   get runDir(): string {
@@ -236,6 +272,9 @@ export class StateMachine {
       attempts: step.attempts,
     };
     this.#updateStep(id, next);
+    // A reset step will run again; any cached result from a prior attempt is
+    // stale and must not leak into the next outcome.
+    this.#stepResults.delete(id);
     return ok(undefined);
   }
 

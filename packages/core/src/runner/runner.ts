@@ -8,6 +8,7 @@ import {
   ERROR_CODES,
   FlowDefinitionError,
   PipelineError,
+  StateWriteError,
   toFlowDefError,
 } from '../errors.js';
 import type { Flow, RunState, Step, StepState } from '../flow/types.js';
@@ -252,7 +253,11 @@ export class Runner {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs);
+      await this.#authenticateAll(
+        uniqueProviders,
+        opts.authTimeoutMs,
+        abortController.signal,
+      );
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -274,6 +279,12 @@ export class Runner {
           initialQueue: [...flow.graph.rootSteps],
         });
       }
+    } catch (caught) {
+      if (isAbortLike(caught)) {
+        runStatus = 'aborted';
+      } else {
+        throw caught;
+      }
     } finally {
       process.removeListener('SIGINT', onSigint);
       process.removeListener('SIGTERM', onSigterm);
@@ -284,6 +295,7 @@ export class Runner {
     if (markResult.isErr()) throw markResult.error;
     const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
+    stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
       logger.warn(
@@ -467,7 +479,11 @@ export class Runner {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs);
+      await this.#authenticateAll(
+        uniqueProviders,
+        opts.authTimeoutMs,
+        abortController.signal,
+      );
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -490,6 +506,12 @@ export class Runner {
           initialQueue,
         });
       }
+    } catch (caught) {
+      if (isAbortLike(caught)) {
+        runStatus = 'aborted';
+      } else {
+        throw caught;
+      }
     } finally {
       process.removeListener('SIGINT', onSigint);
       process.removeListener('SIGTERM', onSigterm);
@@ -500,6 +522,7 @@ export class Runner {
     if (markResult.isErr()) throw markResult.error;
     const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
+    stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
       logger.warn(
@@ -604,16 +627,21 @@ export class Runner {
 
   /**
    * Authenticate each unique provider with a wall-clock cap. Throws the first
-   * provider's err-branch error or an `AuthTimeoutError` — whichever resolves
-   * first. The setTimeout handle is cleared on the happy path so a fast auth
-   * does not keep the event loop alive past run completion.
+   * provider's err-branch error, an `AuthTimeoutError`, or a `RunAbortedError`
+   * — whichever resolves first. The setTimeout handle is cleared and the
+   * abort listener is removed on the happy path so a fast auth does not keep
+   * the event loop alive past run completion and the run's AbortController
+   * does not accumulate stale listeners across retries.
    */
   async #authenticateAll(
     providers: Iterable<Provider>,
     authTimeoutMs: number | undefined,
+    signal: AbortSignal,
   ): Promise<void> {
     const timeoutMs = authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
     for (const provider of providers) {
+      if (signal.aborted) throw new RunAbortedError();
+
       let timerId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_resolve, reject) => {
         timerId = setTimeout(() => {
@@ -626,11 +654,27 @@ export class Runner {
           );
         }, timeoutMs);
       });
+
+      let abortHandler: (() => void) | undefined;
+      const abortPromise = new Promise<never>((_resolve, reject) => {
+        abortHandler = (): void => {
+          reject(new RunAbortedError());
+        };
+        signal.addEventListener('abort', abortHandler, { once: true });
+      });
+
       try {
-        const auth = await Promise.race([provider.authenticate(), timeoutPromise]);
+        const auth = await Promise.race([
+          provider.authenticate(),
+          timeoutPromise,
+          abortPromise,
+        ]);
         if (auth.isErr()) throw auth.error;
       } finally {
         if (timerId !== undefined) clearTimeout(timerId);
+        if (abortHandler !== undefined) {
+          signal.removeEventListener('abort', abortHandler);
+        }
       }
     }
   }
@@ -820,6 +864,18 @@ export class Runner {
             // fail on the first attempt regardless of its own retry budget.
             dispatch: (branchStepId: string): Promise<StepResult> =>
               dispatchStep(branchStepId),
+            // On retry (the Runner re-dispatched the parent parallel step
+            // after a mixed-outcome first attempt) or on a resumed run, some
+            // branches may already be in 'succeeded' status. Re-dispatching
+            // those trips startStep's pending-only guard with a confusing
+            // StateTransitionError. Expose both the current branch status and
+            // any cached result so the parallel executor can short-circuit.
+            getBranchStatus: (branchStepId: string) => {
+              const branchState = stateMachine.getState().steps[branchStepId];
+              return branchState?.status ?? 'unknown';
+            },
+            getBranchResult: (branchStepId: string) =>
+              stateMachine.getStepResult(branchStepId),
           });
         case 'terminal':
           return executeTerminal(step, baseCtx);
@@ -881,55 +937,62 @@ export class Runner {
         throw new FlowDefinitionError(`unknown step id "${stepId}"`);
       }
 
-      const startResult = stateMachine.startStep(stepId);
-      if (startResult.isErr()) throw startResult.error;
-      // inflight is managed here (not by the walker) so steps dispatched as
-      // parallel branches remove themselves on completion. The walker's drain
-      // loop only observes the slot count to gate parallelism; it does not own
-      // the lifecycle.
+      // inflight lifecycle is fully contained in this try/finally so the slot
+      // is released regardless of which step of the dispatch pipeline throws
+      // (startStep transition, startSave, executor, or completeStep). Without
+      // the outer try/finally, a throw before entering an inner try would leak
+      // the slot and the walker's queue would hang on a phantom in-flight
+      // count. inflight is managed here (not by the walker) so steps
+      // dispatched as parallel branches remove themselves on completion; the
+      // walker's drain loop only observes the slot count to gate parallelism.
       inflight.add(stepId);
-
-      const { maxRetries, timeoutMs } = stepRetryBudget(step);
-
-      const startSave = await stateMachine.save();
-      if (startSave.isErr()) {
-        logger.error(
-          { event: 'state.save_failed', error: startSave.error.message },
-          'state.json atomic write failed',
-        );
-        throw startSave.error;
-      }
-
       try {
-        const value = await raceAbort(
-          withRetry((attempt) => runExecutor(step, attempt), {
-            maxRetries,
-            ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-            logger,
-            stepId,
-          }),
-        );
-        const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
-        if (completeResult.isErr()) throw completeResult.error;
-        return value;
-      } catch (caught) {
-        if (!isAbortLike(caught)) {
-          const failResult = stateMachine.failStep(stepId, errorMessageOf(caught));
-          if (failResult.isErr()) {
-            logger.error(
-              {
-                event: 'state.transition_failed',
-                stepId,
-                error: failResult.error.message,
-              },
-              'state transition failed after step failure',
-            );
-          }
+        const startResult = stateMachine.startStep(stepId);
+        if (startResult.isErr()) throw startResult.error;
+
+        const { maxRetries, timeoutMs } = stepRetryBudget(step);
+
+        const startSave = await stateMachine.save();
+        if (startSave.isErr()) {
+          logger.error(
+            { event: 'state.save_failed', error: startSave.error.message },
+            'state.json atomic write failed',
+          );
+          throw startSave.error;
         }
-        // Abort leaves the step in running state; markRun('aborted') sweeps
-        // it to failed with a descriptive errorMessage so on-disk state is
-        // never stuck in running after SIGINT.
-        throw caught;
+
+        try {
+          const value = await raceAbort(
+            withRetry((attempt) => runExecutor(step, attempt), {
+              maxRetries,
+              ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+              logger,
+              stepId,
+            }),
+          );
+          const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
+          if (completeResult.isErr()) throw completeResult.error;
+          stateMachine.recordStepResult(stepId, value);
+          return value;
+        } catch (caught) {
+          if (!isAbortLike(caught)) {
+            const failResult = stateMachine.failStep(stepId, errorMessageOf(caught));
+            if (failResult.isErr()) {
+              logger.error(
+                {
+                  event: 'state.transition_failed',
+                  stepId,
+                  error: failResult.error.message,
+                },
+                'state transition failed after step failure',
+              );
+            }
+          }
+          // Abort leaves the step in running state; markRun('aborted') sweeps
+          // it to failed with a descriptive errorMessage so on-disk state is
+          // never stuck in running after SIGINT.
+          throw caught;
+        }
       } finally {
         inflight.delete(stepId);
       }
@@ -1012,6 +1075,14 @@ export class Runner {
         // pushing this completion; nothing left to clean up here.
 
         if (completed.error !== undefined && !isAbortLike(completed.error)) {
+          // A state.json write failure inside dispatchStep is not a step
+          // failure — it is an I/O failure the caller needs to observe and
+          // react to (retry the run, widen disk quota, etc.). Propagate it
+          // verbatim so the CLI's exit-code map surfaces the STATE_WRITE
+          // code instead of swallowing the error as an onFail=abort step.
+          if (completed.error instanceof StateWriteError) {
+            throw completed.error;
+          }
           const message = errorMessageOf(completed.error);
           const step = flow.steps[completed.stepId];
           const policy = step !== undefined ? stepOnFail(step) : 'abort';
