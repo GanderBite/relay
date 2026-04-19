@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
+import { CommanderError } from 'commander';
 import { buildProgram } from './dispatcher.js';
 import { MARK } from './visual.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
@@ -69,6 +70,10 @@ export async function main(argv: string[]): Promise<void> {
   try {
     await program.parseAsync(argv);
   } catch (err) {
+    if (err instanceof CommanderError && err.exitCode === 0) {
+      // Commander printed help or version — normal exit, not an error.
+      process.exit(0);
+    }
     process.stderr.write(formatError(err) + '\n');
     process.exit(exitCodeFor(err));
   }

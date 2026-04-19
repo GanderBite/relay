@@ -47,6 +47,7 @@ export function exitCodeFor(err: unknown): number {
   if (err instanceof HandoffSchemaError) return 4;
   if (err instanceof ProviderAuthError) return 6;
   if (err instanceof PipelineError) return 1;
+  if (err instanceof CommanderError) return err.exitCode;
   if (err instanceof Error) return 1;
   return 1;
 }
