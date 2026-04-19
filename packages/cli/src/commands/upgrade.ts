@@ -1,0 +1,223 @@
+/**
+ * `relay upgrade [flow]` — upgrade one or all installed flows to their latest
+ * compatible version.
+ *
+ * With no argument: iterates every directory under `.relay/flows/` and
+ * re-installs each flow, letting the install handler resolve the latest
+ * version compatible with the original semver range in package.json.
+ *
+ * With a `<flow>` argument: upgrades just that one flow.
+ *
+ * Per-flow output: `  <name>  v<before> → v<after>` in green when the version
+ * changed, gray when already at the latest version. Failed flows are printed
+ * in red and do not abort the remaining upgrades.
+ *
+ * Output contract (product spec §6.8 banner shape):
+ *
+ *   ●─▶●─▶●─▶●  upgrading flows
+ *
+ *     codebase-discovery  v0.1.0 → v0.1.1
+ *     api-audit           already at v0.2.1
+ *
+ *   upgrade complete. 1 updated, 1 already current.
+ */
+
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { MARK, SYMBOLS, gray, green, red } from '../visual.js';
+import installCommand from './install.js';
+
+// ---------------------------------------------------------------------------
+// Package.json reader — extracts the version field only
+// ---------------------------------------------------------------------------
+
+async function readVersion(flowDir: string): Promise<string | null> {
+  const pkgPath = join(flowDir, 'package.json');
+  let raw: string;
+  try {
+    raw = await readFile(pkgPath, { encoding: 'utf8' });
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const p = parsed as Record<string, unknown>;
+  return typeof p['version'] === 'string' ? p['version'] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Flow discovery
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the list of flow names (directory entries) under `.relay/flows/`.
+ * Returns null when the directory does not exist.
+ */
+async function discoverFlows(flowsDir: string): Promise<string[] | null> {
+  let entries: Awaited<ReturnType<typeof readdir>>;
+  try {
+    entries = await readdir(flowsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  return entries
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+}
+
+// ---------------------------------------------------------------------------
+// Single-flow upgrade
+// ---------------------------------------------------------------------------
+
+interface UpgradeOutcome {
+  name: string;
+  status: 'updated' | 'current' | 'failed';
+  before: string;
+  after: string;
+  reason?: string;
+}
+
+/**
+ * Upgrade a single flow by name.
+ *
+ * Reads the current version, calls installCommand (which re-resolves the
+ * latest compatible version from the original semver range), then reads the
+ * new version to produce a before/after diff.
+ */
+async function upgradeFlow(
+  name: string,
+  flowsDir: string,
+  opts: unknown,
+): Promise<UpgradeOutcome> {
+  const flowDir = join(flowsDir, name);
+
+  // Read the version that is currently on disk before the install.
+  const before = (await readVersion(flowDir)) ?? '0.0.0';
+
+  try {
+    await installCommand([name], opts);
+  } catch (err: unknown) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const after = (await readVersion(flowDir)) ?? before;
+    return { name, status: 'failed', before, after, reason };
+  }
+
+  // Read again after install — the install handler may have written a new
+  // package.json with the upgraded version.
+  const after = (await readVersion(flowDir)) ?? before;
+  const status = after !== before ? 'updated' : 'current';
+  return { name, status, before, after };
+}
+
+// ---------------------------------------------------------------------------
+// Output rendering
+// ---------------------------------------------------------------------------
+
+/** Column width for flow name padding in the diff rows. */
+const NAME_COL = 22;
+
+/**
+ * Render one flow diff row.
+ *
+ *   updated:  "  codebase-discovery  v0.1.0 → v0.1.1"   (green arrow + new ver)
+ *   current:  "  api-audit           already at v0.2.1"   (gray)
+ *   failed:   "  ✕ broken-flow       failed: <reason>"    (red)
+ */
+function renderOutcome(outcome: UpgradeOutcome): string {
+  const namePad = outcome.name.padEnd(NAME_COL);
+
+  if (outcome.status === 'failed') {
+    const reason = outcome.reason ?? 'unknown error';
+    return red(`  ${SYMBOLS.fail} ${namePad}failed: ${reason}`);
+  }
+
+  if (outcome.status === 'current') {
+    return gray(`  ${namePad}already at v${outcome.before}`);
+  }
+
+  // updated — green arrow between versions
+  return green(`  ${namePad}v${outcome.before} → v${outcome.after}`);
+}
+
+// ---------------------------------------------------------------------------
+// Public command entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Entry point dispatched by the CLI for `relay upgrade [flow]`.
+ *
+ * @param args  Argv slice after "upgrade": optional [flowName]
+ * @param opts  Parsed option flags from the dispatcher (passed through to installCommand)
+ */
+export default async function upgradeCommand(
+  args: unknown[],
+  opts: unknown,
+): Promise<void> {
+  const cwd = process.cwd();
+  const flowsDir = join(cwd, '.relay', 'flows');
+
+  const targetFlow = args[0] !== undefined ? String(args[0]) : undefined;
+
+  // Determine which flows to upgrade.
+  let flowNames: string[];
+
+  if (targetFlow !== undefined) {
+    // Single-flow mode: verify the flow exists before proceeding.
+    const all = await discoverFlows(flowsDir);
+    if (all === null || !all.includes(targetFlow)) {
+      process.stdout.write(
+        `  ${SYMBOLS.fail} ${targetFlow} is not installed. run relay install ${targetFlow} first.\n`,
+      );
+      process.exit(1);
+    }
+    flowNames = [targetFlow];
+  } else {
+    // All-flows mode: discover installed flows.
+    const discovered = await discoverFlows(flowsDir);
+    if (discovered === null || discovered.length === 0) {
+      process.stdout.write(
+        `  no flows installed. run relay install <name> first.\n`,
+      );
+      process.exit(0);
+    }
+    flowNames = discovered;
+  }
+
+  // Header — matches the banner shape from product spec §6.8.
+  const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading flows';
+  process.stdout.write(`${MARK}  ${verb}\n`);
+  process.stdout.write('\n');
+
+  // Upgrade each flow sequentially. Failures are rendered inline and do not
+  // abort the remaining upgrades (collect all outcomes before the footer).
+  const outcomes: UpgradeOutcome[] = [];
+  for (const name of flowNames) {
+    const outcome = await upgradeFlow(name, flowsDir, opts);
+    process.stdout.write(renderOutcome(outcome) + '\n');
+    outcomes.push(outcome);
+  }
+
+  process.stdout.write('\n');
+
+  // Summary footer.
+  const updated = outcomes.filter((o) => o.status === 'updated').length;
+  const current = outcomes.filter((o) => o.status === 'current').length;
+  const failed  = outcomes.filter((o) => o.status === 'failed').length;
+
+  const parts: string[] = [];
+  if (updated > 0) parts.push(`${updated} updated`);
+  if (current > 0) parts.push(`${current} already current`);
+  if (failed > 0)  parts.push(`${failed} failed`);
+
+  process.stdout.write(`upgrade complete. ${parts.join(', ')}.\n`);
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+}
