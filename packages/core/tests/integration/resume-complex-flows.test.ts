@@ -2,10 +2,12 @@
  * Integration tests: resume with branch-topology and parallel-topology flows.
  *
  * Both tests use direct state injection to freeze the run at the desired
- * checkpoint — this is more deterministic than fork+SIGKILL for topology tests
- * because the goal is to prove that the resume protocol skips already-succeeded
- * steps, not to exercise crash-recovery plumbing (crash-resume.test.ts owns
- * that surface).
+ * checkpoint. This isolates the resume skip-protocol (already-succeeded and
+ * skipped steps must not be re-invoked) from executor details, making failures
+ * unambiguous. Real mid-run interruption of parallel/branch steps (fork+SIGKILL
+ * while a branch or parallel child is in flight) is not covered here; that
+ * surface is planned for a future sprint. Linear-flow SIGKILL coverage lives in
+ * crash-resume.test.ts.
  *
  * Branch test:
  *   Flow: entry -> b1 -> b2 -> end (B path)
