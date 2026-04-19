@@ -159,10 +159,43 @@ export default async function runCommand(
   // Step 4 continued — render and write the start banner
   // ---------------------------------------------------------------------------
 
-  // inputPrimary: first positional arg, or "." when none.
-  const inputPrimary = inputArgv[0] ?? '.';
-  // inputExtras: remaining named-flag pairs like key=val.
-  const inputExtras = inputArgv.length > 1 ? inputArgv.slice(1) : [];
+  // Separate positional args from --flag args for the banner display.
+  // Positionals (no leading --) → first one is inputPrimary.
+  // Named flags (--key value or --key=value) → reshaped as "key=value" extras.
+  const positionals: string[] = [];
+  const namedExtras: string[] = [];
+
+  let i = 0;
+  while (i < inputArgv.length) {
+    const arg = inputArgv[i];
+    if (arg === undefined) { i++; continue; }
+    if (arg.startsWith('--')) {
+      const body = arg.slice(2);
+      const eqIdx = body.indexOf('=');
+      if (eqIdx !== -1) {
+        // --key=value → "key=value"
+        namedExtras.push(body);
+        i++;
+      } else {
+        const next = inputArgv[i + 1];
+        if (next !== undefined && !next.startsWith('--')) {
+          // --key value → "key=value"
+          namedExtras.push(`${body}=${next}`);
+          i += 2;
+        } else {
+          // boolean flag with no value → "key=true"
+          namedExtras.push(`${body}=true`);
+          i++;
+        }
+      }
+    } else {
+      positionals.push(arg);
+      i++;
+    }
+  }
+
+  const inputPrimary = positionals[0] ?? '.';
+  const inputExtras = namedExtras;
 
   const startBanner = renderStartBanner({
     flowName: flow.name,

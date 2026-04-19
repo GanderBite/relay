@@ -195,9 +195,14 @@ export function renderStartBanner(opts: StartBannerOptions): string {
       : `api account  ${SYMBOLS.dot}  billing applies`;
 
   // est row — "$X.XX  ·  N steps  ·  ~M min" (2-decimal total cost)
-  const costStr =
-    costEstimate !== undefined ? fmtTotalCost(costEstimate.maxUsd) : '$?.??';
-  const estValue = `${costStr}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`;
+  // Only rendered when a real CostEstimate is provided — never show a fake placeholder.
+  const estLine =
+    costEstimate !== undefined
+      ? kvLine(
+          'est',
+          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`,
+        )
+      : undefined;
 
   const lines: string[] = [
     WORDMARK,
@@ -206,7 +211,7 @@ export function renderStartBanner(opts: StartBannerOptions): string {
     kvLine('input', inputValue),
     kvLine('run', runValue),
     kvLine('bill', billValue),
-    kvLine('est', estValue),
+    ...(estLine !== undefined ? [estLine] : []),
     '',
     gray('press ctrl-c any time — state is saved after every step.'),
     rule(55),
