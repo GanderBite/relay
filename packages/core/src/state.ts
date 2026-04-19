@@ -121,9 +121,16 @@ export class StateMachine {
     return ok(undefined);
   }
 
+  /**
+   * Mark a step succeeded and persist its produced handoffs / artifacts on
+   * StepState. Both arrays are independent — a step may write a handoff with no
+   * artifact file (the value lives in `handoffs/<id>.json`), an artifact with
+   * no handoff (the file lives at the path verbatim), or both. Resume and the
+   * doctor command read both projections from StepState directly.
+   */
   completeStep(
     id: string,
-    artifacts?: Record<string, string>,
+    output: { handoffs?: readonly string[]; artifacts?: readonly string[] } = {},
   ): Result<void, StateTransitionError> {
     const stepResult = this.#requireStep(id);
     if (stepResult.isErr()) return err(stepResult.error);
@@ -142,12 +149,11 @@ export class StateMachine {
       status: 'succeeded',
       completedAt: nowIso(),
     };
-    if (artifacts !== undefined) {
-      // artifacts Record maps handoff ids -> artifact file paths. Persist both
-      // projections so resume and doctor output can surface either view without
-      // re-reading the record shape.
-      next.handoffs = Object.keys(artifacts);
-      next.artifacts = Object.values(artifacts);
+    if (output.handoffs !== undefined && output.handoffs.length > 0) {
+      next.handoffs = [...output.handoffs];
+    }
+    if (output.artifacts !== undefined && output.artifacts.length > 0) {
+      next.artifacts = [...output.artifacts];
     }
     this.#updateStep(id, next);
     return ok(undefined);

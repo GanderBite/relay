@@ -87,6 +87,12 @@ export function buildGraph(
             ),
           );
         }
+        // Synthetic predecessor edge: branches must wait for the parallel
+        // parent before the DAG walker schedules them. Without this, a branch
+        // with no explicit dependsOn becomes a root step and the walker would
+        // dispatch it concurrently with the parallel parent's own dispatch
+        // callback, double-billing prompt branches.
+        addEdge(key, branch);
       }
 
       if (step.onAllComplete !== undefined && !stepMap.has(step.onAllComplete)) {

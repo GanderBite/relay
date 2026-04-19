@@ -44,6 +44,14 @@ export const promptOutputSchema: z.ZodType<PromptStepOutput> = z.union([
   }),
 ]);
 
+// Bounds the worst-case billing for a runaway prompt. Per spec §4.4.1, every
+// prompt step gets this default unless the author overrides it. The Runner
+// also applies the same fallback at dispatch time so flows that bypass this
+// schema (e.g. spec literals) still inherit the bound, but persisting it on
+// the parsed PromptStepSpec keeps the value visible to downstream tooling
+// (catalog linter, doctor command) that reads steps without re-running them.
+const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
+
 export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
   id: z.string(),
   kind: z.literal('prompt'),
@@ -57,7 +65,7 @@ export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
   output: promptOutputSchema,
   maxRetries: z.number().int().nonnegative().optional(),
   maxBudgetUsd: z.number().optional(),
-  timeoutMs: z.number().int().nonnegative().optional(),
+  timeoutMs: z.number().int().nonnegative().default(DEFAULT_PROMPT_TIMEOUT_MS),
   onFail: onFailValue.optional(),
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });

@@ -141,20 +141,6 @@ export async function executePrompt(
   );
 
   const startedIso = new Date(started).toISOString();
-  const liveWrite = writeLiveState(ctx.runDir, stepId, {
-    status: 'running',
-    attempt,
-    startedAt: startedIso,
-    lastUpdateAt: startedIso,
-    ...(step.model !== undefined ? { model: step.model } : {}),
-  });
-  const liveStartResult = await liveWrite;
-  if (liveStartResult.isErr()) {
-    ctx.logger.warn(
-      { event: 'live-state.write_failed', stepId, error: liveStartResult.error.message },
-      'live state write failed; continuing',
-    );
-  }
 
   try {
     // 1. Load the prompt template file from the flow directory.
@@ -178,6 +164,24 @@ export async function executePrompt(
     // 4. Convert the optional output schema to JSON schema for the provider.
     const schema = 'schema' in step.output ? step.output.schema : undefined;
     const jsonSchema = toJsonSchema(schema);
+
+    // Pre-flight finished — only now is the step actually invoking the
+    // provider. Writing 'running' before handoff load / prompt assembly would
+    // leave a zombie running file in live/ when those pre-flight steps fail
+    // and the catch block rethrows without a terminal write-back.
+    const liveStartResult = await writeLiveState(ctx.runDir, stepId, {
+      status: 'running',
+      attempt,
+      startedAt: startedIso,
+      lastUpdateAt: startedIso,
+      ...(step.model !== undefined ? { model: step.model } : {}),
+    });
+    if (liveStartResult.isErr()) {
+      ctx.logger.warn(
+        { event: 'live-state.write_failed', stepId, error: liveStartResult.error.message },
+        'live state write failed; continuing',
+      );
+    }
 
     // 5. Build the invocation request + context.
     const request: InvocationRequest = {

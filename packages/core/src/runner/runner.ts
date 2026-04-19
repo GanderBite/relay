@@ -9,9 +9,10 @@ import {
   PipelineError,
   toFlowDefError,
 } from '../errors.js';
-import type { Flow, Step } from '../flow/types.js';
+import type { Flow, Step, StepState } from '../flow/types.js';
 import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
+import { ClaudeProvider } from '../providers/claude/provider.js';
 import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
@@ -30,6 +31,10 @@ import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
 const DEFAULT_PROVIDER_NAME = 'claude';
+// Mirrors the §4.4.1 default in flow/schemas.ts. Duplicated here so the Runner
+// can backstop hand-built PromptStepSpec values that bypassed the schema parse
+// (e.g. spec literals authored without going through promptStep(...)).
+const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
 const FLOW_REF_FILENAME = 'flow-ref.json';
 const METRICS_FILENAME = 'metrics.json';
 const RUN_LOG_FILENAME = 'run.log';
@@ -44,7 +49,6 @@ export interface RunnerOptions {
 export interface RunOptions {
   resumeFrom?: string;
   parallelism?: number;
-  liveState?: boolean;
   /**
    * Directory the flow package lives in — used to resolve prompt template
    * paths (step.promptFile) relative to the flow. Defaults to process.cwd().
@@ -75,6 +79,12 @@ export interface RunResult {
  * Context threaded into every per-step executor. Executors receive a tailored
  * subset of this shape; the Runner builds each per-step ctx from this central
  * bag plus the resolved provider binding.
+ *
+ * The ANTHROPIC_API_KEY opt-in is intentionally not threaded here: it must be
+ * applied at provider construction time (so authenticate() and the env
+ * allowlist for the SDK subprocess both see it) rather than per-step, and the
+ * Runner substitutes a fresh ClaudeProvider with the flag wired before any
+ * authenticate() call rather than passing the flag through this context.
  */
 export interface StepExecutionContext {
   flow: Flow<unknown>;
@@ -91,16 +101,14 @@ export interface StepExecutionContext {
   logger: Logger;
   providers: ProviderRegistry;
   defaultProvider: string;
-  /**
-   * Opt-in flag forwarded to ClaudeProvider.authenticate(). Subscription
-   * billing stays the default; the Runner only sets this when the caller
-   * explicitly invoked Runner.allowApiKey() before run().
-   */
-  allowApiKey: boolean;
 }
 
 function shortRunId(): string {
   return randomBytes(3).toString('hex');
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
 function defaultRunDir(runId: string): string {
@@ -206,9 +214,10 @@ export class Runner {
     const initialSave = await stateMachine.save();
     if (initialSave.isErr()) throw initialSave.error;
 
+    const effectiveProviders = this.#applyAllowApiKey(this.#providers);
     const providerByStep = checkCapabilities(
       flow as Flow<unknown>,
-      this.#providers,
+      effectiveProviders,
       this.#defaultProvider,
     );
     const uniqueProviders = new Set<Provider>(providerByStep.values());
@@ -250,6 +259,7 @@ export class Runner {
           stateMachine,
           logger,
           providerByStep,
+          providers: effectiveProviders,
           validatedInput,
           initialQueue: [...flow.graph.rootSteps],
         });
@@ -364,13 +374,33 @@ export class Runner {
     const stateMachine = new StateMachine(runDir, flow.name, flow.version, runId);
     stateMachine.hydrate(persistedState);
 
+    // Crash robustness: a SIGKILL (or OS crash) bypasses markRun(), so steps
+    // can be persisted in 'running' status with no in-flight work to complete
+    // them. Sweep them to 'failed' first so the subsequent failed -> pending
+    // pass picks them up. Without this, those steps get filtered out of the
+    // ready queue and the resumed run deadlocks.
+    const zombieSweepIso = nowIso();
+    const sweptSteps: Record<string, StepState> = { ...persistedState.steps };
+    let hasZombie = false;
+    for (const [stepId, stepState] of Object.entries(persistedState.steps)) {
+      if (stepState.status === 'running') {
+        sweptSteps[stepId] = {
+          ...stepState,
+          status: 'failed',
+          completedAt: zombieSweepIso,
+          errorMessage: 'run aborted by crash',
+        };
+        hasZombie = true;
+      }
+    }
+    if (hasZombie) {
+      stateMachine.hydrate({ ...persistedState, steps: sweptSteps });
+    }
+
     // Flip failed steps back to pending so the retry loop can take another
     // attempt. resetStep preserves the attempts counter so maxRetries budgets
-    // carry across resume. Steps still in 'running' (from a crash) are left
-    // alone — markRun('aborted')/markRun('failed') on the prior run swept them
-    // to 'failed'; if a caller somehow persisted a live 'running' step, we
-    // treat it as already re-entered and let the DAG walker handle it.
-    for (const [stepId, stepState] of Object.entries(persistedState.steps)) {
+    // carry across resume.
+    for (const [stepId, stepState] of Object.entries(stateMachine.getState().steps)) {
       if (stepState.status === 'failed') {
         const resetResult = stateMachine.resetStep(stepId);
         if (resetResult.isErr()) throw resetResult.error;
@@ -382,9 +412,10 @@ export class Runner {
     const savedStart = await stateMachine.save();
     if (savedStart.isErr()) throw savedStart.error;
 
+    const effectiveProviders = this.#applyAllowApiKey(this.#providers);
     const providerByStep = checkCapabilities(
       flow as Flow<unknown>,
-      this.#providers,
+      effectiveProviders,
       this.#defaultProvider,
     );
     const uniqueProviders = new Set<Provider>(providerByStep.values());
@@ -427,6 +458,7 @@ export class Runner {
           stateMachine,
           logger,
           providerByStep,
+          providers: effectiveProviders,
           validatedInput: stateMachine.getState().input,
           initialQueue,
         });
@@ -463,6 +495,33 @@ export class Runner {
       artifacts,
       durationMs: Date.now() - start,
     };
+  }
+
+  /**
+   * When the caller opted into ANTHROPIC_API_KEY billing via runner.allowApiKey(),
+   * substitute the registry's `claude` entry with a fresh ClaudeProvider that
+   * carries the flag — both authenticate() (the §8.1 guard) and the SDK env
+   * allowlist read this from the provider's own constructor options, so wiring
+   * the flag any other way silently disables the opt-in. Returns the original
+   * registry unchanged when no opt-in is in effect or when the registered
+   * `claude` provider is not a stock ClaudeProvider (custom registrations win).
+   */
+  #applyAllowApiKey(registry: ProviderRegistry): ProviderRegistry {
+    if (!this.#allowApiKey) return registry;
+    const existing = registry.get('claude');
+    if (existing.isErr()) return registry;
+    if (!(existing.value instanceof ClaudeProvider)) return registry;
+
+    const next = new ProviderRegistry();
+    for (const provider of registry.list()) {
+      if (provider.name === 'claude') continue;
+      const result = next.register(provider);
+      if (result.isErr()) throw result.error;
+    }
+    const replacement = new ClaudeProvider({ allowApiKey: true });
+    const registered = next.register(replacement);
+    if (registered.isErr()) throw registered.error;
+    return next;
   }
 
   async #writeFlowRef<TInput>(
@@ -512,6 +571,7 @@ export class Runner {
     stateMachine: StateMachine;
     logger: Logger;
     providerByStep: Map<string, Provider>;
+    providers: ProviderRegistry;
     validatedInput: unknown;
     initialQueue: string[];
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
@@ -527,6 +587,7 @@ export class Runner {
       stateMachine,
       logger,
       providerByStep,
+      providers,
       validatedInput,
       initialQueue,
     } = args;
@@ -535,7 +596,11 @@ export class Runner {
 
     const queue: string[] = [...initialQueue];
     const inflight = new Set<string>();
-    const completions: Array<{ stepId: string; error?: unknown }> = [];
+    const completions: Array<{
+      stepId: string;
+      error?: unknown;
+      result?: StepResult;
+    }> = [];
     let notify: (() => void) | null = null;
     let runFailed = false;
 
@@ -555,17 +620,28 @@ export class Runner {
       abortController.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    // Named handler + finally cleanup so each raceAbort call removes its own
+    // listener on the happy path. Without removal, listeners accumulate on the
+    // shared AbortController for the lifetime of the run — node prints a
+    // MaxListenersExceededWarning at 11+ on any reasonably sized flow.
     const raceAbort = async <T>(work: Promise<T>): Promise<T> => {
       if (abortController.signal.aborted) {
         throw new RunAbortedError();
       }
+      let abortHandler: (() => void) | undefined;
       const abortPromise = new Promise<never>((_resolve, reject) => {
-        const handler = (): void => {
+        abortHandler = (): void => {
           reject(new RunAbortedError());
         };
-        abortController.signal.addEventListener('abort', handler, { once: true });
+        abortController.signal.addEventListener('abort', abortHandler, { once: true });
       });
-      return Promise.race([work, abortPromise]);
+      try {
+        return await Promise.race([work, abortPromise]);
+      } finally {
+        if (abortHandler !== undefined) {
+          abortController.signal.removeEventListener('abort', abortHandler);
+        }
+      }
     };
 
     const runExecutor = async (step: Step, attempt: number): Promise<StepResult> => {
@@ -583,9 +659,8 @@ export class Runner {
         costTracker,
         stateMachine,
         logger: stepLogger,
-        providers: this.#providers,
+        providers,
         defaultProvider: this.#defaultProvider,
-        allowApiKey: this.#allowApiKey,
       };
 
       switch (step.kind) {
@@ -635,60 +710,131 @@ export class Runner {
             attempt,
             abortSignal: abortController.signal,
             logger: stepLogger,
-            dispatch: async (branchStepId: string): Promise<unknown> => {
-              const branchStep = flow.steps[branchStepId];
-              if (branchStep === undefined) {
-                throw new FlowDefinitionError(
-                  `parallel step "${step.id}" branch references unknown step "${branchStepId}"`,
-                );
-              }
-              return runExecutor(branchStep, attempt);
-            },
+            // Branches share the same dispatch path as top-level steps so each
+            // branch honors its own maxRetries/timeoutMs/abort policy. Without
+            // this, a branch with maxRetries: 3 dispatched via parallel would
+            // fail on the first attempt regardless of its own retry budget.
+            dispatch: (branchStepId: string): Promise<StepResult> =>
+              dispatchStep(branchStepId),
           });
         case 'terminal':
           return executeTerminal(step, baseCtx);
       }
     };
 
-    const dispatch = (stepId: string): void => {
+    const stepRetryBudget = (
+      step: Step,
+    ): { maxRetries: number; timeoutMs: number | undefined } => {
+      if (step.kind === 'prompt') {
+        // Backstop for the §4.4.1 default. The schema applies the same value
+        // when authors run their flow through promptStep(...), but the Runner
+        // also accepts hand-built PromptStepSpec literals; without this fallback
+        // a runaway invocation could stream tokens indefinitely.
+        return {
+          maxRetries: step.maxRetries ?? 0,
+          timeoutMs: step.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
+        };
+      }
+      if (step.kind === 'script' || step.kind === 'branch') {
+        return { maxRetries: step.maxRetries ?? 0, timeoutMs: step.timeoutMs };
+      }
+      return { maxRetries: 0, timeoutMs: undefined };
+    };
+
+    const promptStepOutput = (
+      result: StepResult,
+    ): { handoffs?: readonly string[]; artifacts?: readonly string[] } => {
+      if (
+        typeof result !== 'object' ||
+        result === null ||
+        !('kind' in result) ||
+        result.kind !== 'prompt'
+      ) {
+        return {};
+      }
+      // PromptStepResult tracks handoffs (keys produced via output.handoff)
+      // and artifacts (file paths produced via output.artifact) as independent
+      // arrays. completeStep persists both projections on StepState verbatim
+      // so RunResult.artifacts surfaces every file the step produced and
+      // resume can introspect which handoffs landed without re-reading them.
+      return { handoffs: result.handoffs, artifacts: result.artifacts };
+    };
+
+    /**
+     * Run one step end-to-end: state transitions, retry, abort race, and
+     * either completeStep (with the executor's result) or failStep on error.
+     * Returns the executor's StepResult so callers like the parallel executor
+     * can use the value; throws on failure (including abort) so awaiters get
+     * the same error class withRetry+raceAbort produce.
+     *
+     * The DAG walker calls this and pushes the outcome into the completions
+     * queue; the parallel executor's branch dispatch awaits it directly.
+     * Either path performs the same state mutations exactly once per step.
+     */
+    const dispatchStep = async (stepId: string): Promise<StepResult> => {
       const step = flow.steps[stepId];
       if (step === undefined) {
-        completions.push({
-          stepId,
-          error: new FlowDefinitionError(`unknown step id "${stepId}"`),
-        });
-        return;
+        throw new FlowDefinitionError(`unknown step id "${stepId}"`);
       }
+
       const startResult = stateMachine.startStep(stepId);
-      if (startResult.isErr()) {
-        completions.push({ stepId, error: startResult.error });
-        return;
-      }
+      if (startResult.isErr()) throw startResult.error;
+      // inflight is managed here (not by the walker) so steps dispatched as
+      // parallel branches remove themselves on completion. The walker's drain
+      // loop only observes the slot count to gate parallelism; it does not own
+      // the lifecycle.
       inflight.add(stepId);
 
-      const maxRetries =
-        step.kind === 'prompt' || step.kind === 'script' || step.kind === 'branch'
-          ? step.maxRetries ?? 0
-          : 0;
-      const timeoutMs =
-        step.kind === 'prompt' || step.kind === 'script' || step.kind === 'branch'
-          ? step.timeoutMs
-          : undefined;
+      const { maxRetries, timeoutMs } = stepRetryBudget(step);
 
-      void stateMachine.save()
-        .then(() =>
-          raceAbort(
-            withRetry((attempt) => runExecutor(step, attempt), {
-              maxRetries,
-              ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-              logger,
-              stepId,
-            }),
-          ),
-        )
+      const startSave = await stateMachine.save();
+      if (startSave.isErr()) {
+        logger.error(
+          { event: 'state.save_failed', error: startSave.error.message },
+          'state.json atomic write failed',
+        );
+      }
+
+      try {
+        const value = await raceAbort(
+          withRetry((attempt) => runExecutor(step, attempt), {
+            maxRetries,
+            ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+            logger,
+            stepId,
+          }),
+        );
+        const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
+        if (completeResult.isErr()) throw completeResult.error;
+        return value;
+      } catch (caught) {
+        if (!isAbortLike(caught)) {
+          const failResult = stateMachine.failStep(stepId, errorMessageOf(caught));
+          if (failResult.isErr()) {
+            logger.error(
+              {
+                event: 'state.transition_failed',
+                stepId,
+                error: failResult.error.message,
+              },
+              'state transition failed after step failure',
+            );
+          }
+        }
+        // Abort leaves the step in running state; markRun('aborted') sweeps
+        // it to failed with a descriptive errorMessage so on-disk state is
+        // never stuck in running after SIGINT.
+        throw caught;
+      } finally {
+        inflight.delete(stepId);
+      }
+    };
+
+    const enqueueWalker = (stepId: string): void => {
+      void dispatchStep(stepId)
         .then(
-          () => {
-            completions.push({ stepId });
+          (result) => {
+            completions.push({ stepId, result });
           },
           (error: unknown) => {
             completions.push({ stepId, error });
@@ -735,7 +881,6 @@ export class Runner {
 
     const stepOnFail = (step: Step): 'abort' | 'continue' | string => {
       if (step.kind === 'terminal') return 'abort';
-      if (step.kind === 'parallel') return step.onFail ?? 'abort';
       return step.onFail ?? 'abort';
     };
 
@@ -745,7 +890,7 @@ export class Runner {
       while (!runFailed && queue.length > 0 && inflight.size < parallelism) {
         const next = queue.shift();
         if (next === undefined) break;
-        dispatch(next);
+        enqueueWalker(next);
       }
 
       if (inflight.size === 0 && completions.length === 0) break;
@@ -757,38 +902,11 @@ export class Runner {
       while (completions.length > 0) {
         const completed = completions.shift();
         if (completed === undefined) break;
-        inflight.delete(completed.stepId);
+        // dispatchStep's finally already released the inflight slot before
+        // pushing this completion; nothing left to clean up here.
 
-        if (completed.error === undefined) {
-          const result = stateMachine.completeStep(completed.stepId);
-          if (result.isErr()) {
-            logger.error(
-              {
-                event: 'state.transition_failed',
-                stepId: completed.stepId,
-                error: result.error.message,
-              },
-              'state transition failed after step success',
-            );
-            runFailed = true;
-          }
-        } else if (isAbortLike(completed.error)) {
-          // Abort leaves the step in running state; markRun('aborted') sweeps
-          // it to failed with a descriptive errorMessage so on-disk state is
-          // never stuck in running after SIGINT.
-        } else {
+        if (completed.error !== undefined && !isAbortLike(completed.error)) {
           const message = errorMessageOf(completed.error);
-          const result = stateMachine.failStep(completed.stepId, message);
-          if (result.isErr()) {
-            logger.error(
-              {
-                event: 'state.transition_failed',
-                stepId: completed.stepId,
-                error: result.error.message,
-              },
-              'state transition failed after step failure',
-            );
-          }
           const step = flow.steps[completed.stepId];
           const policy = step !== undefined ? stepOnFail(step) : 'abort';
           if (policy === 'continue') {
