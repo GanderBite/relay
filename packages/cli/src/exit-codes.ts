@@ -1,15 +1,16 @@
 /**
  * Exit code mapper and error formatter for the Relay CLI.
  *
- * Exit codes follow tech spec §8.2:
+ * Exit codes:
  *   0 — success
  *   1 — step failure (StepFailureError, generic Error, unknown)
  *   2 — flow definition error (FlowDefinitionError, ProviderCapabilityError)
- *   3 — auth / environment error (ClaudeAuthError, ProviderAuthError)
+ *   3 — subscription auth / billing safety guard (ClaudeAuthError)
  *   4 — handoff / schema error (HandoffSchemaError)
  *   5 — timeout (TimeoutError, AuthTimeoutError)
+ *   6 — provider auth error (ProviderAuthError)
  *
- * Error format follows product spec §12 template:
+ * Error format follows the product spec error template:
  *   ✕ <one-line headline>
  *
  *     <one-sentence explanation>
@@ -17,7 +18,9 @@
  *     → <exact command or edit to try next>
  */
 
+import { CommanderError } from 'commander';
 import {
+  AuthTimeoutError,
   ClaudeAuthError,
   FlowDefinitionError,
   HandoffSchemaError,
@@ -33,15 +36,16 @@ import { red, gray } from './visual.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Map any thrown value to a CLI exit code per §8.2.
+ * Map any thrown value to a CLI exit code.
  */
 export function exitCodeFor(err: unknown): number {
   if (err instanceof StepFailureError) return 1;
   if (err instanceof FlowDefinitionError) return 2;
   if (err instanceof ClaudeAuthError) return 3;
-  if (err instanceof ProviderAuthError) return 3;
-  if (err instanceof HandoffSchemaError) return 4;
+  if (err instanceof AuthTimeoutError) return 5;
   if (err instanceof TimeoutError) return 5;
+  if (err instanceof HandoffSchemaError) return 4;
+  if (err instanceof ProviderAuthError) return 6;
   if (err instanceof PipelineError) return 1;
   if (err instanceof Error) return 1;
   return 1;
@@ -51,7 +55,7 @@ export function exitCodeFor(err: unknown): number {
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
-/** Two-space indent for body lines (product spec §12.1). */
+/** Two-space indent for body lines. */
 const INDENT = '  ';
 
 /** Separator between the headline block and remediations. */
@@ -78,29 +82,40 @@ function formatMs(ms: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// formatError — product spec §12.2 (verbatim copy)
+// formatError
 // ---------------------------------------------------------------------------
 
 /**
  * Produce a fully-formatted multi-line error block for stderr.
  *
- * Output shape (product spec §12.1):
- *   ✕ <headline>          ← red
+ * Output shape:
+ *   ✕ <headline>          <- red
  *
- *     <explanation>       ← plain, two-space indent
+ *     <explanation>       <- plain, two-space indent
  *
- *     → <command>         ← one per remediation, two-space indent
+ *     → <command>         <- one per remediation, two-space indent
  *
  * Every shape ends with at least one → line — no dead-ends.
  */
 export function formatError(err: unknown): string {
+  // ----------------------------------------------------------------
+  // CommanderError — unknown command or option
+  // ----------------------------------------------------------------
+  if (err instanceof CommanderError) {
+    return [
+      red(`✕ Unknown command or option: ${err.message}`),
+      BLANK,
+      remediation('relay --help'),
+    ].join('\n');
+  }
+
   // ----------------------------------------------------------------
   // ClaudeAuthError — two distinct shapes
   // ----------------------------------------------------------------
   if (err instanceof ClaudeAuthError) {
     const msg = err.message.toLowerCase();
 
-    // Shape: binary missing (product spec §12.2 "Claude CLI missing")
+    // Shape: binary missing
     if (msg.includes('binary missing') || msg.includes('not found') || msg.includes('not installed')) {
       return [
         red("✕ 'claude' command not found"),
@@ -112,8 +127,7 @@ export function formatError(err: unknown): string {
       ].join('\n');
     }
 
-    // Shape: ANTHROPIC_API_KEY conflict (product spec §12.2, the big one)
-    // This is the default ClaudeAuthError path — key present without opt-in.
+    // Shape: ANTHROPIC_API_KEY conflict — the subscription-billing safety guard
     return [
       red('✕ Refusing to run: ANTHROPIC_API_KEY would override your subscription'),
       BLANK,
@@ -128,7 +142,49 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // ProviderAuthError — generic provider auth misconfiguration
+  // AuthTimeoutError — must come before TimeoutError (subclass)
+  // ----------------------------------------------------------------
+  if (err instanceof AuthTimeoutError) {
+    const humanTime = formatMs(err.timeoutMs);
+    return [
+      red(`✕ Authentication for provider '${err.providerName}' timed out after ${humanTime}`),
+      BLANK,
+      `${INDENT}The provider's authentication did not complete within the configured timeout.`,
+      `${INDENT}This usually means a misconfigured CLI probe or a network connectivity issue.`,
+      BLANK,
+      remediation('relay doctor'),
+    ].join('\n');
+  }
+
+  // ----------------------------------------------------------------
+  // TimeoutError — step exceeded its timeoutMs budget
+  // ----------------------------------------------------------------
+  if (err instanceof TimeoutError) {
+    const stepId = err.stepId;
+    const timeoutMs = err.timeoutMs;
+    const humanTime = formatMs(timeoutMs);
+
+    const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
+    const artifactPath =
+      typeof err.details?.['artifactPath'] === 'string'
+        ? err.details['artifactPath']
+        : `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
+
+    return [
+      red(`✕ Step '${stepId}' timed out after ${humanTime}`),
+      BLANK,
+      `${INDENT}The prompt ran longer than its configured timeout. This usually means`,
+      `${INDENT}the prompt is asking for too much in a single turn, or a tool call is`,
+      `${INDENT}hanging.`,
+      BLANK,
+      remediation(`check the partial output: ${artifactPath}`),
+      remediation(`raise the timeout in flow.ts: step.prompt({ timeoutMs: ${timeoutMs * 2} })`),
+      remediation(`relay resume ${runId}                      retry with the new config`),
+    ].join('\n');
+  }
+
+  // ----------------------------------------------------------------
+  // ProviderAuthError — generic provider auth misconfiguration (exit 6)
   // ----------------------------------------------------------------
   if (err instanceof ProviderAuthError) {
     return [
@@ -146,7 +202,6 @@ export function formatError(err: unknown): string {
   if (err instanceof FlowDefinitionError) {
     const msg = err.message;
 
-    // Detect cycle: details may carry the path, or the message may name it.
     const cyclePath = extractCyclePath(err);
     if (cyclePath !== null) {
       return [
@@ -169,7 +224,7 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // HandoffSchemaError — product spec §12.2 "Handoff schema mismatch"
+  // HandoffSchemaError
   // ----------------------------------------------------------------
   if (err instanceof HandoffSchemaError) {
     const handoffId = err.handoffId;
@@ -178,7 +233,6 @@ export function formatError(err: unknown): string {
       return `${INDENT}  ${handoffId}${path !== handoffId ? `[${path}]` : ''} ${issue.message}`;
     });
 
-    // Pull runId and stepName from details if available.
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
     const stepName = typeof err.details?.['stepName'] === 'string' ? err.details['stepName'] : handoffId;
     const promptFile =
@@ -195,34 +249,6 @@ export function formatError(err: unknown): string {
       remediation(`relay logs ${runId} --step ${stepName}        see what Claude produced`),
       remediation(`edit ${promptFile}              tighten the prompt`),
       remediation(`relay resume ${runId}                      retry after fixing`),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // TimeoutError — product spec §12.2 "Timeout"
-  // ----------------------------------------------------------------
-  if (err instanceof TimeoutError) {
-    const stepId = err.stepId;
-    const timeoutMs = err.timeoutMs;
-    const humanTime = formatMs(timeoutMs);
-
-    // Pull runId and artifact path from details if available.
-    const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-    const artifactPath =
-      typeof err.details?.['artifactPath'] === 'string'
-        ? err.details['artifactPath']
-        : `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
-
-    return [
-      red(`✕ Step '${stepId}' timed out after ${humanTime}`),
-      BLANK,
-      `${INDENT}The prompt ran longer than its configured timeout. This usually means`,
-      `${INDENT}the prompt is asking for too much in a single turn, or a tool call is`,
-      `${INDENT}hanging.`,
-      BLANK,
-      remediation(`check the partial output: ${artifactPath}`),
-      remediation(`raise the timeout in flow.ts: step.prompt({ timeoutMs: ${timeoutMs * 2} })`),
-      remediation(`relay resume ${runId}                      retry with the new config`),
     ].join('\n');
   }
 
@@ -287,34 +313,28 @@ export function formatError(err: unknown): string {
 /**
  * Try to extract a cycle path string from a FlowDefinitionError.
  *
- * Convention: details.cycle may carry the array of step IDs in cycle order,
- * or the message itself may describe a cycle (contains '→' separated names).
+ * Checks details.cycle (expected shape: string[] of step IDs).
+ * Falls back to a message heuristic for errors that already carry a
+ * formatted cycle description containing '→'.
  *
  * Returns a formatted string like "inventory → entities → services → inventory"
  * or null if this error does not describe a cycle.
  */
 function extractCyclePath(err: FlowDefinitionError): string | null {
-  // Check details.cycle — expected shape: string[] of step IDs
   if (
     err.details?.['cycle'] !== undefined &&
     Array.isArray(err.details['cycle']) &&
     err.details['cycle'].length >= 2
   ) {
     const steps = err.details['cycle'] as string[];
-    // Close the cycle by appending the first step at the end
     return [...steps, steps[0]].join(' → ');
   }
 
-  // Fall back to message heuristic: if the message contains '→' it's already
-  // a formatted cycle string.
   if (err.message.includes('→') && err.message.toLowerCase().includes('cycle')) {
-    // Extract the path portion — everything after "cycle:" or similar.
     const match = /cycle[:\s]+(.+)/i.exec(err.message);
     if (match?.[1] !== undefined) return match[1].trim();
   }
 
-  // Message mentions "cycle" without a path — return null so caller falls
-  // through to the generic FlowDefinitionError format.
   return null;
 }
 

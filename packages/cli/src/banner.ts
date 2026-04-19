@@ -3,14 +3,22 @@
  *
  * All brand constants (MARK, WORDMARK, SYMBOLS) and color helpers are
  * imported from visual.ts — never defined here.
- *
- * Output shapes match product spec §6.3 (start), §6.5 (success), §6.6
- * (failure) verbatim. Do not alter copy, spacing, or column widths without
- * updating the spec first.
  */
 
 import type { AuthState, CostEstimate } from '@relay/core';
-import { WORDMARK, SYMBOLS, gray, green, red, rule, kvLine } from './visual.js';
+import {
+  WORDMARK,
+  SYMBOLS,
+  STEP_NAME_WIDTH,
+  MODEL_WIDTH,
+  DURATION_WIDTH,
+  gray,
+  green,
+  red,
+  rule,
+  kvLine,
+  flowHeader,
+} from './visual.js';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -29,36 +37,38 @@ function fmtDuration(ms: number): string {
 }
 
 /**
- * Formats a cost in USD to 4 decimal places: "$0.0050".
+ * Formats a per-step cost in USD to 3 decimal places using ceiling rounding.
+ * Ceiling ensures displayed cost is never under-stated.
+ * Example: $0.005
  */
-function fmtCost(usd: number): string {
-  return `$${usd.toFixed(4)}`;
+function fmtStepCost(usd: number): string {
+  const ceiled = Math.ceil(usd * 1000) / 1000;
+  return `$${ceiled.toFixed(3)}`;
 }
 
 /**
- * Formats an ISO date-time string to "YYYY-MM-DD HH:mm" local time.
- * Falls back to a direct slice of the ISO string (UTC) when Date is unavailable.
+ * Formats a total/summary cost in USD to 2 decimal places using ceiling rounding.
+ * Ceiling ensures displayed cost is never under-stated.
+ * Example: $0.38 for a run total, $0.40 for a pre-run estimate.
  */
-function fmtIsoToLocal(iso: string): string {
-  const d = new Date(iso);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+function fmtTotalCost(usd: number): string {
+  const ceiled = Math.ceil(usd * 100) / 100;
+  return `$${ceiled.toFixed(2)}`;
 }
 
-// Step name column width used in §6.5 / §6.6 step lines.
-// "designReview" is the longest name in the spec examples (12 chars).
-// We pad to 14 so the model column aligns after a space.
-const STEP_NAME_WIDTH = 14;
-
-// Model column width ("sonnet" = 6, "-" = 1, pad to 10).
-const MODEL_WIDTH = 10;
-
-// Duration column width ("11m 42s" = 7, pad to 8).
-const DURATION_WIDTH = 8;
+/**
+ * Formats an ISO date-time string to "YYYY-MM-DD HH:mmZ" in UTC.
+ * Appending Z makes the timezone unambiguous.
+ */
+function fmtIsoToUtc(iso: string): string {
+  const d = new Date(iso);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}Z`;
+}
 
 // ---------------------------------------------------------------------------
 // Per-step data shapes used by success/failure banners
@@ -81,9 +91,14 @@ export interface FailureStepRow {
   durationMs: number;
   costUsd: number;
   /**
+   * For failed steps: the process exit code. Shown in the model column as
+   * "exit N" (e.g. "exit 1"): `✕ designReview    exit 1     0.2s`
+   */
+  exitCode?: number;
+  /**
    * Only present on the failed step. The first line names the error class
    * and branch; the second names the specific field or handoff.
-   * Spec §6.6 example:
+   * Example:
    *   "branch 'entities' raised HandoffSchemaError"
    *   "handoff 'entities' missing required field: entities[3].language"
    */
@@ -91,7 +106,7 @@ export interface FailureStepRow {
 }
 
 // ---------------------------------------------------------------------------
-// §6.3 — renderStartBanner
+// renderStartBanner
 // ---------------------------------------------------------------------------
 
 export interface StartBannerOptions {
@@ -128,7 +143,8 @@ export interface StartBannerOptions {
 }
 
 /**
- * Produces the pre-run banner (product spec §6.3).
+ * Produces the pre-run banner. Shows billing source, cost estimate, and step
+ * count before any tokens are spent.
  *
  * Example output:
  *
@@ -136,7 +152,7 @@ export interface StartBannerOptions {
  *
  *   flow     codebase-discovery v0.1.0
  *   input    .  (audience=both)
- *   run      f9c3a2  ·  2026-04-17 14:32
+ *   run      f9c3a2  ·  2026-04-17 14:32Z
  *   bill     subscription (max)  ·  no api charges
  *   est      $0.40  ·  5 steps  ·  ~12 min
  *
@@ -167,8 +183,8 @@ export function renderStartBanner(opts: StartBannerOptions): string {
       : '';
   const inputValue = `${inputPrimary}${extras}`;
 
-  // run row — "<runId>  ·  YYYY-MM-DD HH:mm"
-  const runValue = `${runId}  ${SYMBOLS.dot}  ${fmtIsoToLocal(startedAt)}`;
+  // run row — "<runId>  ·  YYYY-MM-DD HH:mmZ"
+  const runValue = `${runId}  ${SYMBOLS.dot}  ${fmtIsoToUtc(startedAt)}`;
 
   // bill row — NEVER silent
   // subscription → "subscription (max)  ·  no api charges"
@@ -178,9 +194,9 @@ export function renderStartBanner(opts: StartBannerOptions): string {
       ? `subscription (max)  ${SYMBOLS.dot}  no api charges`
       : `api account  ${SYMBOLS.dot}  billing applies`;
 
-  // est row — "$X.XXXX  ·  N steps  ·  ~M min"
+  // est row — "$X.XX  ·  N steps  ·  ~M min" (2-decimal total cost)
   const costStr =
-    costEstimate !== undefined ? fmtCost(costEstimate.maxUsd) : '$?.????';
+    costEstimate !== undefined ? fmtTotalCost(costEstimate.maxUsd) : '$?.??';
   const estValue = `${costStr}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`;
 
   const lines: string[] = [
@@ -200,7 +216,7 @@ export function renderStartBanner(opts: StartBannerOptions): string {
 }
 
 // ---------------------------------------------------------------------------
-// §6.5 — renderSuccessBanner
+// renderSuccessBanner
 // ---------------------------------------------------------------------------
 
 export interface SuccessBannerOptions {
@@ -224,7 +240,7 @@ export interface SuccessBannerOptions {
 }
 
 /**
- * Produces the successful-completion banner (product spec §6.5).
+ * Produces the successful-completion banner.
  *
  * Example output:
  *
@@ -248,14 +264,14 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   const { flowName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓"
-  const header = green(`${WORDMARK.replace('relay', `${flowName} ${SYMBOLS.dot} ${runId}`)}  ${SYMBOLS.ok}`);
+  const header = green(flowHeader(flowName, runId, SYMBOLS.ok));
 
   // Per-step lines — " ✓ <name padded> <model padded> <dur padded> $cost"
   const stepLines = steps.map((s) => {
     const nameCol = s.name.padEnd(STEP_NAME_WIDTH);
     const modelCol = s.model.padEnd(MODEL_WIDTH);
     const durCol = fmtDuration(s.durationMs).padEnd(DURATION_WIDTH);
-    const costCol = fmtCost(s.costUsd);
+    const costCol = fmtStepCost(s.costUsd);
     return green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`);
   });
 
@@ -265,8 +281,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   // cost row label depends on billing source
   const costLabel =
     auth.billingSource === 'subscription'
-      ? `${fmtCost(totalCostUsd)}  (estimated api equivalent; billed to subscription)`
-      : `${fmtCost(totalCostUsd)}  (billed to api account)`;
+      ? `${fmtTotalCost(totalCostUsd)}  (estimated api equivalent; billed to subscription)`
+      : `${fmtTotalCost(totalCostUsd)}  (billed to api account)`;
 
   // next: block
   const nextIndent = '    ';
@@ -295,7 +311,7 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
 }
 
 // ---------------------------------------------------------------------------
-// §6.6 — renderFailureBanner
+// renderFailureBanner
 // ---------------------------------------------------------------------------
 
 export interface FailureBannerOptions {
@@ -307,7 +323,7 @@ export interface FailureBannerOptions {
   steps: FailureStepRow[];
   /**
    * Total cost spent before the failure (USD).
-   * Shown as "$X.XXXX spent".
+   * Shown as "$X.XX spent".
    */
   spentUsd: number;
   /**
@@ -318,7 +334,8 @@ export interface FailureBannerOptions {
 }
 
 /**
- * Produces the failure banner (product spec §6.6).
+ * Produces the failure banner. Lists steps with their status, shows spend
+ * so far, and gives the user three explicit next actions.
  *
  * Example output:
  *
@@ -347,20 +364,22 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const { flowName, runId, steps, spentUsd, handoffId } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✕"
-  const header = red(`${WORDMARK.replace('relay', `${flowName} ${SYMBOLS.dot} ${runId}`)}  ${SYMBOLS.fail}`);
+  const header = red(flowHeader(flowName, runId, SYMBOLS.fail));
 
   // Per-step lines
   const stepLines: string[] = [];
   for (const s of steps) {
     const nameCol = s.name.padEnd(STEP_NAME_WIDTH);
-    const modelCol = s.model.padEnd(MODEL_WIDTH);
     const durCol = fmtDuration(s.durationMs).padEnd(DURATION_WIDTH);
 
     if (s.status === 'succeeded') {
-      const costCol = fmtCost(s.costUsd);
+      const modelCol = s.model.padEnd(MODEL_WIDTH);
+      const costCol = fmtStepCost(s.costUsd);
       stepLines.push(green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`));
     } else if (s.status === 'failed') {
-      // Failed step: no cost column, plus optional two-line error expansion
+      // Failed step: show "exit N" in the model column, no cost column
+      const exitLabel = `exit ${s.exitCode ?? 1}`;
+      const modelCol = exitLabel.padEnd(MODEL_WIDTH);
       const failLine = red(` ${SYMBOLS.fail} ${nameCol}${modelCol}${durCol}`);
       stepLines.push(failLine);
       if (s.errorLines !== undefined) {
@@ -370,6 +389,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
       }
     } else {
       // skipped — show with pending symbol and no cost
+      const modelCol = s.model.padEnd(MODEL_WIDTH);
       stepLines.push(gray(` ${SYMBOLS.pending} ${nameCol}${modelCol}`));
     }
   }
@@ -379,7 +399,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const totalCount = steps.length;
 
   // Summary line: "3 of 5 steps succeeded · $0.049 spent · state saved"
-  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
+  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
 
   // "to resume after fixing:" block
   const resumeBlock = [

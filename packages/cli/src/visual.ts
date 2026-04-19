@@ -20,6 +20,11 @@
  *   - Gray   — pending steps, metadata, secondary text.
  *   - Colors are disabled when: NO_COLOR is set, --no-color was passed,
  *     or stdout is not a TTY. Pass-through (identity) in all disabled cases.
+ *
+ * Column widths for step rows (product spec §6.5, §6.6, §11.3):
+ *   STEP_NAME_WIDTH  = 16  — accommodates "designReview" (12) with margin
+ *   MODEL_WIDTH      = 11  — accommodates "sonnet" (6) or "exit 1" (6) with margin
+ *   DURATION_WIDTH   = 9   — accommodates "11m 42s" (7) with margin
  */
 
 import chalk from 'chalk';
@@ -41,6 +46,17 @@ function isColorDisabled(): boolean {
 }
 
 if (isColorDisabled()) {
+  chalk.level = 0;
+}
+
+/**
+ * Programmatically disable color output.
+ * Must be called before any output is produced — chalk.level is checked
+ * per-call, so this takes effect immediately for all subsequent output.
+ * Used by the dispatcher's preAction hook when --no-color is detected at
+ * runtime, where the module-load check has already run.
+ */
+export function setColorDisabled(): void {
   chalk.level = 0;
 }
 
@@ -163,8 +179,42 @@ export function footer(text: string): string {
  *   input    .  (audience=both)
  *   run      f9c3a2  ·  2026-04-17 14:32
  *   bill     subscription (max)  ·  no api charges
- *   est      .40  ·  5 steps  ·  ~12 min
+ *   est      $0.40  ·  5 steps  ·  ~12 min
  */
 export function kvLine(key: string, value: string): string {
   return `${key.padEnd(KV_KEY_WIDTH)}${value}`;
+}
+
+// ---------------------------------------------------------------------------
+// Step-row column widths (product spec §6.5, §6.6, §11.3)
+//
+// These are exported so banner.ts and progress.ts share identical column sizes
+// and never drift apart. The spec shows:
+//   ✓ inventory       sonnet     2.1s     $0.005
+//   ✕ designReview    exit 1     0.2s
+// ---------------------------------------------------------------------------
+
+/** Step name column width — padEnd to this value before the model column. */
+export const STEP_NAME_WIDTH = 16;
+
+/** Model column width — padEnd to this value before the duration column. */
+export const MODEL_WIDTH = 11;
+
+/** Duration column width — padEnd to this value before the tokens/cost column. */
+export const DURATION_WIDTH = 9;
+
+/**
+ * Compose a banner header line from flow name, run id, and an optional status symbol.
+ * Produces: `●─▶●─▶●─▶●  <flowName> · <runId>  <symbol>` (symbol omitted when absent).
+ *
+ * Use this instead of string-replacing WORDMARK, which breaks when flow names
+ * contain "relay" or when WORDMARK changes.
+ *
+ * Examples (product spec §6.5, §6.6):
+ *   flowHeader('codebase-discovery', 'f9c3a2', '✓')
+ *   → '●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓'
+ */
+export function flowHeader(flowName: string, runId: string, symbol?: string): string {
+  const base = `${MARK}  ${flowName} ${SYMBOLS.dot} ${runId}`;
+  return symbol !== undefined ? `${base}  ${symbol}` : base;
 }

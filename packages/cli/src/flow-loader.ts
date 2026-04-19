@@ -1,6 +1,6 @@
 /**
  * Flow loader — resolves a name or path to a compiled Flow and its package
- * metadata, following the §5.3.1 resolution order.
+ * metadata.
  *
  * Resolution order:
  *   1. Path-like argument (starts with ./, ../, / or contains /) — resolve
@@ -10,7 +10,7 @@
  *      dist/flow.js.
  *   4. Not found — return err instructing the user to run `relay install`.
  *
- * Returns Result<{ flow, dir, pkg }, FlowLoadError>.
+ * Returns Result<LoadedFlow, FlowLoadError>.
  * Never throws — all failure paths are captured as err().
  */
 
@@ -43,10 +43,15 @@ export class FlowLoadError extends Error {
 // Public return type
 // ---------------------------------------------------------------------------
 
+/** Where the flow was found. Used by callers for optional diagnostic logging. */
+export type FlowSource = 'path' | 'local' | 'node_modules';
+
 export interface LoadedFlow {
   flow: Flow<unknown>;
   dir: string;
   pkg: Record<string, unknown>;
+  /** Indicates which resolution path was used. */
+  source: FlowSource;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +62,20 @@ export interface LoadedFlow {
 //   name   — string (from FlowSpec)
 //   steps  — object/record (from FlowSpec)
 //   graph  — object with successors/predecessors/topoOrder (from FlowGraph)
+//
+// successors and predecessors are tested structurally (has .get and .has)
+// rather than with instanceof Map, so frozen objects or future refactors
+// to plain records continue to pass validation.
 // ---------------------------------------------------------------------------
+
+function isMapLike(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as Record<string, unknown>)['get'] === 'function' &&
+    typeof (value as Record<string, unknown>)['has'] === 'function'
+  );
+}
 
 function isFlow(value: unknown): value is Flow<unknown> {
   if (value === null || typeof value !== 'object') return false;
@@ -71,8 +89,8 @@ function isFlow(value: unknown): value is Flow<unknown> {
   if (graph === null || typeof graph !== 'object') return false;
 
   const g = graph as Record<string, unknown>;
-  if (!(g['successors'] instanceof Map)) return false;
-  if (!(g['predecessors'] instanceof Map)) return false;
+  if (!isMapLike(g['successors'])) return false;
+  if (!isMapLike(g['predecessors'])) return false;
   if (!Array.isArray(g['topoOrder'])) return false;
 
   return true;
@@ -84,7 +102,7 @@ function isFlow(value: unknown): value is Flow<unknown> {
 
 /**
  * Returns true when the argument looks like a filesystem path rather than a
- * plain flow name. Mirrors the check in dispatcher.ts.
+ * plain flow name.
  */
 function looksLikePath(nameOrPath: string): boolean {
   return (
@@ -118,7 +136,7 @@ async function readPkg(dir: string): Promise<Record<string, unknown>> {
  */
 async function importFlow(
   dir: string,
-  source: string,
+  source: FlowSource,
 ): Promise<Result<LoadedFlow, FlowLoadError>> {
   const entryPath = join(dir, 'dist', 'flow.js');
 
@@ -154,9 +172,7 @@ async function importFlow(
 
   const pkg = await readPkg(dir);
 
-  process.stderr.write(`[relay] flow resolved from ${source}: ${dir}\n`);
-
-  return ok({ flow: defaultExport, dir, pkg });
+  return ok({ flow: defaultExport, dir, pkg, source });
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +202,7 @@ export async function loadFlow(
   // ---- (2) Local .relay/flows/<name>/ ----
   const localDir = join(cwd, '.relay', 'flows', name);
   try {
-    const localResult = await importFlow(localDir, '.relay/flows');
+    const localResult = await importFlow(localDir, 'local');
     if (localResult.isOk()) return localResult;
     // importFlow only fails here if the module import or duck-type check fails,
     // meaning the directory exists but the flow is invalid — surface that error
@@ -195,8 +211,7 @@ export async function loadFlow(
     // We fall through only on the specific case where the directory does not
     // exist at all (import will throw a MODULE_NOT_FOUND-style error, which
     // importFlow catches and returns as FLOW_INVALID). Distinguish by checking
-    // the error code: FLOW_INVALID from a missing file has "Cannot find module"
-    // or "ERR_MODULE_NOT_FOUND" in its message.
+    // whether the error message describes a missing module file.
     const loadErr = localResult.error;
     if (!isModuleNotFound(loadErr.message)) {
       return localResult;

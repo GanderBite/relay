@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { setColorDisabled } from './visual.js';
 
 // All v1 command names — used for shorthand routing (first-positional bypass).
 const KNOWN_COMMANDS = new Set([
@@ -58,14 +59,19 @@ export function buildProgram(): Command {
     .option('--run-dir <path>', 'override the run directory (.relay/runs by default)')
     .option('--no-color', 'disable color output (also honoured via NO_COLOR env)');
 
-  // Apply NO_COLOR / --no-color early, before any command action runs.
+  // Throw CommanderError instead of calling process.exit so the main try/catch
+  // can format unknown-command errors consistently.
+  program.exitOverride();
+
+  // Apply --no-color early, before any command action runs.
+  // Calls setColorDisabled() directly rather than mutating process.env — chalk.level
+  // is set once at module load and env mutations after that point have no effect.
   program.hook('preAction', (_thisCommand, actionCommand) => {
     const opts = program.opts<{ color: boolean; verbose?: boolean; runDir?: string }>();
     if (!opts.color || process.env['NO_COLOR'] !== undefined) {
-      process.env['NO_COLOR'] = '1';
+      setColorDisabled();
     }
-    // Suppress unused-variable warning from strict TS; actionCommand is
-    // provided by commander's hook signature and intentionally unused here.
+    // actionCommand is provided by commander's hook signature and intentionally unused here.
     void actionCommand;
   });
 

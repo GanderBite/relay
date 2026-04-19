@@ -4,7 +4,7 @@ import { buildProgram } from './dispatcher.js';
 import { MARK } from './visual.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
 
-// Indent for §6.10 continuation lines: mark.length (11) + 1 space = 12 chars.
+// Indent for --version continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
 
 function resolveVersion(pkg: string): string {
@@ -42,7 +42,7 @@ function printVersion(): void {
   const nodeVer = process.version.replace(/^v/, '');
   const claudeVer = resolveClaudeVersion();
 
-  // §6.10 — four lines, verbatim format:
+  // --version — four lines:
   //   ●─▶●─▶●─▶●  relay <ver>
   //              @relay/cli <ver>
   //              @relay/core <ver>

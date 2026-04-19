@@ -1,12 +1,12 @@
 /**
  * TTY progress display for the Relay CLI.
  *
- * Renders the three-zone layout (header / step grid / footer) per product spec
- * §11.2. In-place redraw is handled by log-update v7; live-state file watching
- * by chokidar v5.
+ * Renders the three-zone layout (header / step grid / footer) per the
+ * live display spec. In-place redraw is handled by log-update v7; live-state
+ * file watching by chokidar v5.
  *
  * When stdout is not a TTY the display falls back to one structured line per
- * state transition written to process.stderr, per §6.4.
+ * state transition written to process.stderr.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -18,7 +18,18 @@ import logUpdate from 'log-update';
 
 import type { Flow } from '@relay/core';
 
-import { gray, green, MARK, red, SYMBOLS, yellow } from './visual.js';
+import {
+  gray,
+  green,
+  MARK,
+  red,
+  SYMBOLS,
+  STEP_NAME_WIDTH,
+  MODEL_WIDTH,
+  DURATION_WIDTH,
+  yellow,
+  flowHeader,
+} from './visual.js';
 
 // ---------------------------------------------------------------------------
 // Live state shape — mirrors LiveStatePartial from @relay/core/runner/live-state.
@@ -47,17 +58,6 @@ export interface AuthInfo {
   /** Estimated cost ceiling in USD; 0 for subscription billing */
   estUsd: number;
 }
-
-// ---------------------------------------------------------------------------
-// Column widths that reproduce the §6.4 / §11.3 example:
-//
-//   ⠋ entities        sonnet     turn 3  0.8K→0.4K    ~$0.019
-//   ○ designReview    waiting on entities, services
-// ---------------------------------------------------------------------------
-
-const W_NAME = 14;  // step name padded
-const W_MODEL = 10; // model name padded
-const W_PROGRESS = 7; // "turn 3 " / "2.1s   "
 
 // ---------------------------------------------------------------------------
 // Format helpers
@@ -123,13 +123,15 @@ function logStructured(
 // ---------------------------------------------------------------------------
 
 /**
- * Three-zone live progress display (product spec §11.2).
+ * Three-zone live progress display.
  *
  * Constructor: `new ProgressDisplay(runDir, flow, auth)`
  * Start:       `.start(runId)` — begins watching and rendering.
  * Stop:        `.stop()` — clears the live area and returns terminal control.
  * Metrics:     `.updateStepMetrics(stepId, { tokensIn, tokensOut, costUsd, durationMs, model })`
  *              — called by the run command after each step completes.
+ * SIGINT:      `.onSigint(handler)` — register a ctrl-c handler; wired on
+ *              start() and unwired on stop().
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ProgressDisplay<TInput = any> {
@@ -157,7 +159,6 @@ export class ProgressDisplay<TInput = any> {
   /**
    * Register a ctrl-c handler.
    * The handler is wired to SIGINT when start() runs and unwired on stop().
-   * Task_82 uses this to attach the pause-state transition.
    */
   onSigint(handler: () => void): void {
     this.#sigintHandlers.push(handler);
@@ -326,7 +327,7 @@ export class ProgressDisplay<TInput = any> {
     const lines: string[] = [];
 
     // Zone 1 — Header (static, never changes during the run)
-    lines.push(`${MARK}  ${this.#flow.name} ${SYMBOLS.dot} ${this.#runId}`);
+    lines.push(flowHeader(this.#flow.name, this.#runId));
     lines.push('');
 
     // Zone 2 — Step grid (one row per step)
@@ -373,7 +374,7 @@ export class ProgressDisplay<TInput = any> {
         sym = gray(SYMBOLS.pending);
     }
 
-    const nameCol = state.id.padEnd(W_NAME);
+    const nameCol = state.id.padEnd(STEP_NAME_WIDTH);
 
     // Pending — show "waiting on X, Y" when deps are unfinished, else "not started"
     if (status === 'pending' || live === null) {
@@ -387,24 +388,23 @@ export class ProgressDisplay<TInput = any> {
       return ` ${sym} ${nameCol} ${detail}`;
     }
 
-    // Running — show model, turn N or elapsed, live tokens, live cost
+    // Running — show model, turn N or elapsed, live token count (no cost — not calculable in-flight)
     if (status === 'running') {
-      const model = (live.model ?? '-').padEnd(W_MODEL);
+      const model = (live.model ?? '-').padEnd(MODEL_WIDTH);
       const turns = live.turnsSoFar ?? 0;
       const runStart = state.runningStartedAt ?? live.startedAt;
       const progress = turns > 0 ? `turn ${turns}` : fmtElapsedSec(runStart);
-      const progressCol = progress.padEnd(W_PROGRESS);
+      const progressCol = progress.padEnd(DURATION_WIDTH);
       const totalToks = live.tokensSoFar ?? 0;
-      const tokensCol = `${fmtK(totalToks)}→...`.padEnd(13);
-      const costStr = yellow(`~$0.???`);
-      return ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}    ${costStr}`;
+      const tokensCol = fmtK(totalToks).padEnd(13);
+      return ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}`;
     }
 
     // Succeeded / failed / skipped — show frozen metrics
-    const model = ((live.model ?? state.finalModel) ?? '-').padEnd(W_MODEL);
+    const model = ((live.model ?? state.finalModel) ?? '-').padEnd(MODEL_WIDTH);
     const durationMs = state.finalDurationMs ?? 0;
     const durSec = durationMs / 1000;
-    const durStr = (durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`).padEnd(W_PROGRESS);
+    const durStr = (durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`).padEnd(DURATION_WIDTH);
     const tokIn = state.finalTokensIn ?? 0;
     const tokOut = state.finalTokensOut ?? 0;
     const tokensCol = `${fmtK(tokIn)}→${fmtK(tokOut)}`.padEnd(13);
@@ -427,19 +427,6 @@ export class ProgressDisplay<TInput = any> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Module-level SIGINT hook
-//
-// Task_82 can register handlers here without holding a ProgressDisplay
-// instance reference. Handlers are wired immediately to process.on('SIGINT').
-// ---------------------------------------------------------------------------
-
-/**
- * Register a SIGINT handler at module scope.
- *
- * The handler fires on ctrl-c regardless of whether a ProgressDisplay instance
- * is active. Task_82 uses this to wire the pause-state transition.
- */
-export function onSigint(handler: () => void): void {
-  process.on('SIGINT', handler);
-}
+// The module-level onSigint export has been removed. SIGINT handlers must be
+// registered via ProgressDisplay#onSigint, which ties their lifecycle to
+// start()/stop() and prevents leaked listeners.
