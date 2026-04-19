@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@relay/core": "workspace:^",
+    "chalk": "^5.4.1",
     "commander": "13.1.0"
   },
   "devDependencies": {
