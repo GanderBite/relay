@@ -130,7 +130,7 @@ function renderPreResumeStepRow(
 
   if (isFirstPending) {
     // The step we are about to run — show with spinner frame 0.
-    const spinnerChar = SYMBOLS.spinner[0] ?? SYMBOLS.spinner[0];
+    const spinnerChar = SYMBOLS.spinner[0];
     return yellow(` ${spinnerChar} ${nameCol}running`);
   }
 
@@ -169,6 +169,7 @@ function printPreResumeBanner(
   flowRef: FlowRef,
   state: RunState,
   topoOrder: readonly string[],
+  predecessors: ReadonlyMap<string, ReadonlySet<string>> | undefined,
   spentUsd: number,
 ): void {
   const pickingUpFrom = firstPendingStepId(topoOrder, state.steps);
@@ -199,22 +200,31 @@ function printPreResumeBanner(
     // Only needed for non-first non-succeeded steps.
     let pendingPredecessors: string[] = [];
     if (!isFirstPending && stepState.status !== 'succeeded' && stepState.status !== 'skipped') {
-      const step = state.steps;
-      pendingPredecessors = topoOrder.filter((predId) => {
-        const predState = step[predId];
-        return (
-          predId !== stepId &&
-          predState !== undefined &&
-          predState.status !== 'succeeded' &&
-          predState.status !== 'skipped'
-        );
-      }).filter((predId) => {
-        // Only include direct predecessors — we check this by picking
-        // steps that appear before this step in topoOrder and are not done.
+      if (predecessors !== undefined) {
+        // Use actual graph edges — only direct parents that are not yet done.
+        const directParents = predecessors.get(stepId);
+        if (directParents !== undefined) {
+          pendingPredecessors = [...directParents].filter((predId) => {
+            const predState = state.steps[predId];
+            return (
+              predState !== undefined &&
+              predState.status !== 'succeeded' &&
+              predState.status !== 'skipped'
+            );
+          });
+        }
+      } else {
+        // Fallback: topoOrder heuristic when the graph does not expose predecessors.
         const ownIndex = topoOrder.indexOf(stepId);
-        const predIndex = topoOrder.indexOf(predId);
-        return predIndex < ownIndex;
-      });
+        pendingPredecessors = topoOrder.slice(0, ownIndex).filter((predId) => {
+          const predState = state.steps[predId];
+          return (
+            predState !== undefined &&
+            predState.status !== 'succeeded' &&
+            predState.status !== 'skipped'
+          );
+        });
+      }
     }
 
     const row = renderPreResumeStepRow(stepId, stepState, isFirstPending, pendingPredecessors);
@@ -223,11 +233,9 @@ function printPreResumeBanner(
 
   process.stdout.write('\n');
 
-  // Footer: "spent so far: $0.049 · resume cost est: $?.??"
+  // Footer: honest "spent so far" only — no fabricated cost estimate.
   const spentStr = fmtUsd(spentUsd);
-  process.stdout.write(
-    `spent so far: ${spentStr} ${SYMBOLS.dot} resume cost est: $?.??\n`,
-  );
+  process.stdout.write(`spent so far: ${spentStr}\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +329,7 @@ export default async function resumeCommand(
   const spentUsd = await loadSpentUsd(runDir);
 
   // ---- (6) Print pre-resume banner ----
-  printPreResumeBanner(runId, flowRef, state, flow.graph.topoOrder, spentUsd);
+  printPreResumeBanner(runId, flowRef, state, flow.graph.topoOrder, flow.graph.predecessors, spentUsd);
 
   // ---- (7) Auth check — must happen before the Runner so we can exit 3 on auth failure ----
   registerDefaultProviders();
