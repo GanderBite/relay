@@ -160,6 +160,17 @@ describe('relay run (real Claude)', () => {
    * through the real binary, not just through unit tests of auth.ts.
    */
   it.skipIf(!SMOKE)('billing-safety: ANTHROPIC_API_KEY blocked without --api-key', () => {
+    // Build the child env by copy-then-delete so RELAY_ALLOW_API_KEY is truly
+    // absent. Passing `undefined` in an inline object literal does NOT remove the
+    // key on all Node versions — spawnSync may receive the string "undefined".
+    const childEnv = {
+      ...process.env,
+      // Inject a fake API key. The guard must reject it regardless of value.
+      ANTHROPIC_API_KEY: 'sk-ant-test-key-that-is-fake',
+    };
+    // Explicitly delete the key — same pattern as the primary smoke test above.
+    delete childEnv['RELAY_ALLOW_API_KEY'];
+
     const result = spawnSync(
       process.execPath,
       [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'],
@@ -167,13 +178,7 @@ describe('relay run (real Claude)', () => {
         encoding: 'utf8',
         // Short timeout — the guard fires before any SDK call.
         timeout: 10_000,
-        env: {
-          ...process.env,
-          // Inject a fake API key. The guard must reject it regardless of value.
-          ANTHROPIC_API_KEY: 'sk-ant-test-key-that-is-fake',
-          // Ensure RELAY_ALLOW_API_KEY is NOT set so the guard fires.
-          RELAY_ALLOW_API_KEY: undefined,
-        },
+        env: childEnv,
         cwd: process.cwd(),
       },
     );
