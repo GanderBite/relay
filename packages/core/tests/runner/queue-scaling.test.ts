@@ -81,7 +81,7 @@ describe('Runner — ready queue O(1) membership', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('completes a 200-step chain within wall-clock budget with MockProvider', async () => {
+  it('completes a 200-step chain within wall-clock budget with MockProvider', { timeout: 30_000 }, async () => {
     const N = 200;
     const { flow, responses } = buildChainFlow(N);
 

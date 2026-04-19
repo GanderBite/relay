@@ -8,7 +8,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createRunner, Runner } from '../../src/runner/runner.js';
 import { defineFlow } from '../../src/flow/define.js';
@@ -19,8 +20,11 @@ import { ClaudeAuthError, FlowDefinitionError } from '../../src/errors.js';
 import { z } from '../../src/zod.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LINEAR_FLOW_FIXTURE = join(HERE, 'fixtures', 'linear-test-flow.ts');
+
 const canned: InvocationResponse = {
-  text: 'ok',
+  text: '{}',
   usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
   costUsd: 0.001,
   durationMs: 10,
@@ -56,6 +60,7 @@ describe('Runner — DAG walker', () => {
 
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-runner-'));
+    await writeFile(join(tmp, 'p.md'), '# test prompt', 'utf8');
   });
 
   afterEach(async () => {
@@ -84,7 +89,7 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(linearFlow(), {});
+    const result = await runner.run(linearFlow(), {}, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(result.status).toBe('succeeded');
     expect(order).toEqual(['a', 'b', 'c']);
@@ -129,7 +134,7 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(flow, {}, { parallelism: MAX });
+    const result = await runner.run(flow, {}, { parallelism: MAX, flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(result.status).toBe('succeeded');
     expect(maxSeen).toBeLessThanOrEqual(MAX);
@@ -164,7 +169,7 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(flow, {});
+    const result = await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(result.status).toBe('failed');
     expect(bSpy).not.toHaveBeenCalled();
@@ -212,7 +217,7 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {});
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(bSpy).toHaveBeenCalled();
     expect(cSpy).toHaveBeenCalled();
@@ -234,7 +239,7 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await expect(runner.run(flow, { repoPath: 123 })).rejects.toBeInstanceOf(FlowDefinitionError);
+    await expect(runner.run(flow, { repoPath: 123 }, { flowDir: tmp, authTimeoutMs: 1_000 })).rejects.toBeInstanceOf(FlowDefinitionError);
   });
 
   it('[RUNNER-006] writes handoffs + state.json between steps (observable mid-run)', async () => {
@@ -267,7 +272,7 @@ describe('Runner — DAG walker', () => {
     })._unsafeUnwrap();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {});
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     const mid = stateMidRun as { steps: Record<string, { status: string }> };
     expect(mid.steps.a.status).toBe('succeeded');
@@ -285,7 +290,7 @@ describe('Runner — DAG walker', () => {
     const flow = linearFlow();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {});
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(authSpy).toHaveBeenCalledTimes(1);
   });
@@ -305,7 +310,7 @@ describe('Runner — DAG walker', () => {
     const flow = linearFlow();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await expect(runner.run(flow, {})).rejects.toBeInstanceOf(ClaudeAuthError);
+    await expect(runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 })).rejects.toBeInstanceOf(ClaudeAuthError);
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 });
@@ -314,6 +319,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
   let tmp: string;
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-abort-'));
+    await writeFile(join(tmp, 'p.md'), '# test prompt', 'utf8');
   });
   afterEach(async () => {
     await rm(tmp, { recursive: true, force: true });
@@ -340,7 +346,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     })._unsafeUnwrap();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {});
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     setTimeout(() => process.emit('SIGINT'), 80);
     const result = await p.catch((e) => e);
 
@@ -367,7 +373,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     })._unsafeUnwrap();
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {});
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     setTimeout(() => process.emit('SIGTERM'), 80);
     await p.catch(() => undefined);
     const state = JSON.parse(await readFile(join(tmp, 'state.json'), 'utf8'));
@@ -376,10 +382,19 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
 
   it('[ABORT-003] abort cascades ctx.abortSignal to in-flight invokes', async () => {
     const aborted: string[] = [];
+    // Resolved by the factory once the step is confirmed in-flight, then we
+    // send SIGINT. Without this gate the 50ms fixed delay races against
+    // stateMachine.save() (a file write); if abort fires before the executor
+    // starts, raceAbort sees signal.aborted=true and throws before the factory
+    // runs — the listener is never registered and aborted stays empty.
+    let signalInflight!: () => void;
+    const inFlight = new Promise<void>((resolve) => { signalInflight = resolve; });
+
     const provider = new MockProvider({
       responses: {
         a: (_req, ctx) => {
           ctx.abortSignal.addEventListener('abort', () => aborted.push('a'));
+          signalInflight();
           return new Promise(() => undefined) as unknown as InvocationResponse;
         },
       },
@@ -397,8 +412,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     })._unsafeUnwrap();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {});
-    setTimeout(() => process.emit('SIGINT'), 50);
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    // Send SIGINT only after the step factory confirms it is running.
+    void inFlight.then(() => process.emit('SIGINT'));
     await p.catch(() => undefined);
     expect(aborted).toContain('a');
   });
@@ -418,7 +434,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     })._unsafeUnwrap();
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {});
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     const after = process.listenerCount('SIGINT');
     expect(after).toBe(before);
   });
@@ -441,7 +457,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     })._unsafeUnwrap();
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {});
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 });
@@ -450,6 +466,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
   let tmp: string;
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-resume-'));
+    await writeFile(join(tmp, 'p.md'), '# test prompt', 'utf8');
   });
   afterEach(async () => {
     await rm(tmp, { recursive: true, force: true });
@@ -467,6 +484,11 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
       steps,
     };
     await writeFile(join(tmp, 'state.json'), JSON.stringify(state), 'utf8');
+    await writeFile(
+      join(tmp, 'flow-ref.json'),
+      JSON.stringify({ flowName: 'linear', flowVersion: '0.1.0', flowPath: LINEAR_FLOW_FIXTURE }),
+      'utf8',
+    );
   }
 
   it('[RESUME-001] re-runs only pending/failed steps; succeeded ones are not re-invoked', async () => {
@@ -484,8 +506,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     registry.register(provider);
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    // resume requires the flow context; pass the same flow.
-    await (runner as unknown as Runner).resume(tmp);
+    await (runner as unknown as Runner).resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(aSpy).not.toHaveBeenCalled();
     expect(bSpy).toHaveBeenCalled();
@@ -522,7 +543,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp);
+    const result = await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     // The run result should include the pre-resume spend (0.05) in total cost.
     expect(result.cost.totalUsd).toBeGreaterThanOrEqual(0.05);
@@ -567,7 +588,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.resume(tmp).catch(() => undefined);
+    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 }).catch(() => undefined);
 
     // maxRetries:3 and 2 attempts already used => resume should run exactly 1 more.
     expect(aSpy).toHaveBeenCalledTimes(1);
@@ -596,7 +617,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.resume(tmp);
+    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
 
     expect(callOrder[0]).toBe('b');
     expect(callOrder).toContain('c');

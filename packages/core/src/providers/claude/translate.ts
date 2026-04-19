@@ -209,8 +209,12 @@ export function translateSdkMessage(msg: unknown): InvocationEvent[] {
       const content = message['content'];
       if (isArray(content)) {
         for (const block of content) {
-          // Handle tool_result blocks inside assistant message content
-          if (isRecord(block) && block['type'] === 'tool_result') {
+          if (!isRecord(block)) continue;
+          // Text in the final assistant summary is redundant — the same text
+          // already streamed via content_block_delta events. Skip to avoid
+          // double-accumulation in invoke() and stream-path aggregators.
+          if (block['type'] === 'text') continue;
+          if (block['type'] === 'tool_result') {
             const isError = block['is_error'];
             const ok = isError !== true;
             const rawId = block['tool_use_id'];

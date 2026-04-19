@@ -12,7 +12,7 @@ export type ParallelStepBuilderOutput = Omit<ParallelStepSpec, 'id'>;
 export function parallelStep(
   spec: ParallelStepBuilderOutput,
 ): Result<ParallelStepBuilderOutput, FlowDefinitionError> {
-  const result = parallelStepSpecSchema.safeParse(spec);
+  const result = parallelStepSpecSchema.safeParse({ id: '_', kind: 'parallel', ...spec });
   if (!result.success) return err(toFlowDefError(result.error, 'invalid parallel step'));
 
   return ok({

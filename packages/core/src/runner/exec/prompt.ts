@@ -166,6 +166,8 @@ async function runProviderInvocation(args: {
     // (custom providers, older test doubles). The canonical Claude provider
     // always emits stream.end from its result-message translation path.
     let capturedStopReason = 'stream_completed';
+    let capturedCostUsd: number | undefined;
+    let capturedSessionId: string | undefined;
 
     const iterable = provider.stream(request, invocationCtx);
     for await (const event of iterable) {
@@ -186,6 +188,8 @@ async function runProviderInvocation(args: {
           break;
         case 'stream.end':
           capturedStopReason = event.stopReason;
+          capturedCostUsd = event.costUsd;
+          capturedSessionId = event.sessionId;
           break;
         default:
           break;
@@ -199,6 +203,8 @@ async function runProviderInvocation(args: {
       numTurns: turnCount,
       model,
       stopReason: capturedStopReason,
+      ...(capturedCostUsd !== undefined ? { costUsd: capturedCostUsd } : {}),
+      ...(capturedSessionId !== undefined ? { sessionId: capturedSessionId } : {}),
     };
   }
 

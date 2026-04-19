@@ -10,7 +10,7 @@ import { step } from '../../../src/flow/step.js';
 function stubLogger() {
   const calls: { level: string; payload: unknown }[] = [];
   const logger = {
-    info: (payload: unknown) => calls.push({ level: 'info', payload }),
+    info: (...args: unknown[]) => calls.push({ level: 'info', payload: args }),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),

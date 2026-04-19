@@ -86,7 +86,7 @@ describe('MockProvider', () => {
     expect(thrown).toBeInstanceOf(StepFailureError);
   });
 
-  it('[MOCK-004] stream yields turn.start, text.delta, usage, turn.end in order', async () => {
+  it('[MOCK-004] stream yields turn.start, text.delta, usage, turn.end, stream.end in order', async () => {
     const response: InvocationResponse = { ...canned, text: 'hello', numTurns: 1 };
     const p = new MockProvider({ responses: { s: response } });
     const events = [];
@@ -96,11 +96,12 @@ describe('MockProvider', () => {
       'text.delta',
       'usage',
       'turn.end',
+      'stream.end',
     ]);
-    // First event's turn, last event's turn, and text delta content
     expect(events[0]).toMatchObject({ type: 'turn.start', turn: 1 });
     expect(events[1]).toMatchObject({ type: 'text.delta', delta: 'hello' });
     expect(events[3]).toMatchObject({ type: 'turn.end', turn: response.numTurns });
+    expect(events[4]).toMatchObject({ type: 'stream.end', stopReason: 'end_turn' });
   });
 
   it('[MOCK-005] callable response receives InvocationRequest and InvocationContext', async () => {

@@ -12,13 +12,21 @@ function zeroUsage(): NormalizedUsage {
 }
 
 describe('translateSdkMessage', () => {
-  it('[TRANSLATE-001] assistant text block yields single text.delta', () => {
-    const events = translateSdkMessage({
+  it('[TRANSLATE-001] assistant text blocks are skipped; tool_use blocks yield tool.call', () => {
+    const textOnly = translateSdkMessage({
       type: 'assistant',
       message: { content: [{ type: 'text', text: 'hello world' }] },
     });
-    expect(events).toHaveLength(1);
-    expect(events[0]).toEqual({ type: 'text.delta', delta: 'hello world' });
+    expect(textOnly).toHaveLength(0);
+
+    const withTool = translateSdkMessage({
+      type: 'assistant',
+      message: {
+        content: [{ type: 'tool_use', id: 'toolu_01', name: 'Read', input: { path: 'x.ts' } }],
+      },
+    });
+    expect(withTool).toHaveLength(1);
+    expect(withTool[0]).toMatchObject({ type: 'tool.call', name: 'Read', input: { path: 'x.ts' } });
   });
 
   it('[TRANSLATE-002] assistant tool_use block yields tool.call with name + input', () => {

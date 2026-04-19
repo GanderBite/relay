@@ -12,7 +12,7 @@ export type ScriptStepBuilderOutput = Omit<ScriptStepSpec, 'id'>;
 export function scriptStep(
   spec: ScriptStepBuilderOutput,
 ): Result<ScriptStepBuilderOutput, FlowDefinitionError> {
-  const result = scriptStepSpecSchema.safeParse(spec);
+  const result = scriptStepSpecSchema.safeParse({ id: '_', kind: 'script', ...spec });
   if (!result.success) return err(toFlowDefError(result.error, 'invalid script step'));
 
   return ok({

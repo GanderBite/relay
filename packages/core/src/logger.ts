@@ -28,15 +28,30 @@ export interface CreateLoggerOptions {
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
-// Known secret keys + wildcard patterns for API keys, tokens, secrets, and
-// passwords. 'env'/'environment'/'process.env' redact entire dumped envs.
 const REDACT_PATHS: readonly string[] = [
   '*.ANTHROPIC_API_KEY', '*.CLAUDE_CODE_OAUTH_TOKEN',
-  '*.authorization', '*.Authorization', '*.cookie', '*.Cookie',
-  '*.*_API_KEY', '*.*_TOKEN', '*.*_SECRET', '*.*_PASSWORD', '*.*PASSWORD*',
-  '*.ANTHROPIC_*', '*.CLAUDE_CODE_*',
   'env', 'environment', 'process.env',
 ];
+
+const SENSITIVE_SUFFIX_RE = /(_api_key|_token|_secret|_password)$/i;
+const SENSITIVE_PREFIX_RE = /^(anthropic_|claude_code_)/i;
+const SENSITIVE_EXACT = new Set(['authorization', 'Authorization', 'cookie', 'Cookie']);
+
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_EXACT.has(key) ||
+    SENSITIVE_SUFFIX_RE.test(key) ||
+    SENSITIVE_PREFIX_RE.test(key) ||
+    /password/i.test(key);
+}
+
+function redactObj(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = isSensitiveKey(k) ? '[redacted]' : redactObj(v);
+  }
+  return out;
+}
 
 export function createLogger(opts: CreateLoggerOptions): Logger {
   const level = opts.level ?? process.env.LOG_LEVEL ?? 'info';
@@ -44,6 +59,9 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
     level,
     base: { flowName: opts.flowName, runId: opts.runId },
     redact: { paths: [...REDACT_PATHS], censor: '[redacted]' },
+    formatters: {
+      log: (obj) => redactObj(obj) as Record<string, unknown>,
+    },
   };
 
   // pino-pretty is loaded only in development; production writes raw NDJSON to fd 1.

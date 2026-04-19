@@ -221,7 +221,7 @@ export type InvocationEvent =
    * guarantees a non-empty string — it substitutes 'stream_completed' when
    * the SDK omits stop_reason.
    */
-  | { type: 'stream.end'; stopReason: string };
+  | { type: 'stream.end'; stopReason: string; costUsd?: number; sessionId?: string };
 
 // ---------------------------------------------------------------------------
 // CostEstimate (used by Provider.estimateCost)

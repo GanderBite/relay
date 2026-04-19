@@ -79,7 +79,10 @@ describe('StateMachine — transitions + persistence', () => {
       inventory: '/runs/r1/handoffs/inventory.json',
       services: '/runs/r1/handoffs/services.json',
     };
-    const r = sm.completeStep('a', artifacts);
+    const r = sm.completeStep('a', {
+      handoffs: ['inventory', 'services'],
+      artifacts: [artifacts.inventory, artifacts.services],
+    });
     expect(r.isOk()).toBe(true);
     const step = sm.getState().steps.a;
     expect(step.status).toBe('succeeded');

@@ -13,7 +13,10 @@ import type {
 
 type ResponseValue =
   | InvocationResponse
-  | ((req: InvocationRequest, ctx: InvocationContext) => InvocationResponse);
+  | ((
+      req: InvocationRequest,
+      ctx: InvocationContext,
+    ) => InvocationResponse | Promise<InvocationResponse>);
 
 export interface MockProviderOptions {
   responses: Record<string, ResponseValue>;
@@ -46,10 +49,10 @@ export class MockProvider implements Provider {
     return ok({ ok: true, billingSource: 'local', detail: 'mock provider' });
   }
 
-  private resolveResponse(
+  private resolveResponseSync(
     req: InvocationRequest,
     ctx: InvocationContext,
-  ): Result<InvocationResponse, PipelineError> {
+  ): Result<InvocationResponse | Promise<InvocationResponse>, PipelineError> {
     const value = this.responses[ctx.stepId];
     if (value === undefined) {
       return err(
@@ -60,8 +63,7 @@ export class MockProvider implements Provider {
         ),
       );
     }
-    const response = typeof value === 'function' ? value(req, ctx) : value;
-    return ok(response);
+    return ok(typeof value === 'function' ? value(req, ctx) : value);
   }
 
   /**
@@ -75,7 +77,10 @@ export class MockProvider implements Provider {
     req: InvocationRequest,
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
-    return this.resolveResponse(req, ctx);
+    const called = this.resolveResponseSync(req, ctx);
+    if (called.isErr()) return called;
+    const response = await called.value;
+    return ok(response);
   }
 
   /**
@@ -87,11 +92,14 @@ export class MockProvider implements Provider {
    * surfaces consistently.
    */
   async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
-    const result = this.resolveResponse(req, ctx);
-    if (result.isErr()) {
-      throw result.error;
+    const called = this.resolveResponseSync(req, ctx);
+    if (called.isErr()) {
+      throw called.error;
     }
-    const response = result.value;
+    const responseOrPromise = called.value;
+    const response = responseOrPromise instanceof Promise
+      ? await responseOrPromise
+      : responseOrPromise;
     yield { type: 'turn.start', turn: 1 };
     yield { type: 'text.delta', delta: response.text };
     yield {
@@ -104,5 +112,11 @@ export class MockProvider implements Provider {
       },
     };
     yield { type: 'turn.end', turn: response.numTurns };
+    yield {
+      type: 'stream.end',
+      stopReason: response.stopReason ?? 'end_turn',
+      ...(response.costUsd !== undefined ? { costUsd: response.costUsd } : {}),
+      ...(response.sessionId !== undefined ? { sessionId: response.sessionId } : {}),
+    };
   }
 }

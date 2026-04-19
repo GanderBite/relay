@@ -12,7 +12,7 @@ export type PromptStepBuilderOutput = Omit<PromptStepSpec, 'id'>;
 export function promptStep(
   spec: PromptStepBuilderOutput,
 ): Result<PromptStepBuilderOutput, FlowDefinitionError> {
-  const result = promptStepSpecSchema.safeParse(spec);
+  const result = promptStepSpecSchema.safeParse({ id: '_', kind: 'prompt', ...spec });
   if (!result.success) return err(toFlowDefError(result.error, 'invalid prompt step'));
 
   return ok({
