@@ -212,7 +212,16 @@ export type InvocationEvent =
    */
   | { type: 'tool.result'; name: string; ok: boolean; toolUseId?: string }
   | { type: 'usage'; usage: Partial<NormalizedUsage> }
-  | { type: 'turn.end'; turn: number };
+  | { type: 'turn.end'; turn: number }
+  /**
+   * Terminal event emitted once by the provider when the SDK's final result
+   * message arrives. Carries the normalized stopReason so downstream callers
+   * aggregating a stream into an InvocationResponse can populate the required
+   * stopReason field without re-reading the raw SDK payload. The provider
+   * guarantees a non-empty string — it substitutes 'stream_completed' when
+   * the SDK omits stop_reason.
+   */
+  | { type: 'stream.end'; stopReason: string };
 
 // ---------------------------------------------------------------------------
 // CostEstimate (used by Provider.estimateCost)

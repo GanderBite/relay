@@ -178,15 +178,24 @@ export function translateSdkMessage(msg: unknown): InvocationEvent[] {
       return [];
     }
 
-    // Result message — carries final usage metadata.
-    // extractSdkResultSummary handles model/stopReason/numTurns/sessionId
-    // separately; this path is responsible only for the usage event.
+    // Result message — carries final usage metadata and the terminal
+    // stop reason. extractSdkResultSummary still handles model/numTurns/
+    // sessionId for the non-streaming invoke() path; here we emit the usage
+    // event (when present) followed by a stream.end event so stream-path
+    // aggregators can populate InvocationResponse.stopReason without
+    // re-reading the raw payload. The provider substitutes 'stream_completed'
+    // when the SDK omits stop_reason so downstream callers never see null.
     if (msgType === 'result') {
+      const events: InvocationEvent[] = [];
       const usage = extractUsage(msg['usage']);
       if (usage !== null) {
-        return [{ type: 'usage', usage }];
+        events.push({ type: 'usage', usage });
       }
-      return [];
+      const rawStop = msg['stop_reason'];
+      const stopReason =
+        isString(rawStop) && rawStop.length > 0 ? rawStop : 'stream_completed';
+      events.push({ type: 'stream.end', stopReason });
+      return events;
     }
 
     // Assistant message — walk ALL content blocks and collect events.

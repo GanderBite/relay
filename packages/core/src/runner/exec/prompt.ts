@@ -162,6 +162,10 @@ async function runProviderInvocation(args: {
     let turnCount = 0;
     const model = request.model ?? '';
     let firstDeltaSeen = false;
+    // Fallback sentinel for providers whose stream never emits stream.end
+    // (custom providers, older test doubles). The canonical Claude provider
+    // always emits stream.end from its result-message translation path.
+    let capturedStopReason = 'stream_completed';
 
     const iterable = provider.stream(request, invocationCtx);
     for await (const event of iterable) {
@@ -180,6 +184,9 @@ async function runProviderInvocation(args: {
         case 'turn.end':
           turnCount = Math.max(turnCount, event.turn);
           break;
+        case 'stream.end':
+          capturedStopReason = event.stopReason;
+          break;
         default:
           break;
       }
@@ -191,7 +198,7 @@ async function runProviderInvocation(args: {
       durationMs: Date.now() - started,
       numTurns: turnCount,
       model,
-      stopReason: null,
+      stopReason: capturedStopReason,
     };
   }
 

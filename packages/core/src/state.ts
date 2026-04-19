@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 
-import type { AtomicWriteError } from './errors.js';
 import {
   StateCorruptError,
   StateNotFoundError,
@@ -11,7 +10,6 @@ import {
   StateWriteError,
 } from './errors.js';
 import type { RunState, RunStatus, StepState } from './flow/types.js';
-import { writeLiveState as writeLiveStateFile, type LiveStatePartial } from './runner/live-state.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
 import { createWriteSerializer } from './util/serialize.js';
@@ -309,21 +307,6 @@ export class StateMachine {
       updatedAt: timestamp,
     };
     return ok(undefined);
-  }
-
-  /**
-   * Write the per-step live state file at <runDir>/live/<stepId>.json via
-   * atomic rename. This is the low-cadence signal the CLI progress display
-   * watches to animate token/turn counters within a single step. Separate
-   * from save() — live files are token-usage snapshots, not the run-level
-   * state.json snapshot, so a live-state write failure must not block a
-   * provider invocation from continuing.
-   */
-  async writeLiveState(
-    stepId: string,
-    partial: LiveStatePartial,
-  ): Promise<Result<void, AtomicWriteError>> {
-    return writeLiveStateFile(this.#runDir, stepId, partial);
   }
 
   /**
