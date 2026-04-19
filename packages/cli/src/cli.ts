@@ -1,12 +1,10 @@
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
-import { PipelineError } from '@relay/core';
 import { buildProgram } from './dispatcher.js';
+import { MARK } from './visual.js';
+import { exitCodeFor, formatError } from './exit-codes.js';
 
-// Stub until task_77 provides the real constant from visual.ts.
-const MARK = '●─▶●─▶●─▶●';
-
-// Indent for §6.10 continuation lines: mark.length (10) + 1 space = 11 chars.
+// Indent for §6.10 continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
 
 function resolveVersion(pkg: string): string {
@@ -71,17 +69,7 @@ export async function main(argv: string[]): Promise<void> {
   try {
     await program.parseAsync(argv);
   } catch (err) {
-    if (err instanceof PipelineError) {
-      // Placeholder: task_46 will wire the real exit-code mapper in wave 2.
-      process.stderr.write(`${err.name}: ${err.message}\n`);
-      process.exit(1);
-    }
-    // Non-PipelineError — surface the stack so nothing is silently swallowed.
-    if (err instanceof Error) {
-      process.stderr.write(`${err.stack ?? err.message}\n`);
-    } else {
-      process.stderr.write(String(err) + '\n');
-    }
-    process.exit(1);
+    process.stderr.write(formatError(err) + '\n');
+    process.exit(exitCodeFor(err));
   }
 }
