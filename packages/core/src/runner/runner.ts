@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 
 import { CostTracker } from '../cost.js';
 import {
+  AuthTimeoutError,
   ERROR_CODES,
   FlowDefinitionError,
   PipelineError,
@@ -31,10 +32,16 @@ import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
 const DEFAULT_PROVIDER_NAME = 'claude';
-// Mirrors the §4.4.1 default in flow/schemas.ts. Duplicated here so the Runner
+// Mirrors the default in flow/schemas.ts. Duplicated here so the Runner
 // can backstop hand-built PromptStepSpec values that bypassed the schema parse
 // (e.g. spec literals authored without going through promptStep(...)).
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
+// Wall-clock cap on a single provider.authenticate() call. A misconfigured
+// auth probe (e.g. a hung `claude --version` subprocess) or a custom provider
+// whose authenticate() never resolves would otherwise wedge the Runner before
+// any step executes and bypass every step-level timeout. Configurable per-run
+// via RunOptions.authTimeoutMs so integration tests can shorten it.
+const DEFAULT_AUTH_TIMEOUT_MS = 30_000;
 const FLOW_REF_FILENAME = 'flow-ref.json';
 const METRICS_FILENAME = 'metrics.json';
 const RUN_LOG_FILENAME = 'run.log';
@@ -64,6 +71,12 @@ export interface RunOptions {
    * the path and the run crashes.
    */
   flowPath?: string;
+  /**
+   * Wall-clock cap (milliseconds) on each provider.authenticate() call. When
+   * the cap fires, the Runner raises `AuthTimeoutError` before any step runs.
+   * Defaults to 30_000. Tests typically shorten this to keep the suite fast.
+   */
+  authTimeoutMs?: number;
 }
 
 export interface RunResult {
@@ -239,10 +252,7 @@ export class Runner {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      for (const provider of uniqueProviders) {
-        const auth = await provider.authenticate();
-        if (auth.isErr()) throw auth.error;
-      }
+      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs);
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -437,10 +447,7 @@ export class Runner {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      for (const provider of uniqueProviders) {
-        const auth = await provider.authenticate();
-        if (auth.isErr()) throw auth.error;
-      }
+      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs);
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -536,6 +543,39 @@ export class Runner {
     };
     const result = await atomicWriteJson(join(runDir, FLOW_REF_FILENAME), payload);
     if (result.isErr()) throw result.error;
+  }
+
+  /**
+   * Authenticate each unique provider with a wall-clock cap. Throws the first
+   * provider's err-branch error or an `AuthTimeoutError` — whichever resolves
+   * first. The setTimeout handle is cleared on the happy path so a fast auth
+   * does not keep the event loop alive past run completion.
+   */
+  async #authenticateAll(
+    providers: Iterable<Provider>,
+    authTimeoutMs: number | undefined,
+  ): Promise<void> {
+    const timeoutMs = authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
+    for (const provider of providers) {
+      let timerId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        timerId = setTimeout(() => {
+          reject(
+            new AuthTimeoutError(
+              `provider "${provider.name}" authenticate() did not settle within ${timeoutMs}ms`,
+              provider.name,
+              timeoutMs,
+            ),
+          );
+        }, timeoutMs);
+      });
+      try {
+        const auth = await Promise.race([provider.authenticate(), timeoutPromise]);
+        if (auth.isErr()) throw auth.error;
+      } finally {
+        if (timerId !== undefined) clearTimeout(timerId);
+      }
+    }
   }
 
   async #closeProviders(
@@ -793,6 +833,7 @@ export class Runner {
           { event: 'state.save_failed', error: startSave.error.message },
           'state.json atomic write failed',
         );
+        throw startSave.error;
       }
 
       try {
@@ -929,6 +970,7 @@ export class Runner {
             { event: 'state.save_failed', error: saveResult.error.message },
             'state.json atomic write failed',
           );
+          throw saveResult.error;
         }
       }
 

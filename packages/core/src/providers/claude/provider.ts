@@ -22,7 +22,12 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { err, ok, type Result } from 'neverthrow';
 
-import { PipelineError, StepFailureError } from '../../errors.js';
+import {
+  PipelineError,
+  ProviderRateLimitError,
+  StepFailureError,
+  TimeoutError,
+} from '../../errors.js';
 import { defaultRegistry, ProviderRegistry } from '../registry.js';
 import type {
   AuthState,
@@ -331,14 +336,11 @@ export class ClaudeProvider implements Provider {
         }
       }
     } catch (cause) {
-      return err(
-        new StepFailureError(
-          describeInvokeError(cause),
-          ctx.stepId,
-          ctx.attempt,
-          { cause: String(cause) },
-        ),
-      );
+      const translated = translateSdkError(cause, ctx.stepId, ctx.attempt, this.name);
+      if (translated === 'rethrow') {
+        throw cause;
+      }
+      return err(translated);
     }
 
     // SDK is the source of truth for response-level metadata. The request's
@@ -365,11 +367,124 @@ export class ClaudeProvider implements Provider {
   }
 }
 
-function describeInvokeError(cause: unknown): string {
+function describeError(cause: unknown): string {
   if (cause instanceof Error) {
     return cause.message;
   }
   return typeof cause === 'string' ? cause : 'claude provider invocation failed';
+}
+
+/**
+ * Shape we duck-type against. The `@anthropic-ai/claude-agent-sdk` only
+ * exports an `AbortError` class; rate-limit and timeout conditions surface as
+ * whatever the underlying transport throws (usually an Anthropic APIError
+ * with `status: 429`, a `RateLimitError` subclass, a Node HTTP timeout with
+ * `code: 'ETIMEDOUT'`, or a fetch abort-like shape). We never `instanceof`
+ * across package boundaries we do not own — string/number checks only.
+ */
+interface ErrorLike {
+  readonly name?: string;
+  readonly message?: string;
+  readonly code?: string;
+  readonly status?: number;
+  readonly statusCode?: number;
+  readonly retryAfter?: number;
+  readonly headers?: Record<string, string | number | undefined>;
+}
+
+function asErrorLike(cause: unknown): ErrorLike {
+  if (cause !== null && typeof cause === 'object') {
+    return cause as ErrorLike;
+  }
+  return {};
+}
+
+function isAbortLikeError(cause: unknown): boolean {
+  if (cause === null || typeof cause !== 'object') return false;
+  const like = cause as ErrorLike;
+  if (like.name === 'AbortError') return true;
+  // DOMException with `.code === 'ABORT_ERR'` on older Node versions.
+  if (like.code === 'ABORT_ERR') return true;
+  return false;
+}
+
+function extractStatus(like: ErrorLike): number | undefined {
+  if (typeof like.status === 'number') return like.status;
+  if (typeof like.statusCode === 'number') return like.statusCode;
+  return undefined;
+}
+
+function isRateLimitError(cause: unknown): boolean {
+  if (cause === null || typeof cause !== 'object') return false;
+  const like = cause as ErrorLike;
+  if (like.name === 'RateLimitError') return true;
+  const status = extractStatus(like);
+  if (status === 429) return true;
+  return false;
+}
+
+function extractRetryAfterMs(like: ErrorLike): number | undefined {
+  if (typeof like.retryAfter === 'number') {
+    return like.retryAfter * 1000;
+  }
+  const headers = like.headers;
+  if (headers !== undefined) {
+    const raw = headers['retry-after'] ?? headers['Retry-After'];
+    if (typeof raw === 'number') return raw * 1000;
+    if (typeof raw === 'string') {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) return parsed * 1000;
+    }
+  }
+  return undefined;
+}
+
+function isTimeoutError(cause: unknown): boolean {
+  if (cause === null || typeof cause !== 'object') return false;
+  const like = cause as ErrorLike;
+  if (like.name === 'TimeoutError') return true;
+  if (like.code === 'ETIMEDOUT') return true;
+  if (like.code === 'ESOCKETTIMEDOUT') return true;
+  return false;
+}
+
+/**
+ * Classify a thrown SDK value into the matching Relay error.
+ *
+ * Return `'rethrow'` for abort-shaped errors so the runner's abort plumbing
+ * handles them unchanged. All other callers receive a typed `PipelineError`
+ * carrying the original value at `details.cause` for downstream
+ * retry-decision logic.
+ */
+function translateSdkError(
+  cause: unknown,
+  stepId: string,
+  attempt: number,
+  providerName: string,
+): PipelineError | 'rethrow' {
+  if (isAbortLikeError(cause)) {
+    return 'rethrow';
+  }
+
+  const description = describeError(cause);
+
+  if (isRateLimitError(cause)) {
+    const retryAfterMs = extractRetryAfterMs(asErrorLike(cause));
+    return new ProviderRateLimitError(
+      description,
+      providerName,
+      stepId,
+      attempt,
+      retryAfterMs,
+      { cause },
+    );
+  }
+
+  if (isTimeoutError(cause)) {
+    return new TimeoutError(description, stepId, 0, { cause });
+  }
+
+  return new StepFailureError(description, stepId, attempt, { cause });
 }
 
 function isResultMessage(msg: unknown): boolean {

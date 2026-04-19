@@ -1,8 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 
-import type { Provider } from '../../providers/types.js';
-import type { InvocationContext, InvocationRequest } from '../../providers/types.js';
+import type {
+  InvocationContext,
+  InvocationRequest,
+  InvocationResponse,
+  NormalizedUsage,
+  Provider,
+} from '../../providers/types.js';
 import type { PromptStepSpec } from '../../flow/types.js';
 import type { CostTracker, StepMetrics } from '../../cost.js';
 import type { HandoffStore } from '../../handoffs.js';
@@ -91,6 +96,112 @@ function toJsonSchema(schema: z.ZodType | undefined): Record<string, unknown> | 
   const out = z.toJSONSchema(schema);
   if (typeof out !== 'object' || out === null) return undefined;
   return out as Record<string, unknown>;
+}
+
+function mergeUsage(base: NormalizedUsage, patch: Partial<NormalizedUsage>): NormalizedUsage {
+  return {
+    inputTokens: patch.inputTokens ?? base.inputTokens,
+    outputTokens: patch.outputTokens ?? base.outputTokens,
+    cacheReadTokens: patch.cacheReadTokens ?? base.cacheReadTokens,
+    cacheCreationTokens: patch.cacheCreationTokens ?? base.cacheCreationTokens,
+  };
+}
+
+/**
+ * Streams the provider invocation when stream() is available, aggregating
+ * text deltas, usage, and turn counts into a single InvocationResponse so the
+ * rest of the executor can treat stream and non-stream providers identically.
+ * On every usage event (and once on the first text delta as a liveness ping)
+ * the per-step live file at <runDir>/live/<stepId>.json is rewritten — that
+ * file is the lowest-cadence signal the CLI progress display watches.
+ * Providers without stream() fall back to invoke(); the live-state write
+ * still lands once after the response is aggregated so the file shape stays
+ * consistent across provider implementations.
+ */
+async function runProviderInvocation(args: {
+  provider: Provider;
+  request: InvocationRequest;
+  invocationCtx: InvocationContext;
+  runDir: string;
+  stepId: string;
+  attempt: number;
+  startedIso: string;
+  logger: Logger;
+}): Promise<InvocationResponse> {
+  const { provider, request, invocationCtx, runDir, stepId, attempt, startedIso, logger } = args;
+
+  const emitLive = async (usage: NormalizedUsage, turns: number, model: string): Promise<void> => {
+    const tokensSoFar = usage.inputTokens + usage.outputTokens;
+    const partial = {
+      status: 'running' as const,
+      attempt,
+      startedAt: startedIso,
+      lastUpdateAt: new Date().toISOString(),
+      tokensSoFar,
+      turnsSoFar: turns,
+      ...(model !== '' ? { model } : {}),
+    };
+    const write = await writeLiveState(runDir, stepId, partial);
+    if (write.isErr()) {
+      logger.warn(
+        { event: 'live-state.write_failed', stepId, error: write.error.message },
+        'live state write failed; continuing',
+      );
+    }
+  };
+
+  if (typeof provider.stream === 'function') {
+    const started = Date.now();
+    let accumulatedText = '';
+    let usage: NormalizedUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    };
+    let turnCount = 0;
+    const model = request.model ?? '';
+    let firstDeltaSeen = false;
+
+    const iterable = provider.stream(request, invocationCtx);
+    for await (const event of iterable) {
+      switch (event.type) {
+        case 'text.delta':
+          accumulatedText += event.delta;
+          if (!firstDeltaSeen) {
+            firstDeltaSeen = true;
+            await emitLive(usage, turnCount, model);
+          }
+          break;
+        case 'usage':
+          usage = mergeUsage(usage, event.usage);
+          await emitLive(usage, turnCount, model);
+          break;
+        case 'turn.end':
+          turnCount = Math.max(turnCount, event.turn);
+          break;
+        default:
+          break;
+      }
+    }
+
+    return {
+      text: accumulatedText,
+      usage,
+      durationMs: Date.now() - started,
+      numTurns: turnCount,
+      model,
+      stopReason: null,
+    };
+  }
+
+  // Provider does not expose stream(); fall back to the single-shot
+  // invoke() and still emit one live-state update after the call returns.
+  const result = await provider.invoke(request, invocationCtx);
+  if (result.isErr()) throw result.error;
+  const response = result.value;
+  await emitLive(response.usage, response.numTurns, response.model);
+  return response;
 }
 
 /**
@@ -206,12 +317,23 @@ export async function executePrompt(
       logger: ctx.logger,
     };
 
-    // 6. Invoke the provider. Providers return Result; the outer try/catch
-    // also covers any thrown error so fixtures that throw (MockProvider
-    // handlers configured with a throwing function) surface identically.
-    const result = await ctx.provider.invoke(request, invocationCtx);
-    if (result.isErr()) throw result.error;
-    const response = result.value;
+    // 6. Stream the provider invocation and aggregate events inline. Using
+    // stream() (falling back to invoke() when the provider does not expose
+    // one) lets the executor update <runDir>/live/<stepId>.json on every
+    // token-usage event, which is what the CLI progress display watches to
+    // animate counters within a long-running step. The outer try/catch covers
+    // both the stream iterator's thrown errors and invoke()'s Result.err
+    // branch so every upstream surface funnels into wrapFailure identically.
+    const response = await runProviderInvocation({
+      provider: ctx.provider,
+      request,
+      invocationCtx,
+      runDir: ctx.runDir,
+      stepId,
+      attempt,
+      startedIso,
+      logger: ctx.logger,
+    });
 
     // Record usage as soon as the provider returns so CostTracker captures
     // tokens even if downstream handoff/artifact writes fail.
@@ -224,23 +346,6 @@ export async function executePrompt(
       },
       'prompt usage recorded',
     );
-
-    const usageTokens = response.usage.inputTokens + response.usage.outputTokens;
-    const usageUpdate = await writeLiveState(ctx.runDir, stepId, {
-      status: 'running',
-      attempt,
-      startedAt: startedIso,
-      lastUpdateAt: new Date().toISOString(),
-      model: response.model,
-      tokensSoFar: usageTokens,
-      turnsSoFar: response.numTurns,
-    });
-    if (usageUpdate.isErr()) {
-      ctx.logger.warn(
-        { event: 'live-state.write_failed', stepId, error: usageUpdate.error.message },
-        'live state write failed; continuing',
-      );
-    }
 
     // Handoff routing: parse JSON, validate against schema if configured,
     // then write via the HandoffStore. Validate before persist so a

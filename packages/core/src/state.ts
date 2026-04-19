@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 
+import type { AtomicWriteError } from './errors.js';
 import {
   StateCorruptError,
   StateNotFoundError,
@@ -10,8 +11,10 @@ import {
   StateWriteError,
 } from './errors.js';
 import type { RunState, RunStatus, StepState } from './flow/types.js';
+import { writeLiveState as writeLiveStateFile, type LiveStatePartial } from './runner/live-state.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
+import { createWriteSerializer } from './util/serialize.js';
 import { z } from './zod.js';
 
 const STATE_FILENAME = 'state.json';
@@ -56,6 +59,11 @@ const RunStateSchema: z.ZodType<RunState> = z.object({
 export class StateMachine {
   readonly #runDir: string;
   #state: RunState;
+  // Serializes concurrent save() calls so the on-disk snapshot is always a
+  // monotonic prefix of the in-memory mutation history. Each save snapshots
+  // the current state at the moment it runs (not at submission time), so
+  // last-writer-wins matches the in-memory ordering.
+  readonly #saveSerializer = createWriteSerializer();
 
   constructor(runDir: string, flowName: string, flowVersion: string, runId: string) {
     this.#runDir = runDir;
@@ -265,25 +273,48 @@ export class StateMachine {
   }
 
   /**
+   * Write the per-step live state file at <runDir>/live/<stepId>.json via
+   * atomic rename. This is the low-cadence signal the CLI progress display
+   * watches to animate token/turn counters within a single step. Separate
+   * from save() — live files are token-usage snapshots, not the run-level
+   * state.json snapshot, so a live-state write failure must not block a
+   * provider invocation from continuing.
+   */
+  async writeLiveState(
+    stepId: string,
+    partial: LiveStatePartial,
+  ): Promise<Result<void, AtomicWriteError>> {
+    return writeLiveStateFile(this.#runDir, stepId, partial);
+  }
+
+  /**
    * Persist the current state to disk via atomic rename so concurrent readers
    * never see a torn file. Every mutation that needs durability calls save()
    * explicitly — the transition methods themselves are pure in-memory updates.
+   *
+   * Concurrent save() calls are serialized through an in-process queue so
+   * each on-disk snapshot is a monotonic prefix of the in-memory version
+   * history. Two parallel steps completing within the same tick can each
+   * call save(); the queue runs them in submission order and each one
+   * snapshots the current state at execution time.
    */
   async save(): Promise<Result<void, StateWriteError>> {
-    const writeResult = await atomicWriteJson(
-      join(this.#runDir, STATE_FILENAME),
-      this.#state,
-    );
-    if (writeResult.isErr()) {
-      return err(
-        new StateWriteError(`failed to write state.json: ${writeResult.error.message}`, {
-          cause: writeResult.error,
-          errno: writeResult.error.errno,
-          path: writeResult.error.path,
-        }),
+    return this.#saveSerializer(async () => {
+      const writeResult = await atomicWriteJson(
+        join(this.#runDir, STATE_FILENAME),
+        this.#state,
       );
-    }
-    return ok(undefined);
+      if (writeResult.isErr()) {
+        return err(
+          new StateWriteError(`failed to write state.json: ${writeResult.error.message}`, {
+            cause: writeResult.error,
+            errno: writeResult.error.errno,
+            path: writeResult.error.path,
+          }),
+        );
+      }
+      return ok(undefined);
+    });
   }
 
   /**

@@ -3,6 +3,7 @@ import { z } from './zod.js';
 // Stable error code constants — the CLI and doctor match on these without magic strings.
 export const ERROR_CODES = {
   ATOMIC_WRITE: 'relay_ATOMIC_WRITE',
+  AUTH_TIMEOUT: 'relay_AUTH_TIMEOUT',
   CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
   FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
   HANDOFF_IO: 'relay_HANDOFF_IO',
@@ -12,6 +13,7 @@ export const ERROR_CODES = {
   METRICS_WRITE: 'relay_METRICS_WRITE',
   PROVIDER_AUTH: 'relay_PROVIDER_AUTH',
   PROVIDER_CAPABILITY: 'relay_PROVIDER_CAPABILITY',
+  PROVIDER_RATE_LIMIT: 'relay_PROVIDER_RATE_LIMIT',
   STATE_CORRUPT: 'relay_STATE_CORRUPT',
   STATE_NOT_FOUND: 'relay_STATE_NOT_FOUND',
   STATE_TRANSITION: 'relay_STATE_TRANSITION',
@@ -291,11 +293,42 @@ export class TimeoutError extends PipelineError {
     stepId: string,
     timeoutMs: number,
     details?: Record<string, unknown>,
+    /** Override the code for subclasses that extend TimeoutError. */
+    code: ErrorCode = ERROR_CODES.TIMEOUT,
   ) {
-    super(message, ERROR_CODES.TIMEOUT, details);
+    super(message, code, details);
     this.name = 'TimeoutError';
     this.stepId = stepId;
     this.timeoutMs = timeoutMs;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Thrown when a provider's `authenticate()` call fails to settle within the
+ * configured `authTimeoutMs` budget. The Runner enforces this before any step
+ * executes so a misconfigured CLI probe or a buggy custom provider cannot hang
+ * the run indefinitely with no observable progress.
+ *
+ * Carries `providerName` rather than a step id — auth runs before the DAG
+ * walker, so no step is in flight when this fires.
+ *
+ * CLI exit code: 5 (shares the timeout exit code with `TimeoutError`).
+ */
+export class AuthTimeoutError extends TimeoutError {
+  readonly providerName: string;
+
+  constructor(
+    message: string,
+    providerName: string,
+    timeoutMs: number,
+    details?: Record<string, unknown>,
+  ) {
+    super(message, '', timeoutMs, details, ERROR_CODES.AUTH_TIMEOUT);
+    this.name = 'AuthTimeoutError';
+    this.providerName = providerName;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -374,6 +407,42 @@ export class ProviderCapabilityError extends FlowDefinitionError {
     this.name = 'ProviderCapabilityError';
     this.providerName = providerName;
     this.capability = capability;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Thrown when a provider reports a rate-limit response (HTTP 429 or a typed
+ * rate-limit error from the underlying SDK). Distinct from `StepFailureError`
+ * so the retry layer can apply a longer backoff base, and from `TimeoutError`
+ * so retries are not short-circuited for a recoverable rate-limit condition.
+ *
+ * The original thrown value is preserved at `details.cause`.
+ *
+ * CLI exit code: 8
+ */
+export class ProviderRateLimitError extends PipelineError {
+  readonly providerName: string;
+  readonly stepId: string;
+  readonly attempt: number;
+  readonly retryAfterMs: number | undefined;
+
+  constructor(
+    message: string,
+    providerName: string,
+    stepId: string,
+    attempt: number,
+    retryAfterMs: number | undefined,
+    details?: Record<string, unknown>,
+  ) {
+    super(message, ERROR_CODES.PROVIDER_RATE_LIMIT, details);
+    this.name = 'ProviderRateLimitError';
+    this.providerName = providerName;
+    this.stepId = stepId;
+    this.attempt = attempt;
+    this.retryAfterMs = retryAfterMs;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
