@@ -10,7 +10,7 @@ import {
   PipelineError,
   toFlowDefError,
 } from '../errors.js';
-import type { Flow, Step, StepState } from '../flow/types.js';
+import type { Flow, RunState, Step, StepState } from '../flow/types.js';
 import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
 import { ClaudeProvider } from '../providers/claude/provider.js';
@@ -323,6 +323,26 @@ export class Runner {
     if (stateResult.isErr()) throw stateResult.error;
     const persistedState = stateResult.value;
 
+    // Gate on the persisted run-level status before doing any work. A
+    // previously-succeeded run is idempotent — rebuild its RunResult from the
+    // on-disk state + metrics.json and return without re-running any steps.
+    // 'aborted' (ctrl-c recorded by markRun) and 'failed' both continue into
+    // the normal resume walker, which resets failed/zombie steps to pending
+    // and re-dispatches them. 'running' means the prior process died before
+    // markRun() landed; the zombie sweep below turns those into 'failed' so
+    // the same reset pass picks them up.
+    switch (persistedState.status) {
+      case 'succeeded':
+        return this.#rebuildSucceededResult(runDir, persistedState);
+      case 'aborted':
+      case 'failed':
+      case 'running':
+        // Fall through to the resume walker. Each case shares the same
+        // recovery path (zombie sweep, failed -> pending, re-dispatch) so
+        // surfacing them as distinct branches here is for documentation.
+        break;
+    }
+
     const flowRefResult = await loadFlowRef(runDir);
     if (flowRefResult.isErr()) {
       throw new PipelineError(
@@ -505,6 +525,43 @@ export class Runner {
   }
 
   /**
+   * Rebuild a RunResult from a persisted, previously-succeeded run. Skips
+   * provider authentication, the DAG walker, and every side effect of a fresh
+   * resume — by contract a succeeded run is idempotent. Pulls cost totals
+   * from metrics.json via CostTracker.load() (the state.json snapshot does
+   * not carry per-step token counts), aggregates artifacts across every
+   * succeeded step, and derives durationMs from the recorded startedAt /
+   * updatedAt span so the returned shape matches a first-run RunResult.
+   */
+  async #rebuildSucceededResult(
+    runDir: string,
+    persistedState: RunState,
+  ): Promise<RunResult> {
+    const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
+    const loadResult = await costTracker.load();
+    if (loadResult.isErr()) throw loadResult.error;
+    const summary = costTracker.summary();
+
+    const artifacts: string[] = [];
+    for (const state of Object.values(persistedState.steps)) {
+      if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
+    }
+
+    const start = Date.parse(persistedState.startedAt);
+    const end = Date.parse(persistedState.updatedAt);
+    const durationMs = Number.isFinite(start) && Number.isFinite(end) ? end - start : 0;
+
+    return {
+      runId: persistedState.runId,
+      runDir,
+      status: 'succeeded',
+      cost: { totalUsd: summary.totalUsd, totalTokens: summary.totalTokens },
+      artifacts,
+      durationMs,
+    };
+  }
+
+  /**
    * When the caller opted into ANTHROPIC_API_KEY billing via runner.allowApiKey(),
    * substitute the registry's `claude` entry with a fresh ClaudeProvider that
    * carries the flag — both authenticate() (the §8.1 guard) and the SDK env
@@ -635,6 +692,7 @@ export class Runner {
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
 
     const queue: string[] = [...initialQueue];
+    const queued = new Set<string>(initialQueue);
     const inflight = new Set<string>();
     const completions: Array<{
       stepId: string;
@@ -899,7 +957,7 @@ export class Runner {
       for (const candidate of flow.graph.topoOrder) {
         const candState = state[candidate];
         if (candState === undefined || candState.status !== 'pending') continue;
-        if (queue.includes(candidate) || inflight.has(candidate)) continue;
+        if (queued.has(candidate) || inflight.has(candidate)) continue;
         const preds = flow.graph.predecessors.get(candidate);
         if (preds === undefined) continue;
         let ready = true;
@@ -922,7 +980,7 @@ export class Runner {
             break;
           }
         }
-        if (ready) queue.push(candidate);
+        if (ready) { queue.push(candidate); queued.add(candidate); }
       }
     };
 
@@ -937,6 +995,7 @@ export class Runner {
       while (!runFailed && queue.length > 0 && inflight.size < parallelism) {
         const next = queue.shift();
         if (next === undefined) break;
+        queued.delete(next);
         enqueueWalker(next);
       }
 

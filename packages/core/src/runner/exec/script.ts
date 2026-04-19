@@ -23,10 +23,8 @@ export interface ScriptStepResult {
   next?: string;
 }
 
-type ScriptStepInput = Omit<ScriptStepSpec, 'id'> & { id?: string };
-
 export async function executeScript(
-  step: ScriptStepInput,
+  step: ScriptStepSpec,
   ctx: ScriptExecContext,
 ): Promise<ScriptStepResult> {
   const { runDir, stepId, attempt, abortSignal, logger } = ctx;

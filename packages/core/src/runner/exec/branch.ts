@@ -18,10 +18,8 @@ export interface BranchStepResult {
   next?: string;
 }
 
-type BranchStepInput = Omit<BranchStepSpec, 'id'> & { id?: string };
-
 export async function executeBranch(
-  step: BranchStepInput,
+  step: BranchStepSpec,
   ctx: BranchExecContext,
 ): Promise<BranchStepResult> {
   const { runDir, stepId, attempt, abortSignal, logger } = ctx;

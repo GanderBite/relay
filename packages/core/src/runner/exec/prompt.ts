@@ -237,7 +237,7 @@ export async function executePrompt(
   step: PromptStepSpec,
   ctx: PromptStepExecContext,
 ): Promise<PromptStepResult> {
-  const stepId = ctx.stepId || step.id;
+  const stepId = ctx.stepId;
   const attempt = ctx.attempt ?? 1;
   const started = Date.now();
 
