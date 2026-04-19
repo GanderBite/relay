@@ -78,7 +78,7 @@ export class MockProvider implements Provider {
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
     const called = this.resolveResponseSync(req, ctx);
-    if (called.isErr()) return called;
+    if (called.isErr()) return err(called.error);
     const response = await called.value;
     return ok(response);
   }

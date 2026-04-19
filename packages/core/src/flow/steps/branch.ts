@@ -12,7 +12,7 @@ export type BranchStepBuilderOutput = Omit<BranchStepSpec, 'id'>;
 export function branchStep(
   spec: BranchStepBuilderOutput,
 ): Result<BranchStepBuilderOutput, FlowDefinitionError> {
-  const result = branchStepSpecSchema.safeParse({ id: '_', kind: 'branch', ...spec });
+  const result = branchStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'branch' });
   if (!result.success) return err(toFlowDefError(result.error, 'invalid branch step'));
 
   return ok({

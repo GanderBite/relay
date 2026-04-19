@@ -12,7 +12,7 @@ export type TerminalStepBuilderOutput = Omit<TerminalStepSpec, 'id'>;
 export function terminalStep(
   spec: TerminalStepBuilderOutput,
 ): Result<TerminalStepBuilderOutput, FlowDefinitionError> {
-  const result = terminalStepSpecSchema.safeParse({ id: '_', kind: 'terminal', ...spec });
+  const result = terminalStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'terminal' });
   if (!result.success) return err(toFlowDefError(result.error, 'invalid terminal step'));
 
   return ok({
