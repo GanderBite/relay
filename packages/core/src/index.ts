@@ -25,6 +25,7 @@ export type { ErrorCode } from './errors.js';
 // Error hierarchy
 export {
   AtomicWriteError,
+  AuthTimeoutError,
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
@@ -36,6 +37,7 @@ export {
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
+  ProviderRateLimitError,
   StateCorruptError,
   StateNotFoundError,
   StateTransitionError,
