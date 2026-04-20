@@ -9,7 +9,7 @@ import('../dist/install.js')
       process.exit(1);
     }
     const { destDir, filesWritten } = result.value;
-    process.stdout.write(`\u2713 relay-generator installed \u2192 ${destDir}\n`);
+    process.stdout.write(`\u2713 relay-generator installed\n  \u00b7 path: ${destDir}\n`);
     process.stdout.write(`  · ${filesWritten} file(s) written\n`);
     process.stdout.write(`  · restart Claude Code if it is already running to pick up the new skill\n`);
   })
