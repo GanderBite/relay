@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./",
+    "noEmit": false
+  },
+  "files": [],
+  "include": ["flow.ts", "schemas/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

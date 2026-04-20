@@ -112,6 +112,18 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7))
 
+  packages/flows/codebase-discovery:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@types/node':
+        specifier: 25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/generator:
     dependencies:
       neverthrow:
