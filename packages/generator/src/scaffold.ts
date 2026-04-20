@@ -51,7 +51,7 @@ export async function scaffoldFlow(
 
   const templateDir = join(templatesRoot(), template);
 
-  // Verify template exists and is a directory (FLAG-1)
+  // Verify template exists and is a directory
   let st: Stats;
   try {
     st = await stat(templateDir);
@@ -71,13 +71,13 @@ export async function scaffoldFlow(
   // Filter out .gitkeep files
   const srcFiles = allFiles.filter((f) => !f.endsWith('.gitkeep'));
 
-  // Build a plan: src -> dest pairs (FLAG-2 pass 1)
+  // Build a plan: src -> dest pairs
   const plan: Array<{ src: string; dest: string; relPath: string }> = srcFiles.map((src) => {
     const relPath = relative(templateDir, src);
     return { src, dest: join(outDir, relPath), relPath };
   });
 
-  // Check for collisions before writing anything (FLAG-2 pass 2)
+  // Check for collisions before writing anything
   if (!force) {
     for (const { dest } of plan) {
       let exists = false;
@@ -93,7 +93,7 @@ export async function scaffoldFlow(
     }
   }
 
-  // Write all files (FLAG-2 pass 3)
+  // Write all files
   const filesWritten: string[] = [];
 
   for (const { src: srcPath, dest: destPath, relPath } of plan) {
@@ -106,7 +106,7 @@ export async function scaffoldFlow(
 
     const substituted = applyTokens(content, tokens);
 
-    // Detect unresolved tokens in non-prompt files (BLOCK-3)
+    // Detect unresolved tokens in non-prompt files
     const isPromptFile = relPath.startsWith('prompts/') || relPath.startsWith('prompts\\');
     if (!isPromptFile) {
       const leftover = substituted.match(/\{\{[a-zA-Z_][\w[\]]*\}\}/);
