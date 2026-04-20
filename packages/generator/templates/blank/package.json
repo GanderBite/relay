@@ -1,0 +1,29 @@
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "A Relay flow.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "relay": {
+    "displayName": "{{pkgName}}",
+    "tags": [],
+    "estimatedCostUsd": { "min": 0.0, "max": 0.0 },
+    "estimatedDurationMin": { "min": 1, "max": 5 },
+    "audience": ["dev"]
+  }
+}

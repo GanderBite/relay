@@ -1,0 +1,29 @@
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "A Relay flow with a fan-out / fan-in topology.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "relay": {
+    "displayName": "{{pkgName}}",
+    "tags": ["fan-out", "parallel"],
+    "estimatedCostUsd": { "min": 0.05, "max": 0.25 },
+    "estimatedDurationMin": { "min": 3, "max": 10 },
+    "audience": ["dev"]
+  }
+}
