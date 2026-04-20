@@ -5,8 +5,8 @@ export const EntitiesSchema = z.object({
     z.object({
       name: z.string(),
       kind: z.enum(['model', 'service', 'controller', 'util']),
-      package: z.string(),
-      description: z.string(),
+      file: z.string(),
+      summary: z.string(),
     }),
   ),
 });

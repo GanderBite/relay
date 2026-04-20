@@ -14,7 +14,7 @@ Produce a single `<!DOCTYPE html>` document with `<head>` (title, inline `<style
 
 1. **Overview** — the repository name (derive from `{{inventory.packages}}` or the repo path), a one-sentence description, package count, primary language (the most common `language` across packages), and a 2–4 sentence summary of what the codebase is and how it is organized.
 2. **Inventory** — a table with columns Package, Path, Language, Entry points. One row per entry in `{{inventory.packages}}`. Render `name`, `path`, and every `entryPoint` as `<code>`.
-3. **Entities** — a table with columns Name, Kind, Package, Description. One row per entry in `{{entities.entities}}`. Group visually by kind if helpful, but keep it a single table.
+3. **Entities** — a table with columns Name, Kind, File, Summary. One row per entry in `{{entities.entities}}`. Render each `file` as `<code>`. Group visually by kind if helpful, but keep it a single table.
 4. **Services** — a table with columns Service, Description, Used by. One row per entry in `{{services.services}}`. Render each `usedBy` entry as `<code>`, comma-separated.
 5. **Design review** — a `<ul class="observations">` of 3–6 `<li>` items. Each item carries a short uppercase `<span class="tag">` (for example `COUPLING`, `BOUNDARIES`, `CLARITY`, `RISK`), a `<strong>` title, and a one-paragraph `<p>` body. Focus on architectural clarity, package boundaries, and where responsibility is concentrated.
 6. **Recommendations** — a `<ul class="recommendations">` of 3–6 `<li>` items. Each item carries a priority `<span class="tag">` (`HIGH`, `MEDIUM`, or `LOW`), a `<strong>` title, and a one-paragraph `<p>` body describing a concrete next step.

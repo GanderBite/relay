@@ -33,25 +33,17 @@ const CANNED: InvocationResponse = {
  * With the queued Set the same walk is O(N) total.
  */
 function buildChainFlow(n: number) {
-  const steps: Record<string, ReturnType<typeof step.prompt> extends { _unsafeUnwrap(): infer U } ? U : never> = {};
+  const steps: Record<string, ReturnType<typeof step.prompt>> = {};
   const responses: Record<string, InvocationResponse> = {};
 
   for (let i = 0; i < n; i++) {
     const id = `s${i}`;
     const dependsOn = i === 0 ? undefined : [`s${i - 1}`];
-    // The promptStepSpecSchema requires id and kind on the raw input object,
-    // even though defineFlow re-injects id from the record key. The cast
-    // matches the pattern used in auth-timeout.test.ts for the same schema
-    // requirement.
-    steps[id] = step
-      .prompt({
-        id,
-        kind: 'prompt',
-        promptFile: 'p.md',
-        dependsOn,
-        output: { handoff: `${id}-out` },
-      } as Parameters<typeof step.prompt>[0])
-      ._unsafeUnwrap() as ReturnType<typeof step.prompt> extends { _unsafeUnwrap(): infer U } ? U : never;
+    steps[id] = step.prompt({
+      promptFile: 'p.md',
+      dependsOn,
+      output: { handoff: `${id}-out` },
+    });
     responses[id] = CANNED;
   }
 
@@ -62,7 +54,7 @@ function buildChainFlow(n: number) {
       defaultProvider: 'mock',
       input: z.object({}),
       steps,
-    })._unsafeUnwrap(),
+    }),
     responses,
   };
 }

@@ -1,7 +1,7 @@
 /**
  * relay install — download and install a flow package from npm.
  *
- * Resolves bare names to the @ganderbite/relay-<name> npm scope,
+ * Resolves bare names to the @ganderbite/flow-<name> npm scope,
  * installs via npm, flattens the nested package directory, optionally
  * compiles flow.ts, validates the flow definition, then prints the
  * product-spec §6.8 banner.
@@ -29,9 +29,9 @@ const execFileAsync = promisify(execFile);
 interface ResolvedPackage {
   /** Short bare name, e.g. "codebase-discovery". */
   name: string;
-  /** Full scoped package name, e.g. "@ganderbite/relay-codebase-discovery". */
+  /** Full scoped package name, e.g. "@ganderbite/flow-codebase-discovery". */
   packageName: string;
-  /** Full package spec for npm install, e.g. "@ganderbite/relay-codebase-discovery@0.1.0". */
+  /** Full package spec for npm install, e.g. "@ganderbite/flow-codebase-discovery@0.1.0". */
   packageSpec: string;
 }
 
@@ -41,8 +41,8 @@ interface ResolvedPackage {
  * Accepts:
  *   "codebase-discovery"
  *   "codebase-discovery@0.1.0"
- *   "@ganderbite/relay-codebase-discovery"
- *   "@ganderbite/relay-codebase-discovery@0.1.0"
+ *   "@ganderbite/flow-codebase-discovery"
+ *   "@ganderbite/flow-codebase-discovery@0.1.0"
  */
 function resolvePackage(arg: string): ResolvedPackage {
   // Strip a leading "@" for splitting — handle scoped names carefully.
@@ -53,13 +53,13 @@ function resolvePackage(arg: string): ResolvedPackage {
   let version: string | undefined;
 
   if (arg.startsWith('@')) {
-    // Scoped: "@ganderbite/relay-name@version" or "@ganderbite/relay-name"
+    // Scoped: "@ganderbite/flow-name@version" or "@ganderbite/flow-name"
     // Find the version separator after the slash.
     const slashIndex = arg.indexOf('/');
-    const afterSlash = arg.slice(slashIndex + 1); // "relay-name@version"
+    const afterSlash = arg.slice(slashIndex + 1); // "flow-name@version"
     const atIndex = afterSlash.indexOf('@');
     if (atIndex !== -1) {
-      rawName = arg.slice(0, slashIndex + 1 + atIndex); // "@scope/relay-name"
+      rawName = arg.slice(0, slashIndex + 1 + atIndex); // "@scope/flow-name"
       version = afterSlash.slice(atIndex + 1);           // "version"
     } else {
       rawName = arg;
@@ -77,14 +77,14 @@ function resolvePackage(arg: string): ResolvedPackage {
 
   // Determine the full scoped package name.
   let packageName: string;
-  if (rawName.startsWith('@ganderbite/relay-')) {
+  if (rawName.startsWith('@ganderbite/flow-')) {
     packageName = rawName;
   } else {
-    packageName = `@ganderbite/relay-${rawName}`;
+    packageName = `@ganderbite/flow-${rawName}`;
   }
 
   // Extract the bare short name (e.g. "codebase-discovery").
-  const name = packageName.replace(/^@ganderbite\/relay-/, '');
+  const name = packageName.replace(/^@ganderbite\/flow-/, '');
 
   const packageSpec = version !== undefined
     ? `${packageName}@${version}`

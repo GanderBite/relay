@@ -64,32 +64,23 @@ const canned: InvocationResponse = {
 };
 
 function twoStepFlow() {
-  // The prompt step builder schema requires id+kind on input, but defineFlow
-  // assigns id from the record key. Pass both fields literally so the schema
-  // parse succeeds — this matches the in-memory shape the Runner consumes.
-  const aSpec = step.prompt({
-    id: 'a',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    output: { handoff: 'a-out' },
-  } as Parameters<typeof step.prompt>[0]);
-  const bSpec = step.prompt({
-    id: 'b',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    dependsOn: ['a'],
-    output: { handoff: 'b-out' },
-  } as Parameters<typeof step.prompt>[0]);
   return defineFlow({
     name: 'two-step',
     version: '0.1.0',
     defaultProvider: 'mock',
     input: z.object({}),
     steps: {
-      a: aSpec._unsafeUnwrap(),
-      b: bSpec._unsafeUnwrap(),
+      a: step.prompt({
+        promptFile: 'p.md',
+        output: { handoff: 'a-out' },
+      }),
+      b: step.prompt({
+        promptFile: 'p.md',
+        dependsOn: ['a'],
+        output: { handoff: 'b-out' },
+      }),
     },
-  })._unsafeUnwrap();
+  });
 }
 
 describe('Runner — state save failure escalation', () => {

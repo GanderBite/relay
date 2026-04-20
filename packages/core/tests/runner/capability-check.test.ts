@@ -16,7 +16,7 @@ import { step } from '../../src/flow/step.js';
 import { z } from '../../src/zod.js';
 
 function makeFlow(build: () => Parameters<typeof defineFlow>[0]) {
-  return defineFlow(build())._unsafeUnwrap();
+  return defineFlow(build());
 }
 
 describe('capability-check', () => {
@@ -34,12 +34,10 @@ describe('capability-check', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step
-          .prompt({
-            promptFile: 'p.md',
-            output: { handoff: 'x', schema: z.object({ y: z.string() }) },
-          })
-          ._unsafeUnwrap(),
+        a: step.prompt({
+          promptFile: 'p.md',
+          output: { handoff: 'x', schema: z.object({ y: z.string() }) },
+        }),
       },
     }));
 
@@ -60,13 +58,11 @@ describe('capability-check', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step
-          .prompt({
-            promptFile: 'p.md',
-            tools: ['Read', 'UnknownTool'],
-            output: { handoff: 'x' },
-          })
-          ._unsafeUnwrap(),
+        a: step.prompt({
+          promptFile: 'p.md',
+          tools: ['Read', 'UnknownTool'],
+          output: { handoff: 'x' },
+        }),
       },
     }));
 
@@ -87,9 +83,7 @@ describe('capability-check', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step
-          .prompt({ promptFile: 'p.md', model: 'opus', output: { handoff: 'x' } })
-          ._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', model: 'opus', output: { handoff: 'x' } }),
       },
     }));
 
@@ -110,13 +104,11 @@ describe('capability-check', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step
-          .prompt({
-            promptFile: 'p.md',
-            maxBudgetUsd: 1.0,
-            output: { handoff: 'x' },
-          })
-          ._unsafeUnwrap(),
+        a: step.prompt({
+          promptFile: 'p.md',
+          maxBudgetUsd: 1.0,
+          output: { handoff: 'x' },
+        }),
       },
     }));
 
@@ -142,13 +134,11 @@ describe('capability-check', () => {
       defaultProvider: 'flowProv',
       input: z.object({}),
       steps: {
-        a: step
-          .prompt({
-            promptFile: 'p.md',
-            provider: 'stepProv',
-            output: { handoff: 'x' },
-          })
-          ._unsafeUnwrap(),
+        a: step.prompt({
+          promptFile: 'p.md',
+          provider: 'stepProv',
+          output: { handoff: 'x' },
+        }),
       },
     }));
 
@@ -167,7 +157,7 @@ describe('capability-check', () => {
       version: '0.1.0',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'x' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'x' } }),
       },
     }));
 

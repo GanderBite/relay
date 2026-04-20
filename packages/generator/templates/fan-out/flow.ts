@@ -14,38 +14,7 @@
 
 import { defineFlow, step, z } from '@relay/core';
 
-const prepStep = step.prompt({
-  promptFile: 'prompts/01_prep.md',
-  output: { handoff: 'prep' },
-});
-
-const branchAStep = step.prompt({
-  promptFile: 'prompts/02_branch_a.md',
-  dependsOn: ['prep'],
-  contextFrom: ['prep'],
-  output: { handoff: 'branch_a' },
-});
-
-const branchBStep = step.prompt({
-  promptFile: 'prompts/03_branch_b.md',
-  dependsOn: ['prep'],
-  contextFrom: ['prep'],
-  output: { handoff: 'branch_b' },
-});
-
-const barrierStep = step.parallel({
-  branches: ['branch_a', 'branch_b'],
-  dependsOn: ['branch_a', 'branch_b'],
-});
-
-const mergeStep = step.prompt({
-  promptFile: 'prompts/04_merge.md',
-  dependsOn: ['barrier'],
-  contextFrom: ['prep', 'branch_a', 'branch_b'],
-  output: { artifact: 'merged.md' },
-});
-
-const flowResult = defineFlow({
+export default defineFlow({
   name: '{{pkgName}}',
   version: '0.1.0',
   description: 'Fan-out / fan-in flow: prep → two parallel branches → merge.',
@@ -54,16 +23,31 @@ const flowResult = defineFlow({
   }),
   start: 'prep',
   steps: {
-    prep: prepStep._unsafeUnwrap(),
-    branch_a: branchAStep._unsafeUnwrap(),
-    branch_b: branchBStep._unsafeUnwrap(),
-    barrier: barrierStep._unsafeUnwrap(),
-    merge: mergeStep._unsafeUnwrap(),
+    prep: step.prompt({
+      promptFile: 'prompts/01_prep.md',
+      output: { handoff: 'prep' },
+    }),
+    branch_a: step.prompt({
+      promptFile: 'prompts/02_branch_a.md',
+      dependsOn: ['prep'],
+      contextFrom: ['prep'],
+      output: { handoff: 'branch_a' },
+    }),
+    branch_b: step.prompt({
+      promptFile: 'prompts/03_branch_b.md',
+      dependsOn: ['prep'],
+      contextFrom: ['prep'],
+      output: { handoff: 'branch_b' },
+    }),
+    barrier: step.parallel({
+      branches: ['branch_a', 'branch_b'],
+      dependsOn: ['branch_a', 'branch_b'],
+    }),
+    merge: step.prompt({
+      promptFile: 'prompts/04_merge.md',
+      dependsOn: ['barrier'],
+      contextFrom: ['prep', 'branch_a', 'branch_b'],
+      output: { artifact: 'merged.md' },
+    }),
   },
 });
-
-if (flowResult.isErr()) {
-  throw new Error(`fan-out flow definition failed: ${flowResult.error.message}`);
-}
-
-export default flowResult.value;

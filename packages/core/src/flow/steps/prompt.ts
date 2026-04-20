@@ -1,5 +1,4 @@
-import { err, ok, type Result } from 'neverthrow';
-import { type FlowDefinitionError, toFlowDefError } from '../../errors.js';
+import { toFlowDefError } from '../../errors.js';
 import { promptStepSpecSchema } from '../schemas.js';
 import type { PromptStepSpec } from '../types.js';
 
@@ -9,14 +8,25 @@ import type { PromptStepSpec } from '../types.js';
  */
 export type PromptStepBuilderOutput = Omit<PromptStepSpec, 'id'>;
 
-export function promptStep(
-  spec: PromptStepBuilderOutput,
-): Result<PromptStepBuilderOutput, FlowDefinitionError> {
-  const result = promptStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'prompt' });
-  if (!result.success) return err(toFlowDefError(result.error, 'invalid prompt step'));
+/**
+ * Input shape for the prompt builder. `id` is added by `defineFlow` from the
+ * record key, and `kind` is injected by the builder itself — so callers write
+ * a minimal config object.
+ */
+export type PromptStepBuilderInput = Omit<PromptStepSpec, 'id' | 'kind'>;
 
-  return ok({
+/**
+ * Build a prompt step spec. Throws `FlowDefinitionError` synchronously when the
+ * config fails schema validation — step builders are load-time programmer-error
+ * validators, not runtime fallible operations, so an invalid definition should
+ * surface at import time and abort module loading.
+ */
+export function promptStep(spec: PromptStepBuilderInput): PromptStepBuilderOutput {
+  const result = promptStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'prompt' });
+  if (!result.success) throw toFlowDefError(result.error, 'invalid prompt step');
+
+  return {
     ...spec,
     kind: 'prompt',
-  });
+  };
 }

@@ -66,7 +66,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
         contextFrom: ['prior'],
         output: { handoff: 'greeted' },
       })
-      ._unsafeUnwrap();
+      ;
 
     let capturedPrompt = '';
     const provider = new MockProvider({
@@ -93,7 +93,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
         promptFile: 'prompts/p.md',
         output: { handoff: 'x', schema: z.object({ name: z.string() }) },
       })
-      ._unsafeUnwrap();
+      ;
 
     let capturedJsonSchema: unknown;
     const provider = new MockProvider({
@@ -125,7 +125,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
           }),
         },
       })
-      ._unsafeUnwrap();
+      ;
     const provider = new MockProvider({
       responses: {
         [s.id || 'p']: { ...canned, text: '{"entities":[{"name":1}]}' },
@@ -140,7 +140,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
   it('[EXEC-PROMPT-004] writes artifact file when output.artifact is set', async () => {
     const s = step
       .prompt({ promptFile: 'prompts/p.md', output: { artifact: 'report.html' } })
-      ._unsafeUnwrap();
+      ;
     const provider = new MockProvider({
       responses: { [s.id || 'p']: { ...canned, text: '<html>...</html>' } },
     });
@@ -152,7 +152,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
   });
 
   it('[EXEC-PROMPT-005] records StepMetrics via costTracker', async () => {
-    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } })._unsafeUnwrap();
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const ctxBase = makeCtxBase();
     const recordSpy = vi.spyOn(ctxBase.costTracker, 'record');
     const provider = new MockProvider({ responses: { [s.id || 'p']: canned } });
@@ -166,7 +166,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
   });
 
   it('[EXEC-PROMPT-006] wraps provider errors in StepFailureError with stepId + attempt', async () => {
-    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } })._unsafeUnwrap();
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const provider = new MockProvider({
       responses: {
         [s.id || 'p']: () => {
@@ -191,7 +191,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
 
   it('[EXEC-PROMPT-007] passes ctx.abortSignal into InvocationContext', async () => {
     const ctrl = new AbortController();
-    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } })._unsafeUnwrap();
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     let capturedSignal: AbortSignal | undefined;
     const provider = new MockProvider({
       responses: {
@@ -222,7 +222,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
       debug: () => undefined,
       child: function () { return this; },
     };
-    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } })._unsafeUnwrap();
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const provider = new MockProvider({ responses: { [s.id || 'p']: canned } });
     const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1, logger: stubLogger };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);

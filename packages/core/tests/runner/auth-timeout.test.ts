@@ -68,24 +68,18 @@ class StuckAuthProvider implements Provider {
 }
 
 function singleStepFlow() {
-  // The prompt step builder schema requires id+kind on input, but defineFlow
-  // assigns id from the record key. Pass both fields literally so the schema
-  // parse succeeds — this matches the in-memory shape the Runner consumes.
-  const promptSpec = step.prompt({
-    id: 'a',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    output: { handoff: 'a-out' },
-  } as Parameters<typeof step.prompt>[0]);
   return defineFlow({
     name: 'auth-timeout-flow',
     version: '0.1.0',
     defaultProvider: 'mock',
     input: z.object({}),
     steps: {
-      a: promptSpec._unsafeUnwrap(),
+      a: step.prompt({
+        promptFile: 'p.md',
+        output: { handoff: 'a-out' },
+      }),
     },
-  })._unsafeUnwrap();
+  });
 }
 
 describe('Runner — provider.authenticate() timeout', () => {

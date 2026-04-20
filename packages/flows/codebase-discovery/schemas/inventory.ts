@@ -5,7 +5,7 @@ export const InventorySchema = z.object({
     z.object({
       path: z.string(),
       name: z.string(),
-      language: z.string(),
+      language: z.enum(['ts', 'py', 'go', 'rust', 'other']),
       entryPoints: z.array(z.string()),
     }),
   ),

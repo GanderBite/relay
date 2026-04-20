@@ -12,7 +12,7 @@
  *
  * Sources scanned (in order, deduped by display name):
  *   1. <cwd>/.relay/flows/{name}/package.json      - local installed flows
- *   2. <cwd>/node_modules/@ganderbite/relay-{name}/package.json  - workspace flows
+ *   2. <cwd>/node_modules/@ganderbite/flow-{name}/package.json  - workspace flows
  *   3. https://relay.dev/registry.json              - remote catalog (5s timeout; skipped on failure)
  */
 
@@ -90,7 +90,7 @@ async function readFlowEntry(pkgPath: string): Promise<FlowEntry | null> {
       : {};
 
   // Display name: relay.displayName > package name stripped of scope prefix > directory fallback
-  const strippedName = pkgName.replace(/^@ganderbite\/relay-/, '');
+  const strippedName = pkgName.replace(/^@ganderbite\/flow-/, '');
   const displayName = relayMeta.displayName ?? (strippedName.length > 0 ? strippedName : pkgName);
 
   // Cost: relay.estimatedCostUsd.max (range) or relay.estimatedCostUsd (number) or relay.cost
@@ -158,7 +158,7 @@ async function scanLocalFlows(cwd: string): Promise<FlowEntry[]> {
 }
 
 /**
- * Scan <cwd>/node_modules/@ganderbite/relay-{name}/package.json - workspace flows.
+ * Scan <cwd>/node_modules/@ganderbite/flow-{name}/package.json - workspace flows.
  */
 async function scanWorkspaceFlows(cwd: string): Promise<FlowEntry[]> {
   const scopeDir = join(cwd, 'node_modules', '@ganderbite');
@@ -171,7 +171,7 @@ async function scanWorkspaceFlows(cwd: string): Promise<FlowEntry[]> {
 
   const results: FlowEntry[] = [];
   for (const entry of entries) {
-    if (!entry.startsWith('relay-')) continue;
+    if (!entry.startsWith('flow-')) continue;
     const pkgPath = join(scopeDir, entry, 'package.json');
     const flow = await readFlowEntry(pkgPath);
     if (flow !== null) results.push(flow);
@@ -227,7 +227,7 @@ async function fetchRemoteCatalog(): Promise<FlowEntry[] | null> {
     const rawName     = typeof item.name    === 'string' ? item.name    : '';
     const version     = typeof item.version === 'string' ? item.version : '0.0.0';
     const pkgDesc     = typeof item.description === 'string' ? item.description : '';
-    const strippedName = rawName.replace(/^@ganderbite\/relay-/, '');
+    const strippedName = rawName.replace(/^@ganderbite\/flow-/, '');
     const displayName = relayMeta.displayName ?? (strippedName.length > 0 ? strippedName : rawName);
 
     const costNum = extractMax(relayMeta.estimatedCostUsd);

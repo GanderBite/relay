@@ -100,32 +100,23 @@ class RecordingProvider implements Provider {
 }
 
 function twoStepFlow() {
-  // Minimal linear flow a -> b. The builder schema parse requires id + kind
-  // literally, so pass them through and cast to the builder's input type —
-  // same pattern as tests/runner/auth-timeout.test.ts.
-  const specA = step.prompt({
-    id: 'a',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    output: { handoff: 'a-out' },
-  } as Parameters<typeof step.prompt>[0]);
-  const specB = step.prompt({
-    id: 'b',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    dependsOn: ['a'],
-    output: { handoff: 'b-out' },
-  } as Parameters<typeof step.prompt>[0]);
   return defineFlow({
     name: 'resume-gate-flow',
     version: '0.1.0',
     defaultProvider: 'mock',
     input: z.object({}),
     steps: {
-      a: specA._unsafeUnwrap(),
-      b: specB._unsafeUnwrap(),
+      a: step.prompt({
+        promptFile: 'p.md',
+        output: { handoff: 'a-out' },
+      }),
+      b: step.prompt({
+        promptFile: 'p.md',
+        dependsOn: ['a'],
+        output: { handoff: 'b-out' },
+      }),
     },
-  })._unsafeUnwrap();
+  });
 }
 
 async function writeStateFile(

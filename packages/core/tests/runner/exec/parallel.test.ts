@@ -26,7 +26,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
       return { ok: true } as const;
     });
 
-    const s = step.parallel({ branches: ['x', 'y', 'z'] })._unsafeUnwrap();
+    const s = step.parallel({ branches: ['x', 'y', 'z'] });
     const started = Date.now();
     await executeParallel(s, { ...baseCtx(), stepId: s.id || 's', step: s, dispatch });
     const elapsed = Date.now() - started;
@@ -44,7 +44,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
       if (id === 'y') throw new Error('boom');
       return { ok: true } as const;
     });
-    const s = step.parallel({ branches: ['x', 'y'] })._unsafeUnwrap();
+    const s = step.parallel({ branches: ['x', 'y'] });
     await expect(
       executeParallel(s, { ...baseCtx(), stepId: s.id || 's', step: s, dispatch }),
     ).rejects.toBeInstanceOf(StepFailureError);
@@ -52,7 +52,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
 
   it('[EXEC-PARALLEL-003] on all-succeed, result.branches collects per-branch outcomes', async () => {
     const dispatch = vi.fn(async (id: string) => ({ id, ok: true }));
-    const s = step.parallel({ branches: ['x', 'y'] })._unsafeUnwrap();
+    const s = step.parallel({ branches: ['x', 'y'] });
     const result = await executeParallel(s, {
       ...baseCtx(),
       stepId: s.id || 's',
@@ -64,7 +64,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
 
   it('[EXEC-PARALLEL-004] does not execute branch logic itself — only dispatches', async () => {
     const dispatch = vi.fn(async () => ({ ok: true } as const));
-    const s = step.parallel({ branches: ['a', 'b'] })._unsafeUnwrap();
+    const s = step.parallel({ branches: ['a', 'b'] });
     await executeParallel(s, { ...baseCtx(), stepId: s.id || 's', step: s, dispatch });
     expect(dispatch).toHaveBeenCalledTimes(2);
     expect(dispatch).toHaveBeenNthCalledWith(1, 'a');

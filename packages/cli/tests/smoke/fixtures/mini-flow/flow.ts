@@ -11,20 +11,7 @@
 
 import { defineFlow, step, z } from '@relay/core';
 
-const greetStep = step.prompt({
-  kind: 'prompt',
-  promptFile: 'prompts/01.md',
-  output: { handoff: 'greet-result' },
-} as Parameters<typeof step.prompt>[0]);
-
-const confirmStep = step.prompt({
-  kind: 'prompt',
-  promptFile: 'prompts/02.md',
-  dependsOn: ['greet'],
-  output: { artifact: 'result.txt' },
-} as Parameters<typeof step.prompt>[0]);
-
-const flowResult = defineFlow({
+export default defineFlow({
   name: 'smoke-mini',
   version: '0.1.0',
   description: 'Minimal two-step flow for smoke testing relay run end-to-end.',
@@ -32,13 +19,14 @@ const flowResult = defineFlow({
     target: z.string().describe('What to greet'),
   }),
   steps: {
-    greet: greetStep._unsafeUnwrap(),
-    confirm: confirmStep._unsafeUnwrap(),
+    greet: step.prompt({
+      promptFile: 'prompts/01.md',
+      output: { handoff: 'greet-result' },
+    }),
+    confirm: step.prompt({
+      promptFile: 'prompts/02.md',
+      dependsOn: ['greet'],
+      output: { artifact: 'result.txt' },
+    }),
   },
 });
-
-if (flowResult.isErr()) {
-  throw new Error(`smoke-mini flow definition failed: ${flowResult.error.message}`);
-}
-
-export default flowResult.value;

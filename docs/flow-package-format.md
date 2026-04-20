@@ -34,7 +34,7 @@ Required fields and the `relay` metadata block:
 
 ```json
 {
-  "name": "@ganderbite/relay-codebase-discovery",
+  "name": "@ganderbite/flow-codebase-discovery",
   "version": "0.1.0",
   "description": "Explores a codebase and produces an HTML report.",
   "type": "module",
@@ -57,7 +57,7 @@ Required fields and the `relay` metadata block:
 }
 ```
 
-**Package naming.** Catalog flow packages are named `@ganderbite/relay-<name>` — note the `relay-` prefix, not `flow-`. The CLI's `relay install` command resolves a bare `<name>` to `@ganderbite/relay-<name>`. A flow named `codebase-discovery` is published as `@ganderbite/relay-codebase-discovery`.
+**Package naming.** Catalog flow packages are named `@ganderbite/flow-<name>` — the `flow-` prefix is mandatory. The CLI's `relay install` command resolves a bare `<name>` to `@ganderbite/flow-<name>`. A flow named `codebase-discovery` is published as `@ganderbite/flow-codebase-discovery`.
 
 **The `relay` metadata block** is read by the CLI's `list`, `search`, and pre-run banner. It is not consumed by `@relay/core` itself — the runner loads `flow.ts`, not `package.json`. All five keys (`displayName`, `tags`, `estimatedCostUsd`, `estimatedDurationMin`, `audience`) are required. Catalog lint reports an error if any are missing.
 
@@ -65,12 +65,12 @@ Required fields and the `relay` metadata block:
 
 ## flow.ts entry point
 
-`flow.ts` must default-export a `Flow` object returned by `defineFlow`. The return value is a `Result<Flow, FlowDefinitionError>` — unwrap it or propagate it before the CLI can run the flow.
+`flow.ts` must default-export a `Flow` object returned by `defineFlow`. Both `defineFlow` and the `step.*` builders throw `FlowDefinitionError` synchronously when their configuration is invalid — validation happens at import time, not at runtime, so flow.ts can export the result directly with no `Result` unwrapping.
 
 ```ts
 import { defineFlow, step, z } from '@relay/core';
 
-const result = defineFlow({
+export default defineFlow({
   name: 'codebase-discovery',
   version: '0.1.0',
   description: 'Explores a codebase and produces an HTML report.',
@@ -97,9 +97,6 @@ const result = defineFlow({
     }),
   },
 });
-
-if (result.isErr()) throw result.error;
-export default result.value;
 ```
 
 Rules:
@@ -107,7 +104,7 @@ Rules:
 - The `name` field should match the package's bare name (`codebase-discovery`, not the full scoped name).
 - The `version` in `defineFlow` is the flow's own version — it is independent from `package.json`'s version, but in practice they track together.
 - The CLI loads the compiled `dist/flow.js` via dynamic ESM `import()`. Flows are compiled to JS at publish time. The CLI never runs `tsc` on install.
-- `step.prompt`, `step.script`, `step.branch`, `step.parallel`, and `step.terminal` are the five step constructors. Each returns a `Result` — the compiler accumulates errors at `defineFlow` call time, not at runtime.
+- `step.prompt`, `step.script`, `step.branch`, `step.parallel`, and `step.terminal` are the five step constructors. Each validates its config at build time and throws `FlowDefinitionError` on bad input — a malformed step aborts module loading before any run can start.
 
 ---
 
@@ -121,10 +118,11 @@ Every flow's README must contain the following sections, in this order:
 4. **Install command** — `relay install <name>`.
 5. **Run command** — `relay run <name> <input>` with the most common arguments shown.
 6. **Configuration** — what inputs and options the flow exposes.
-7. **Customization guide** — how to fork and adapt the flow.
-8. **License**.
+7. **Environment** (optional) — auth expectations and env requirements specific to this flow. Flows that run on the Claude subscription should point at `docs/billing-safety.md`; mocked flows should note that no API key or subscription is required.
+8. **Customization guide** — how to fork and adapt the flow.
+9. **License**.
 
-Sections 1–5 are mandatory. The catalog linter reports an error for any missing mandatory section and rejects the flow from the catalog homepage. Sections 6–8 are optional but strongly encouraged; the linter reports a warning if they are absent.
+Sections 1–5 are mandatory. The catalog linter reports an error for any missing mandatory section and rejects the flow from the catalog homepage. Sections 6–9 are optional but strongly encouraged; the linter reports a warning if the mandatory subset is absent. The optional "Environment" section, when present, must appear between Configuration and Customization — the linter flags it in any other position.
 
 Example heading block:
 
@@ -140,6 +138,8 @@ Example heading block:
 ## Run
 
 ## Configuration
+
+## Environment
 
 ## Customization
 

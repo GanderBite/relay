@@ -1,4 +1,3 @@
-import { err, type Result } from 'neverthrow';
 import { FlowDefinitionError, toFlowDefError } from '../errors.js';
 import { buildGraph } from './graph.js';
 import { flowSpecInputSchema } from './schemas.js';
@@ -52,12 +51,15 @@ function synthesizeStep(raw: StepBuilderOutput, id: string): Step {
   }
 }
 
-export function defineFlow<TInput>(
-  spec: FlowInput<TInput>,
-): Result<Flow<TInput>, FlowDefinitionError> {
+/**
+ * Compile a flow definition. Throws `FlowDefinitionError` synchronously when
+ * the spec fails schema validation, contains a cycle, or references unknown
+ * step ids. This is load-time programmer-error validation — flows that fail
+ * to compile should abort module loading, not produce a runtime Result.
+ */
+export function defineFlow<TInput>(spec: FlowInput<TInput>): Flow<TInput> {
   const parseResult = flowSpecInputSchema.safeParse(spec);
-  if (!parseResult.success)
-    return err(toFlowDefError(parseResult.error, 'invalid flow definition'));
+  if (!parseResult.success) throw toFlowDefError(parseResult.error, 'invalid flow definition');
 
   const specSteps = spec.steps;
 
@@ -65,10 +67,8 @@ export function defineFlow<TInput>(
   for (const key of Object.keys(specSteps)) {
     const raw = specSteps[key];
     if (raw === undefined) {
-      return err(
-        new FlowDefinitionError(
-          `step "${key}" is undefined. Remove or replace it in defineFlow({ steps: { "${key}": <step>, ... } }).`,
-        ),
+      throw new FlowDefinitionError(
+        `step "${key}" is undefined. Remove or replace it in defineFlow({ steps: { "${key}": <step>, ... } }).`,
       );
     }
     steps[key] = synthesizeStep(raw, key);
@@ -77,13 +77,15 @@ export function defineFlow<TInput>(
   // Provider capability negotiation runs at Runner.run() time, not here —
   // the step builders do not have a ProviderRegistry in scope, and the
   // runner can resolve the binding once per run.
-  return buildGraph(steps, spec.start).map((graph) =>
-    Object.freeze({
-      ...spec,
-      steps,
-      graph,
-      stepOrder: [...graph.topoOrder],
-      rootSteps: [...graph.rootSteps],
-    }),
-  );
+  const graphResult = buildGraph(steps, spec.start);
+  if (graphResult.isErr()) throw graphResult.error;
+  const graph = graphResult.value;
+
+  return Object.freeze({
+    ...spec,
+    steps,
+    graph,
+    stepOrder: [...graph.topoOrder],
+    rootSteps: [...graph.rootSteps],
+  });
 }

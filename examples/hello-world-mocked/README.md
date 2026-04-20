@@ -78,6 +78,10 @@ cat .relay/runs/<runId>/artifacts/greeting.md
 
 Every `MockProvider` key must match a step id in `flow.ts`. Missing a key surfaces as `StepFailureError: MockProvider: no response configured for stepId "<id>"` on the first attempt, which then consumes the retry budget and fails the run.
 
+## Environment
+
+This flow needs no Claude subscription and no API key. It runs against a `MockProvider` wired up in `run-mocked.ts`, so the `ANTHROPIC_API_KEY` guard never fires and no subprocess is spawned. Use it in CI, offline demos, or any environment where you want to exercise Relay end-to-end without spending a Claude turn. See `docs/billing-safety.md` for the full auth precedence and the opt-in paths that apply to flows that do call the model.
+
 ## Customization
 
 Typical starting points:

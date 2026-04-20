@@ -32,7 +32,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   }
 
   it('[EXEC-SCRIPT-001] spawns a process, captures stdout, returns exit code 0', async () => {
-    const s = step.script({ run: 'node -e "console.log(1+1)"' })._unsafeUnwrap();
+    const s = step.script({ run: 'node -e "console.log(1+1)"' });
     const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
     expect(result.exitCode).toBe(0);
     expect(String(result.stdout ?? '')).toContain('2');
@@ -41,14 +41,14 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   it('[EXEC-SCRIPT-002] shlex-splits a string run, preserving quoted segments', async () => {
     const s = step
       .script({ run: 'node -e "console.log(\\"hello world\\")"' })
-      ._unsafeUnwrap();
+      ;
     const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
     expect(result.exitCode).toBe(0);
     expect(String(result.stdout ?? '')).toContain('hello world');
   });
 
   it('[EXEC-SCRIPT-003] timeoutMs kills the child and throws TimeoutError', async () => {
-    const s = step.script({ run: 'sleep 10', timeoutMs: 200 })._unsafeUnwrap();
+    const s = step.script({ run: 'sleep 10', timeoutMs: 200 });
     const started = Date.now();
     await expect(executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s })).rejects.toBeInstanceOf(
       TimeoutError,
@@ -63,7 +63,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
         run: 'node -e "console.log(process.env.RELAY_TEST_NODE_ENV + \\":\\" + process.env.CUSTOM)"',
         env: { CUSTOM: 'x' },
       })
-      ._unsafeUnwrap();
+      ;
     try {
       const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
       expect(String(result.stdout ?? '')).toContain('outerval:x');
@@ -75,7 +75,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   it('[EXEC-SCRIPT-005] onExit map routes to a named next step and suppresses failure', async () => {
     const s = step
       .script({ run: 'node -e "process.exit(2)"', onExit: { '2': 'altStep' } })
-      ._unsafeUnwrap();
+      ;
     const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
     expect(result.exitCode).toBe(2);
     const next = (result as { next?: string }).next;
@@ -85,7 +85,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   it('[EXEC-SCRIPT-006] executeBranch returns only exit code (no stdout/artifact)', async () => {
     const s = step
       .branch({ run: 'node -e "process.exit(0)"', onExit: { '0': 'nextStep', '1': 'abort' } })
-      ._unsafeUnwrap();
+      ;
     const result = await executeBranch(s, { ...ctxBase(), stepId: s.id || 's', step: s });
     expect(result.exitCode).toBe(0);
     const asObj = result as Record<string, unknown>;

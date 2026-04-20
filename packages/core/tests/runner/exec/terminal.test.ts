@@ -22,7 +22,7 @@ function stubLogger() {
 describe('executeTerminal (sprint 5 task_37)', () => {
   it('[EXEC-TERMINAL-001] marks run succeeded and returns a terminal sentinel', async () => {
     const { logger, calls } = stubLogger();
-    const s = step.terminal({ message: 'done' })._unsafeUnwrap();
+    const s = step.terminal({ message: 'done' });
     const ctx = {
       stepId: s.id || 's',
       step: s,
@@ -39,7 +39,7 @@ describe('executeTerminal (sprint 5 task_37)', () => {
 
   it('[EXEC-TERMINAL-002] propagates non-zero exitCode through the sentinel', async () => {
     const { logger } = stubLogger();
-    const s = step.terminal({ exitCode: 2 })._unsafeUnwrap();
+    const s = step.terminal({ exitCode: 2 });
     const ctx = {
       stepId: s.id || 's',
       step: s,

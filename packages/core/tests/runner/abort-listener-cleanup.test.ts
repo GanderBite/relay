@@ -63,32 +63,23 @@ const canned: InvocationResponse = {
 };
 
 function twoStepFlow() {
-  // defineFlow assigns step.id from the record key, but the step.prompt schema
-  // still requires id+kind to be present on its input. Pass both literally so
-  // the parse succeeds — the in-memory shape the Runner consumes after unwrap.
-  const aSpec = step.prompt({
-    id: 'a',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    output: { handoff: 'a-out' },
-  } as Parameters<typeof step.prompt>[0]);
-  const bSpec = step.prompt({
-    id: 'b',
-    kind: 'prompt',
-    promptFile: 'p.md',
-    dependsOn: ['a'],
-    output: { handoff: 'b-out' },
-  } as Parameters<typeof step.prompt>[0]);
   return defineFlow({
     name: 'abort-listener-cleanup-flow',
     version: '0.1.0',
     defaultProvider: 'mock',
     input: z.object({}),
     steps: {
-      a: aSpec._unsafeUnwrap(),
-      b: bSpec._unsafeUnwrap(),
+      a: step.prompt({
+        promptFile: 'p.md',
+        output: { handoff: 'a-out' },
+      }),
+      b: step.prompt({
+        promptFile: 'p.md',
+        dependsOn: ['a'],
+        output: { handoff: 'b-out' },
+      }),
     },
-  })._unsafeUnwrap();
+  });
 }
 
 describe('Runner — abort listener cleanup', () => {

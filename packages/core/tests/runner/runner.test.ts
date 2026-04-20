@@ -40,19 +40,19 @@ function linearFlow() {
     defaultProvider: 'mock',
     input: z.object({}),
     steps: {
-      a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+      a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       b: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['a'],
         output: { handoff: 'b-out' },
-      })._unsafeUnwrap(),
+      }),
       c: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['b'],
         output: { handoff: 'c-out' },
-      })._unsafeUnwrap(),
+      }),
     },
-  })._unsafeUnwrap();
+  });
 }
 
 describe('Runner — DAG walker', () => {
@@ -100,13 +100,15 @@ describe('Runner — DAG walker', () => {
     const N = 10;
     let inflight = 0;
     let maxSeen = 0;
-    const branches: Record<string, unknown> = {};
+    const branches: Record<string, ReturnType<typeof step.prompt>> = {};
     const responses: Record<string, unknown> = {};
     for (let i = 0; i < N; i++) {
       const id = `l${i}`;
-      branches[id] = step
-        .prompt({ promptFile: 'p.md', dependsOn: ['r'], output: { handoff: `${id}-out` } })
-        ._unsafeUnwrap();
+      branches[id] = step.prompt({
+        promptFile: 'p.md',
+        dependsOn: ['r'],
+        output: { handoff: `${id}-out` },
+      });
       responses[id] = async () => {
         inflight++;
         maxSeen = Math.max(maxSeen, inflight);
@@ -121,11 +123,11 @@ describe('Runner — DAG walker', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        r: step.terminal({})._unsafeUnwrap(),
-        ...(branches as Record<string, ReturnType<typeof step.prompt> extends { _unsafeUnwrap(): infer U } ? U : never>),
+        r: step.terminal({}),
+        ...branches,
       },
       start: 'r',
-    })._unsafeUnwrap();
+    });
 
     const provider = new MockProvider({
       responses: responses as Record<string, InvocationResponse | ((...a: unknown[]) => InvocationResponse)>,
@@ -147,14 +149,14 @@ describe('Runner — DAG walker', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
         b: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['a'],
           output: { handoff: 'b-out' },
-        })._unsafeUnwrap(),
+        }),
       },
-    })._unsafeUnwrap();
+    });
 
     const bSpy = vi.fn(() => canned);
     const provider = new MockProvider({
@@ -191,16 +193,16 @@ describe('Runner — DAG walker', () => {
           promptFile: 'p.md',
           output: { handoff: 'a-out' },
           onFail: 'continue',
-        })._unsafeUnwrap(),
-        b: step.prompt({ promptFile: 'p.md', output: { handoff: 'b-out' } })._unsafeUnwrap(),
+        }),
+        b: step.prompt({ promptFile: 'p.md', output: { handoff: 'b-out' } }),
         c: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['b'],
           output: { handoff: 'c-out' },
-        })._unsafeUnwrap(),
+        }),
       },
       start: 'a',
-    })._unsafeUnwrap();
+    });
 
     const bSpy = vi.fn(() => canned);
     const cSpy = vi.fn(() => canned);
@@ -230,9 +232,9 @@ describe('Runner — DAG walker', () => {
       defaultProvider: 'mock',
       input: z.object({ repoPath: z.string() }),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
-    })._unsafeUnwrap();
+    });
 
     const provider = new MockProvider({ responses: { a: canned } });
     const registry = new ProviderRegistry();
@@ -262,14 +264,14 @@ describe('Runner — DAG walker', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
         b: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['a'],
           output: { handoff: 'b-out' },
-        })._unsafeUnwrap(),
+        }),
       },
-    })._unsafeUnwrap();
+    });
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
@@ -341,9 +343,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } })._unsafeUnwrap(),
+        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
       },
-    })._unsafeUnwrap();
+    });
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
@@ -369,9 +371,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } })._unsafeUnwrap(),
+        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
       },
-    })._unsafeUnwrap();
+    });
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     setTimeout(() => process.emit('SIGTERM'), 80);
@@ -407,9 +409,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
-    })._unsafeUnwrap();
+    });
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
@@ -430,9 +432,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
-    })._unsafeUnwrap();
+    });
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
     const after = process.listenerCount('SIGINT');
@@ -452,9 +454,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       defaultProvider: 'mock',
       input: z.object({}),
       steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } })._unsafeUnwrap(),
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
-    })._unsafeUnwrap();
+    });
 
     const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
     await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });

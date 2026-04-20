@@ -13,8 +13,8 @@ Record each entity with:
 
 - `name`: the exported symbol or file-level construct, e.g. `Runner`, `ClaudeProvider`, `formatBanner`.
 - `kind`: one of the four values above.
-- `package`: the `name` of the owning package from the inventory (match it exactly).
-- `description`: one sentence, 10–25 words, explaining what the entity does. Written for a `{{input.audience}}` reader — describe purpose and role, not implementation details.
+- `file`: the repository-relative path to the source file that defines the entity, e.g. `packages/core/src/runner/runner.ts`. Paths must be within one of the packages listed in `{{inventory.packages}}`; do not invent paths. Use Read or Glob to confirm the file exists before recording it.
+- `summary`: one sentence, 10–25 words, explaining what the entity does. Written for a `{{input.audience}}` reader — describe purpose and role, not implementation details.
 
 Aim for 5–15 entities total for a typical monorepo. Favor the load-bearing constructs a new reader needs to understand the system; skip trivial wrappers and internal helpers.
 
@@ -26,8 +26,8 @@ Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no 
     {
       "name": "Runner",
       "kind": "service",
-      "package": "@relay/core",
-      "description": "Executes a flow's DAG of steps, handling retries, resumption, and handoff validation."
+      "file": "packages/core/src/runner/runner.ts",
+      "summary": "Executes a flow's DAG of steps, handling retries, resumption, and handoff validation."
     }
   ]
 }

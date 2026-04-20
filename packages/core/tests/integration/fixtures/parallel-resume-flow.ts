@@ -11,49 +11,6 @@
  */
 import { defineFlow, step, z } from '@relay/core';
 
-const entryStep = step.prompt({
-  id: '',
-  kind: 'prompt',
-  promptFile: 'p.md',
-  output: { handoff: 'entry-out' },
-} as Parameters<typeof step.prompt>[0]);
-
-const c1Step = step.prompt({
-  id: '',
-  kind: 'prompt',
-  promptFile: 'p.md',
-  output: { handoff: 'c1-out' },
-} as Parameters<typeof step.prompt>[0]);
-
-const c2Step = step.prompt({
-  id: '',
-  kind: 'prompt',
-  promptFile: 'p.md',
-  output: { handoff: 'c2-out' },
-} as Parameters<typeof step.prompt>[0]);
-
-const c3Step = step.prompt({
-  id: '',
-  kind: 'prompt',
-  promptFile: 'p.md',
-  output: { handoff: 'c3-out' },
-} as Parameters<typeof step.prompt>[0]);
-
-const parallelStep = step.parallel({
-  id: '',
-  kind: 'parallel',
-  branches: ['c1', 'c2', 'c3'],
-  dependsOn: ['entry'],
-} as Parameters<typeof step.parallel>[0]);
-
-const endStep = step.prompt({
-  id: '',
-  kind: 'prompt',
-  promptFile: 'p.md',
-  dependsOn: ['parallel'],
-  output: { handoff: 'end-out' },
-} as Parameters<typeof step.prompt>[0]);
-
 export const flow = defineFlow({
   name: 'parallel-resume-flow',
   version: '0.1.0',
@@ -61,13 +18,32 @@ export const flow = defineFlow({
   input: z.object({}),
   start: 'entry',
   steps: {
-    entry: entryStep._unsafeUnwrap(),
-    parallel: parallelStep._unsafeUnwrap(),
-    c1: c1Step._unsafeUnwrap(),
-    c2: c2Step._unsafeUnwrap(),
-    c3: c3Step._unsafeUnwrap(),
-    end: endStep._unsafeUnwrap(),
+    entry: step.prompt({
+      promptFile: 'p.md',
+      output: { handoff: 'entry-out' },
+    }),
+    parallel: step.parallel({
+      branches: ['c1', 'c2', 'c3'],
+      dependsOn: ['entry'],
+    }),
+    c1: step.prompt({
+      promptFile: 'p.md',
+      output: { handoff: 'c1-out' },
+    }),
+    c2: step.prompt({
+      promptFile: 'p.md',
+      output: { handoff: 'c2-out' },
+    }),
+    c3: step.prompt({
+      promptFile: 'p.md',
+      output: { handoff: 'c3-out' },
+    }),
+    end: step.prompt({
+      promptFile: 'p.md',
+      dependsOn: ['parallel'],
+      output: { handoff: 'end-out' },
+    }),
   },
-})._unsafeUnwrap();
+});
 
 export default flow;
