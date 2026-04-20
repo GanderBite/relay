@@ -1,16 +1,17 @@
 /**
  * relay test — smoke-test a flow against fixture files.
  *
- * v1 scope (§10.3):
+ * v1 scope (tech spec §10.3):
  *   1. Resolve the flow via loadFlow.
  *   2. Look for test/fixtures/*.json in the flow package directory.
  *   3. If no fixtures directory exists, print a friendly message and exit 0
  *      (tests are optional in v1).
  *   4. For each fixture file:
- *      - Parse { input, expectedArtifacts? }.
- *      - Run the flow with a catch-all MockProvider.
+ *      - Parse and validate { input, expectedArtifacts? } via Zod.
+ *      - Run the flow with MockProvider registered under every provider name
+ *        the flow references (default: 'claude' + 'mock').
  *      - Check that every path listed in expectedArtifacts exists after the run.
- *      - Print PASS / FAIL per fixture.
+ *      - Print pass / fail per fixture.
  *   5. Exit 0 if all fixtures pass, exit 1 if any fail.
  *
  * Full eval harness lands in v1.x — see relay.dev/docs/testing.
@@ -22,56 +23,115 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { MockProvider } from '@relay/core/testing';
-import { Runner, ProviderRegistry } from '@relay/core';
+import {
+  Runner,
+  ProviderRegistry,
+  z,
+} from '@relay/core';
+import type {
+  Flow,
+  InvocationContext,
+  InvocationRequest,
+  InvocationResponse,
+  Provider,
+  ProviderCapabilities,
+} from '@relay/core';
 
-import { formatError } from '../exit-codes.js';
+import { EXIT_CODES, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import type { LoadedFlow } from '../flow-loader.js';
-import { MARK, SYMBOLS, green, red, gray } from '../visual.js';
+import { MARK, SYMBOLS, green, red, gray, STEP_NAME_WIDTH } from '../visual.js';
 
 // ---------------------------------------------------------------------------
-// Fixture shape
+// Fixture schema (Zod v4)
 // ---------------------------------------------------------------------------
 
-interface Fixture {
-  input: Record<string, unknown>;
-  expectedArtifacts?: string[];
-}
+const FixtureSchema = z.object({
+  input: z.record(z.string(), z.unknown()),
+  expectedArtifacts: z.array(z.string()).optional(),
+});
 
-function isFixture(value: unknown): value is Fixture {
-  if (value === null || typeof value !== 'object') return false;
-  const obj = value as Record<string, unknown>;
-  if (typeof obj['input'] !== 'object' || obj['input'] === null) return false;
-  if (obj['expectedArtifacts'] !== undefined && !Array.isArray(obj['expectedArtifacts'])) {
-    return false;
-  }
-  return true;
-}
+type Fixture = z.infer<typeof FixtureSchema>;
 
 // ---------------------------------------------------------------------------
-// Catch-all MockProvider factory
+// Default mock response
 // ---------------------------------------------------------------------------
 
-const defaultResponse = {
-  text: '',
+const defaultResponse: InvocationResponse = {
+  text: '{}',
   usage: {
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
   },
-  stopReason: 'end_turn' as const,
+  stopReason: 'end_turn',
   numTurns: 1,
   durationMs: 0,
   model: 'mock-model',
 };
 
-function buildCatchAllProvider(): MockProvider {
-  const responses = new Proxy({} as Record<string, typeof defaultResponse>, {
-    get: (_target, _key) => defaultResponse,
-    has: (_target, _key) => true,
-  });
-  return new MockProvider({ responses });
+// ---------------------------------------------------------------------------
+// NamedMockProvider — MockProvider with a configurable name
+//
+// MockProvider.name is always 'mock'. ProviderRegistry keys by provider.name,
+// so flows whose steps reference a different provider (e.g. 'claude') would
+// fail with "provider not registered". This thin wrapper lets us register
+// the same catch-all behaviour under any provider name the flow references.
+// ---------------------------------------------------------------------------
+
+class NamedMockProvider implements Provider {
+  readonly name: string;
+  readonly capabilities: ProviderCapabilities;
+  private readonly inner: MockProvider;
+
+  constructor(name: string) {
+    this.name = name;
+    this.inner = new MockProvider({
+      responses: new Proxy({} as Record<string, InvocationResponse>, {
+        get: () => defaultResponse,
+        has: () => true,
+      }),
+    });
+    this.capabilities = this.inner.capabilities;
+  }
+
+  authenticate(): ReturnType<MockProvider['authenticate']> {
+    return this.inner.authenticate();
+  }
+
+  invoke(req: InvocationRequest, ctx: InvocationContext): ReturnType<MockProvider['invoke']> {
+    return this.inner.invoke(req, ctx);
+  }
+
+  stream(req: InvocationRequest, ctx: InvocationContext): ReturnType<NonNullable<MockProvider['stream']>> {
+    return this.inner.stream(req, ctx);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Build a ProviderRegistry covering all providers the flow references
+// ---------------------------------------------------------------------------
+
+function buildRegistry(flow: Flow<unknown>): ProviderRegistry {
+  const providerNames = new Set<string>();
+  providerNames.add(flow.defaultProvider ?? 'claude');
+  providerNames.add('mock');
+
+  for (const stepId of Object.keys(flow.steps)) {
+    const step = flow.steps[stepId];
+    if (step !== undefined && 'provider' in step && typeof step.provider === 'string') {
+      providerNames.add(step.provider);
+    }
+  }
+
+  const registry = new ProviderRegistry();
+  for (const name of providerNames) {
+    const provider = new NamedMockProvider(name);
+    const regResult = registry.register(provider);
+    if (regResult.isErr()) throw regResult.error;
+  }
+  return registry;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,18 +160,20 @@ async function runFixture(
     return { name: fixtureName, passed: false, reason: `could not parse fixture: ${msg}` };
   }
 
-  if (!isFixture(raw)) {
+  // Validate fixture shape via Zod
+  const parseResult = FixtureSchema.safeParse(raw);
+  if (!parseResult.success) {
+    const msg = parseResult.error.issues[0]?.message ?? 'schema error';
     return {
       name: fixtureName,
       passed: false,
-      reason: 'fixture must have shape { "input": {}, "expectedArtifacts": [] }',
+      reason: `fixture invalid: ${msg}`,
     };
   }
 
-  const fixture = raw;
-  const mockProvider = buildCatchAllProvider();
-  const registry = new ProviderRegistry();
-  registry.register(mockProvider);
+  const fixture: Fixture = parseResult.data;
+  const flow = loadedFlow.flow as Flow<unknown>;
+  const registry = buildRegistry(flow);
 
   // Create a temp run directory
   const tempDir = path.join(os.tmpdir(), `relay-test-${randomBytes(4).toString('hex')}`);
@@ -126,16 +188,15 @@ async function runFixture(
   try {
     const runner = new Runner({
       providers: registry,
-      defaultProvider: 'mock',
+      defaultProvider: flow.defaultProvider ?? 'mock',
       runDir: tempDir,
     });
-    runResult = await runner.run(loadedFlow.flow, fixture.input, {
+    runResult = await runner.run(flow, fixture.input, {
       flowDir: loadedFlow.dir,
       authTimeoutMs: 5000,
     });
   } catch (runErr) {
     const msg = runErr instanceof Error ? runErr.message : String(runErr);
-    // Best-effort cleanup
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     return { name: fixtureName, passed: false, reason: `run failed: ${msg}` };
   }
@@ -161,7 +222,6 @@ async function runFixture(
     }
   }
 
-  // Best-effort cleanup
   await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   return { name: fixtureName, passed: true };
 }
@@ -186,11 +246,14 @@ function printNoFixtures(): void {
 }
 
 function printFixtureResult(result: FixtureResult): void {
+  const namePadded = result.name.padEnd(STEP_NAME_WIDTH);
   if (result.passed) {
-    process.stdout.write(` ${green(SYMBOLS.ok)} ${result.name}\n`);
+    process.stdout.write(` ${green(SYMBOLS.ok)} ${namePadded}\n`);
   } else {
-    const reason = result.reason !== undefined ? `  ${result.reason}` : '';
-    process.stdout.write(` ${red(SYMBOLS.fail)} ${result.name}${reason}\n`);
+    process.stdout.write(` ${red(SYMBOLS.fail)} ${namePadded}\n`);
+    if (result.reason !== undefined) {
+      process.stdout.write(`     ${result.reason}\n`);
+    }
   }
 }
 
@@ -213,14 +276,14 @@ function printSummary(passCount: number, total: number): void {
  * Entry point dispatched by the CLI for `relay test <flow>`.
  *
  * @param args  Argv slice after "test": [flowNameOrPath]
- * @param opts  Parsed option flags (unused in v1)
+ * @param _opts  Parsed option flags (unused in v1)
  */
 export default async function testCommand(args: unknown[], _opts: unknown): Promise<void> {
   const flowPath = typeof args[0] === 'string' ? args[0] : '';
 
   if (flowPath === '') {
     process.stderr.write('usage: relay test <flow>\n');
-    process.exit(1);
+    process.exit(EXIT_CODES.definition_error);
   }
 
   // ---------------------------------------------------------------------------
@@ -229,7 +292,7 @@ export default async function testCommand(args: unknown[], _opts: unknown): Prom
   const loadResult = await loadFlow(flowPath, process.cwd());
   if (loadResult.isErr()) {
     process.stderr.write(formatError(loadResult.error) + '\n');
-    process.exit(1);
+    process.exit(EXIT_CODES.definition_error);
   }
   const loadedFlow = loadResult.value;
 
@@ -248,7 +311,7 @@ export default async function testCommand(args: unknown[], _opts: unknown): Prom
 
   if (!fixturesExist) {
     printNoFixtures();
-    process.exit(0);
+    process.exit(EXIT_CODES.success);
   }
 
   // ---------------------------------------------------------------------------
@@ -261,12 +324,12 @@ export default async function testCommand(args: unknown[], _opts: unknown): Prom
   } catch (readdirErr) {
     const msg = readdirErr instanceof Error ? readdirErr.message : String(readdirErr);
     process.stderr.write(`could not read fixtures directory: ${msg}\n`);
-    process.exit(1);
+    process.exit(EXIT_CODES.definition_error);
   }
 
   if (entries.length === 0) {
     printNoFixtures();
-    process.exit(0);
+    process.exit(EXIT_CODES.success);
   }
 
   // ---------------------------------------------------------------------------
@@ -289,5 +352,5 @@ export default async function testCommand(args: unknown[], _opts: unknown): Prom
   const total = results.length;
   printSummary(passCount, total);
 
-  process.exit(passCount === total ? 0 : 1);
+  process.exit(passCount === total ? EXIT_CODES.success : EXIT_CODES.step_failure);
 }
