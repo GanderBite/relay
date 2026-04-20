@@ -10,10 +10,12 @@ function parseArgs(argv: string[]): {
   template: TemplateId | undefined;
   outDir: string | undefined;
   tokens: Record<string, string>;
+  force: boolean;
 } {
   const tokens: Record<string, string> = {};
   let template: TemplateId | undefined;
   let outDir: string | undefined;
+  let force = false;
 
   const args = argv.slice(2);
   let i = 0;
@@ -21,9 +23,11 @@ function parseArgs(argv: string[]): {
     const arg = args[i];
     if (arg === '--template' && i + 1 < args.length) {
       const val = args[i + 1] ?? '';
-      if (isTemplateId(val)) {
-        template = val;
+      if (!isTemplateId(val)) {
+        process.stderr.write(`scaffold: unknown template: ${val} (choose: blank, linear, fan-out, discovery)\n`);
+        process.exit(1);
       }
+      template = val;
       i += 2;
     } else if (arg === '--out' && i + 1 < args.length) {
       outDir = args[i + 1];
@@ -43,16 +47,19 @@ function parseArgs(argv: string[]): {
         template = pickTemplate(intent);
       }
       i += 2;
+    } else if (arg === '--force') {
+      force = true;
+      i += 1;
     } else {
       i += 1;
     }
   }
 
-  return { template, outDir, tokens };
+  return { template, outDir, tokens, force };
 }
 
 async function main(): Promise<void> {
-  const { template, outDir, tokens } = parseArgs(process.argv);
+  const { template, outDir, tokens, force } = parseArgs(process.argv);
 
   if (template === undefined) {
     process.stderr.write('scaffold: --template is required (blank | linear | fan-out | discovery)\n');
@@ -64,7 +71,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const result = await scaffoldFlow({ template, outDir, tokens });
+  const result = await scaffoldFlow({ template, outDir, tokens, force });
 
   if (result.isErr()) {
     const e = result.error;
@@ -72,7 +79,9 @@ async function main(): Promise<void> {
       process.stderr.write(`scaffold: template not found: ${e.template}\n`);
     } else if (e.kind === 'file-exists') {
       process.stderr.write(`scaffold: file already exists: ${e.path}\n`);
-      process.stderr.write('scaffold: pass --token force=true to overwrite\n');
+      process.stderr.write('scaffold: pass --force to overwrite\n');
+    } else if (e.kind === 'missing-token') {
+      process.stderr.write(`scaffold: missing token ${e.token} in ${e.path}\n`);
     } else {
       const msg = e.cause instanceof Error ? e.cause.message : String(e.cause);
       process.stderr.write(`scaffold: i/o error: ${msg}\n`);

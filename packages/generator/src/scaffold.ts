@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { err, ok, type Result } from 'neverthrow';
@@ -12,12 +13,14 @@ export interface ScaffoldReport {
 export type ScaffoldError =
   | { kind: 'file-exists'; path: string }
   | { kind: 'template-not-found'; template: string }
+  | { kind: 'missing-token'; token: string; path: string }
   | { kind: 'io-error'; cause: unknown };
 
 export interface ScaffoldOptions {
   template: TemplateId;
   outDir: string;
   tokens: Record<string, string>;
+  force?: boolean;
 }
 
 function templatesRoot(): string {
@@ -44,17 +47,18 @@ async function walkDir(dir: string): Promise<string[]> {
 export async function scaffoldFlow(
   options: ScaffoldOptions,
 ): Promise<Result<ScaffoldReport, ScaffoldError>> {
-  const { template, outDir, tokens } = options;
-  const force = tokens['force'] === 'true';
+  const { template, outDir, tokens, force = false } = options;
 
   const templateDir = join(templatesRoot(), template);
 
-  // Verify template exists
+  // Verify template exists and is a directory (FLAG-1)
+  let st: Stats;
   try {
-    await stat(templateDir);
+    st = await stat(templateDir);
   } catch {
     return err({ kind: 'template-not-found', template });
   }
+  if (!st.isDirectory()) return err({ kind: 'template-not-found', template });
 
   // Collect all files under the template directory
   let allFiles: string[];
@@ -65,29 +69,34 @@ export async function scaffoldFlow(
   }
 
   // Filter out .gitkeep files
-  const files = allFiles.filter((f) => !f.endsWith('.gitkeep'));
+  const srcFiles = allFiles.filter((f) => !f.endsWith('.gitkeep'));
 
-  const filesWritten: string[] = [];
+  // Build a plan: src -> dest pairs (FLAG-2 pass 1)
+  const plan: Array<{ src: string; dest: string; relPath: string }> = srcFiles.map((src) => {
+    const relPath = relative(templateDir, src);
+    return { src, dest: join(outDir, relPath), relPath };
+  });
 
-  for (const srcPath of files) {
-    const relPath = relative(templateDir, srcPath);
-    const destPath = join(outDir, relPath);
-
-    // Check for pre-existing file
-    if (!force) {
+  // Check for collisions before writing anything (FLAG-2 pass 2)
+  if (!force) {
+    for (const { dest } of plan) {
       let exists = false;
       try {
-        await stat(destPath);
+        await stat(dest);
         exists = true;
       } catch {
         // file does not exist — proceed
       }
       if (exists) {
-        return err({ kind: 'file-exists', path: destPath });
+        return err({ kind: 'file-exists', path: dest });
       }
     }
+  }
 
-    // Read source, substitute tokens, write to dest
+  // Write all files (FLAG-2 pass 3)
+  const filesWritten: string[] = [];
+
+  for (const { src: srcPath, dest: destPath, relPath } of plan) {
     let content: string;
     try {
       content = await readFile(srcPath, { encoding: 'utf8' });
@@ -96,6 +105,15 @@ export async function scaffoldFlow(
     }
 
     const substituted = applyTokens(content, tokens);
+
+    // Detect unresolved tokens in non-prompt files (BLOCK-3)
+    const isPromptFile = relPath.startsWith('prompts/') || relPath.startsWith('prompts\\');
+    if (!isPromptFile) {
+      const leftover = substituted.match(/\{\{[a-zA-Z_][\w[\]]*\}\}/);
+      if (leftover) {
+        return err({ kind: 'missing-token', token: leftover[0], path: srcPath });
+      }
+    }
 
     try {
       await mkdir(dirname(destPath), { recursive: true });
@@ -114,6 +132,6 @@ export function pickTemplate(intentText: string): TemplateId {
   const lower = intentText.toLowerCase();
   if (/(explore|audit|document|review codebase)/.test(lower)) return 'discovery';
   if (/(then|chain|sequential)/.test(lower)) return 'linear';
-  if (/(parallel|fan.out)/.test(lower)) return 'fan-out';
+  if (/(parallel|fan[-_ ]?out)/.test(lower)) return 'fan-out';
   return 'blank';
 }

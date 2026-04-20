@@ -97,12 +97,13 @@ Hand the collected inputs to the scaffold CLI. The CLI copies the selected templ
 Run it via `Bash`:
 
 ```bash
-node ~/.claude/skills/relay-generator/dist/scaffold.js \
-  --name <flow-name> \
+node ~/.claude/skills/relay-generator/dist/cli.js \
   --template <blank|linear|fan-out|discovery> \
-  --steps <step1,step2,...> \
-  --models <model1,model2,...> \
-  --out ./<flow-name>
+  --out ./<flow-name> \
+  --token pkgName=<flow-name> \
+  --token "stepNames[0]=<first-step>" \
+  --token "stepNames[1]=<second-step>" \
+  --token "stepNames[2]=<third-step>"
 ```
 
 The scaffold CLI is the single source of truth for the token-substitution rules. Do not write the files yourself with `Write` — the CLI enforces the §7.1 layout and catches token typos at scaffold time.
