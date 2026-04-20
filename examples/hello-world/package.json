@@ -1,0 +1,27 @@
+{
+  "name": "hello-world",
+  "version": "0.1.0",
+  "description": "The smallest valid Relay flow. Two prompt steps that produce a markdown greeting.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": ["dist", "prompts", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@relay/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "displayName": "Hello World",
+    "tags": ["example", "tutorial"],
+    "estimatedCostUsd": { "min": 0.00, "max": 0.02 },
+    "estimatedDurationMin": { "min": 1, "max": 3 },
+    "audience": ["dev"]
+  }
+}
