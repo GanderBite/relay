@@ -1,10 +1,11 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { type ScaffoldReport, scaffoldFlow, type TemplateId } from '@relay/generator/dist/scaffold.js';
+import { type ScaffoldReport, scaffoldFlow, type TemplateId } from '@relay/generator/scaffold';
 
+import { EXIT_CODES } from '../exit-codes.js';
 import { MARK, SYMBOLS, green, red } from '../visual.js';
 
 export interface NewCommandOptions {
@@ -54,7 +55,7 @@ function printInvalidName(name: string): void {
   );
 }
 
-function printModeB(name: string, template: TemplateId, report: ScaffoldReport): void {
+function printModeB(name: string, template: TemplateId, report: ScaffoldReport, installed: boolean): void {
   const lines: string[] = [];
 
   lines.push(`${MARK}  relay new ${name} (${template} template)`);
@@ -65,7 +66,14 @@ function printModeB(name: string, template: TemplateId, report: ScaffoldReport):
     lines.push(` ${green(SYMBOLS.ok)} wrote ${rel}`);
   }
 
-  lines.push(` ${green(SYMBOLS.ok)} installed dev dependencies`);
+  if (installed) {
+    lines.push(` ${green(SYMBOLS.ok)} installed dev dependencies`);
+  } else {
+    lines.push(` ${red(SYMBOLS.fail)} could not install dev dependencies`);
+    lines.push('');
+    lines.push(`  run: cd ${name} && npm install`);
+  }
+
   lines.push('');
   lines.push('try it:');
   lines.push(`    cd ${name} && relay run .`);
@@ -79,9 +87,9 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
   const name = typeof args[0] === 'string' ? args[0] : '';
 
   // Validate name: must be non-empty and kebab-case.
-  if (name === '' || !/^[a-z][a-z0-9-]*$/.test(name)) {
+  if (name === '' || !/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name)) {
     printInvalidName(name);
-    process.exit(1);
+    process.exit(EXIT_CODES.definition_error);
   }
 
   // Mode A: skill is installed and user did not pass --template.
@@ -103,7 +111,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
       '\n' +
       `  \u2192 relay new ${name} --template blank\n`,
     );
-    process.exit(1);
+    process.exit(EXIT_CODES.definition_error);
   }
 
   const template: TemplateId = templateRaw;
@@ -126,31 +134,35 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
         '\n' +
         `  \u2192 relay new ${name} --force\n`,
       );
+      process.exit(EXIT_CODES.step_failure);
     } else if (e.kind === 'template-not-found') {
       process.stderr.write(
         `${red(`${SYMBOLS.fail} template not found: "${e.template}"`)}\n` +
         '\n' +
         `  \u2192 relay new ${name} --template blank\n`,
       );
+      process.exit(EXIT_CODES.definition_error);
     } else if (e.kind === 'missing-token') {
       process.stderr.write(
         `${red(`${SYMBOLS.fail} missing token ${e.token} in ${e.path}`)}\n`,
       );
+      process.exit(EXIT_CODES.definition_error);
     } else {
       // e.kind === 'io-error'
       const msg = e.cause instanceof Error ? e.cause.message : String(e.cause);
       process.stderr.write(`${red(`${SYMBOLS.fail} scaffold failed: ${msg}`)}\n`);
+      process.exit(EXIT_CODES.step_failure);
     }
-    process.exit(1);
   }
 
-  // Run npm install in the new directory; failure is non-fatal.
+  let installed = false;
   try {
-    execSync('npm install', { cwd: outDir, stdio: 'ignore' });
+    execFileSync('npm', ['install'], { cwd: outDir, stdio: 'ignore', timeout: 120_000 });
+    installed = true;
   } catch {
-    // Install failure does not prevent the user from proceeding.
+    installed = false;
   }
 
-  printModeB(name, template, result.value);
-  process.exit(0);
+  printModeB(name, template, result.value, installed);
+  process.exit(EXIT_CODES.success);
 }

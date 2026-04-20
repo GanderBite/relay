@@ -5,10 +5,9 @@
  *   0 — success
  *   1 — step failure (StepFailureError, generic Error, unknown)
  *   2 — flow definition error (FlowDefinitionError, ProviderCapabilityError)
- *   3 — subscription auth / billing safety guard (ClaudeAuthError)
+ *   3 — auth error (ClaudeAuthError, ProviderAuthError)
  *   4 — handoff / schema error (HandoffSchemaError)
  *   5 — timeout (TimeoutError, AuthTimeoutError)
- *   6 — provider auth error (ProviderAuthError)
  *
  * Error format follows the product spec error template:
  *   ✕ <one-line headline>
@@ -32,6 +31,21 @@ import {
 import { red, gray } from './visual.js';
 
 // ---------------------------------------------------------------------------
+// Exit code constants
+// ---------------------------------------------------------------------------
+
+export const EXIT_CODES = {
+  success: 0,
+  step_failure: 1,
+  definition_error: 2,
+  auth_error: 3,
+  handoff_error: 4,
+  timeout: 5,
+} as const;
+
+export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
+
+// ---------------------------------------------------------------------------
 // Exit code mapper
 // ---------------------------------------------------------------------------
 
@@ -39,17 +53,17 @@ import { red, gray } from './visual.js';
  * Map any thrown value to a CLI exit code.
  */
 export function exitCodeFor(err: unknown): number {
-  if (err instanceof StepFailureError) return 1;
-  if (err instanceof FlowDefinitionError) return 2;
-  if (err instanceof ClaudeAuthError) return 3;
-  if (err instanceof AuthTimeoutError) return 5;
-  if (err instanceof TimeoutError) return 5;
-  if (err instanceof HandoffSchemaError) return 4;
-  if (err instanceof ProviderAuthError) return 6;
-  if (err instanceof PipelineError) return 1;
-  if (err instanceof CommanderError) return err.exitCode;
-  if (err instanceof Error) return 1;
-  return 1;
+  if (err instanceof StepFailureError)    return EXIT_CODES.step_failure;
+  if (err instanceof FlowDefinitionError) return EXIT_CODES.definition_error;
+  if (err instanceof ClaudeAuthError)     return EXIT_CODES.auth_error;
+  if (err instanceof AuthTimeoutError)    return EXIT_CODES.timeout;
+  if (err instanceof TimeoutError)        return EXIT_CODES.timeout;
+  if (err instanceof HandoffSchemaError)  return EXIT_CODES.handoff_error;
+  if (err instanceof ProviderAuthError)   return EXIT_CODES.auth_error;
+  if (err instanceof PipelineError)       return EXIT_CODES.step_failure;
+  if (err instanceof CommanderError)      return err.exitCode;
+  if (err instanceof Error)               return EXIT_CODES.step_failure;
+  return EXIT_CODES.step_failure;
 }
 
 // ---------------------------------------------------------------------------

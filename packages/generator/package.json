@@ -6,8 +6,8 @@
   "main": "./dist/install.js",
   "types": "./dist/install.d.ts",
   "exports": {
-    ".": "./dist/install.js",
-    "./dist/scaffold.js": "./dist/scaffold.js"
+    ".": { "types": "./dist/install.d.ts", "import": "./dist/install.js" },
+    "./scaffold": { "types": "./dist/scaffold.d.ts", "import": "./dist/scaffold.js" }
   },
   "bin": {
     "relay-generator": "./bin/install.js",
