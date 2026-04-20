@@ -35,7 +35,7 @@ From a clone of the Relay monorepo:
 
 ```bash
 pnpm install
-pnpm -C packages/flows/codebase-discovery build
+pnpm --filter @ganderbite/flow-codebase-discovery build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads. When this flow is published to the catalog, users will instead run:
@@ -88,7 +88,7 @@ Then edit:
 - `schemas/*.ts` — change the shape of the handoffs the steps exchange.
 - `flow.ts` — add a fifth step, add an input, or swap the artifact extension.
 
-Rebuild with `pnpm -C my-flow build` after any change to `flow.ts` or a schema file.
+Rebuild with `pnpm --filter my-flow build` after any change to `flow.ts` or a schema file.
 
 ## License
 
