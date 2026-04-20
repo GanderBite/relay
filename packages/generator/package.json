@@ -18,6 +18,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "neverthrow": "^8.2.0"
+  },
   "devDependencies": {
     "@types/node": "22.15.3",
     "tsup": "8.5.1",

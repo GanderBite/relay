@@ -84,6 +84,10 @@ importers:
         version: 4.1.4(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7))
 
   packages/generator:
+    dependencies:
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
     devDependencies:
       '@types/node':
         specifier: 22.15.3
@@ -2215,7 +2219,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.4(@types/node@22.15.3)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@22.15.3)(esbuild@0.27.7))
+      vitest: 4.1.4(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7))
 
   '@vitest/expect@4.1.4':
     dependencies:
