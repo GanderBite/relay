@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@relay/core": "workspace:^",
+    "@relay/generator": "workspace:^",
     "chalk": "^5.4.1",
     "chokidar": "^5.0.0",
     "commander": "13.1.0",

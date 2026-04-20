@@ -5,6 +5,10 @@
   "type": "module",
   "main": "./dist/install.js",
   "types": "./dist/install.d.ts",
+  "exports": {
+    ".": "./dist/install.js",
+    "./dist/scaffold.js": "./dist/scaffold.js"
+  },
   "bin": {
     "relay-generator": "./bin/install.js",
     "relay-generator-install": "./bin/install.js"
