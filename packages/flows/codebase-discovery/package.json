@@ -2,13 +2,13 @@
   "name": "@ganderbite/flow-codebase-discovery",
   "version": "0.1.0",
   "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
-  "private": true,
   "type": "module",
   "main": "./dist/flow.js",
   "files": ["dist", "prompts", "schemas", "templates", "examples", "README.md"],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "relay test ."
   },
   "peerDependencies": {
     "@relay/core": "^1.0.0"

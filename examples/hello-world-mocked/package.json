@@ -1,7 +1,7 @@
 {
   "name": "hello-world-mocked",
   "version": "0.1.0",
-  "description": "The mocked twin of hello-world. Runs the same two-step flow against a MockProvider with canned responses keyed by step id. No Claude binary, no subscription, no API key.",
+  "description": "The mocked twin of hello-world — runs the same two-step flow against a MockProvider with no Claude binary, subscription, or API key.",
   "private": true,
   "type": "module",
   "main": "./dist/flow.js",
@@ -9,12 +9,14 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "relay test .",
     "run-mocked": "node dist/run-mocked.js"
   },
-  "dependencies": {
-    "@relay/core": "workspace:*"
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
   },
   "devDependencies": {
+    "@relay/core": "workspace:*",
     "@types/node": "25.6.0",
     "typescript": "6.0.3"
   },

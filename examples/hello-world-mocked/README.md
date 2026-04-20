@@ -1,5 +1,7 @@
 # hello-world-mocked
 
+`●─▶●─▶●─▶●  hello-world-mocked`
+
 The mocked twin of [`hello-world`](../hello-world). Runs the same two-step flow against a `MockProvider` — no Claude binary, no subscription, no API key. Proves that the `Provider` abstraction holds: the flow definition is identical, only the runner's provider registry changes.
 
 ## What it does
@@ -88,7 +90,7 @@ Typical starting points:
 
 - **Add a step.** Add a new entry to `flow.ts`'s `steps` map, add the prompt file under `prompts/`, and add a matching entry to the `MockProvider`'s `responses` map. Keys must match.
 - **Return different text per attempt.** `MockProvider` accepts a function `(req, ctx) => InvocationResponse` in place of a static response — use `ctx.attempt` to return a different value on retries.
-- **Point at the real provider.** Replace the `MockProvider`/`ProviderRegistry` setup with the default registry (or simply call `createRunner()` with no `providers` override). `flow.ts` itself stays identical — that is the whole point of the abstraction.
+- **Point at the real provider.** Replace the `MockProvider`/`ProviderRegistry` setup with the default registry (or call `createRunner()` with no `providers` override). `flow.ts` itself stays identical — that is the whole point of the abstraction.
 
 ## License
 

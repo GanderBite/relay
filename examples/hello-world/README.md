@@ -36,7 +36,7 @@ This flow ships inside the Relay monorepo as a local example. There is no publis
 
 ```bash
 pnpm install
-pnpm -C examples/hello-world build
+pnpm --filter hello-world build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads.
@@ -82,7 +82,7 @@ Then edit:
 - `prompts/02_summarize.md` — change the markdown template the second step produces.
 - `flow.ts` — add inputs to the Zod schema, add a third step, or swap the artifact extension.
 
-Rebuild with `pnpm -C my-flow build` after any change to `flow.ts`.
+Rebuild with `pnpm --filter my-flow build` after any change to `flow.ts`.
 
 ## License
 

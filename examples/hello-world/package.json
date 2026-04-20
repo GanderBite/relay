@@ -8,12 +8,14 @@
   "files": ["dist", "prompts", "README.md"],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "relay test ."
   },
-  "dependencies": {
-    "@relay/core": "workspace:*"
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
   },
   "devDependencies": {
+    "@relay/core": "workspace:*",
     "@types/node": "25.6.0",
     "typescript": "6.0.3"
   },

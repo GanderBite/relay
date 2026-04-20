@@ -13,11 +13,10 @@ importers:
         version: 2.4.12
 
   examples/hello-world:
-    dependencies:
+    devDependencies:
       '@relay/core':
         specifier: workspace:*
         version: link:../../packages/core
-    devDependencies:
       '@types/node':
         specifier: 25.6.0
         version: 25.6.0
@@ -26,11 +25,10 @@ importers:
         version: 6.0.3
 
   examples/hello-world-mocked:
-    dependencies:
+    devDependencies:
       '@relay/core':
         specifier: workspace:*
         version: link:../../packages/core
-    devDependencies:
       '@types/node':
         specifier: 25.6.0
         version: 25.6.0
