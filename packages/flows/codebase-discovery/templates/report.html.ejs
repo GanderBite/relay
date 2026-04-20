@@ -1,0 +1,326 @@
+<%#
+  report.html.ejs — HTML scaffold for the codebase-discovery report.
+
+  APPROACH: B (reference scaffold, not a runtime-interpolated template).
+
+  The final step (`report`) of this flow writes `report.html` as a free-form
+  artifact — there is no post-hoc script step that substitutes EJS tags. The
+  report prompt (`prompts/04_report.md`) instructs Claude to render the full
+  HTML document directly, using the handoffs it received as context.
+
+  This file exists as a visual reference for authors who want to know what the
+  expected output looks like: the six required sections, the inline CSS
+  palette, the table shapes, and the structural landmarks the reader relies on.
+  The `.ejs` extension is preserved so that a future script-step variant (for
+  deterministic rendering against the handoff JSONs) can consume this same
+  file with zero changes to the markup. The EJS tags below are illustrative —
+  they document what would be substituted if a deterministic renderer were
+  wired in. Claude is not required to honor them when producing the artifact.
+
+  Hard rules (carried from the product spec):
+    - No external CSS, fonts, or JS. The document must be self-contained.
+    - No emojis anywhere.
+    - System font stack only.
+    - Dark text on a light background with a muted accent — professional,
+      readable, prints cleanly.
+-%>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codebase Discovery Report — <%= overview.repoName %></title>
+    <style>
+      :root {
+        --fg: #1a1a1a;
+        --fg-muted: #555;
+        --bg: #ffffff;
+        --bg-muted: #f6f7f8;
+        --border: #e3e5e8;
+        --accent: #2a5d9f;
+        --accent-soft: #e9f0fa;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        line-height: 1.55;
+        font-size: 15px;
+      }
+      main { max-width: 960px; margin: 0 auto; padding: 48px 32px 96px; }
+      header.page {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 24px;
+        margin-bottom: 40px;
+      }
+      header.page .mark {
+        font-family: var(--mono);
+        color: var(--accent);
+        letter-spacing: 2px;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 8px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      header.page .subtitle {
+        color: var(--fg-muted);
+        margin: 0;
+        font-size: 15px;
+      }
+      header.page .meta {
+        margin-top: 16px;
+        color: var(--fg-muted);
+        font-size: 13px;
+        font-family: var(--mono);
+      }
+      section {
+        margin-bottom: 40px;
+      }
+      section > h2 {
+        font-size: 20px;
+        margin: 0 0 4px;
+        font-weight: 600;
+        color: var(--fg);
+      }
+      section > h2 .num {
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 15px;
+        margin-right: 10px;
+        font-weight: 500;
+      }
+      section > .lead {
+        color: var(--fg-muted);
+        margin: 0 0 16px;
+        font-size: 14px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: var(--bg-muted);
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      code, .mono {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        background: var(--bg-muted);
+        padding: 1px 6px;
+        border-radius: 3px;
+      }
+      td code { background: transparent; padding: 0; }
+      ul.observations, ul.recommendations {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      ul.observations li, ul.recommendations li {
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 10px;
+        background: var(--bg);
+      }
+      ul.recommendations li {
+        border-left: 3px solid var(--accent);
+      }
+      ul.observations li .tag,
+      ul.recommendations li .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        background: var(--accent-soft);
+        padding: 2px 8px;
+        border-radius: 3px;
+        margin-right: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      ul.observations li p,
+      ul.recommendations li p {
+        margin: 6px 0 0;
+        color: var(--fg);
+      }
+      footer.page {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--fg-muted);
+        font-size: 12px;
+        font-family: var(--mono);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="page">
+        <div class="mark">●─▶●─▶●─▶●</div>
+        <h1><%= overview.repoName %></h1>
+        <p class="subtitle"><%= overview.description %></p>
+        <div class="meta">
+          <%= overview.packageCount %> packages ·
+          primary language: <%= overview.primaryLanguage %> ·
+          generated <%= overview.generatedAt %>
+        </div>
+      </header>
+
+      <section>
+        <h2><span class="num">1</span>Overview</h2>
+        <p class="lead">
+          What this repository is and how it is organized at a glance.
+        </p>
+        <p><%- overview.summary %></p>
+      </section>
+
+      <section>
+        <h2><span class="num">2</span>Inventory</h2>
+        <p class="lead">
+          Every package in the repository, its primary language, and its
+          entry points.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Path</th>
+              <th>Language</th>
+              <th>Entry points</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% inventory.packages.forEach(function (pkg) { %>
+              <tr>
+                <td><code><%= pkg.name %></code></td>
+                <td><code><%= pkg.path %></code></td>
+                <td><%= pkg.language %></td>
+                <td>
+                  <% pkg.entryPoints.forEach(function (ep, i) { %>
+                    <code><%= ep %></code><% if (i < pkg.entryPoints.length - 1) { %>, <% } %>
+                  <% }) %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2><span class="num">3</span>Entities</h2>
+        <p class="lead">
+          Top-level named constructs — models, services, controllers, and
+          utilities — grouped across packages.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Kind</th>
+              <th>Package</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% entities.entities.forEach(function (e) { %>
+              <tr>
+                <td><code><%= e.name %></code></td>
+                <td><%= e.kind %></td>
+                <td><code><%= e.package %></code></td>
+                <td><%= e.description %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2><span class="num">4</span>Services</h2>
+        <p class="lead">
+          Cross-cutting runtime concerns that more than one package depends
+          on or participates in.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Description</th>
+              <th>Used by</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% services.services.forEach(function (s) { %>
+              <tr>
+                <td><code><%= s.name %></code></td>
+                <td><%= s.description %></td>
+                <td>
+                  <% s.usedBy.forEach(function (u, i) { %>
+                    <code><%= u %></code><% if (i < s.usedBy.length - 1) { %>, <% } %>
+                  <% }) %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2><span class="num">5</span>Design review</h2>
+        <p class="lead">
+          Observations about the architecture: what patterns are present,
+          where coupling is concentrated, which boundaries hold.
+        </p>
+        <ul class="observations">
+          <% designReview.observations.forEach(function (o) { %>
+            <li>
+              <span class="tag"><%= o.tag %></span>
+              <strong><%= o.title %></strong>
+              <p><%= o.body %></p>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="num">6</span>Recommendations</h2>
+        <p class="lead">
+          Concrete, actionable changes worth considering — ordered by
+          estimated payoff against effort.
+        </p>
+        <ul class="recommendations">
+          <% recommendations.forEach(function (r) { %>
+            <li>
+              <span class="tag"><%= r.priority %></span>
+              <strong><%= r.title %></strong>
+              <p><%= r.body %></p>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+
+      <footer class="page">
+        Generated by codebase-discovery · relay ●─▶
+      </footer>
+    </main>
+  </body>
+</html>

@@ -3,35 +3,394 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Codebase Discovery Report</title>
-    <!-- Placeholder sample output. A real run of the codebase-discovery flow
-         replaces this file with a full HTML report covering packages,
-         entities, services, and architecture. This skeleton exists so the
-         README's "Sample output" section has a file to link to before the
-         report template and sample data are written in a later sprint. -->
+    <title>Codebase Discovery Report — relay</title>
+    <style>
+      :root {
+        --fg: #1a1a1a;
+        --fg-muted: #555;
+        --bg: #ffffff;
+        --bg-muted: #f6f7f8;
+        --border: #e3e5e8;
+        --accent: #2a5d9f;
+        --accent-soft: #e9f0fa;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        line-height: 1.55;
+        font-size: 15px;
+      }
+      main { max-width: 960px; margin: 0 auto; padding: 48px 32px 96px; }
+      header.page {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 24px;
+        margin-bottom: 40px;
+      }
+      header.page .mark {
+        font-family: var(--mono);
+        color: var(--accent);
+        letter-spacing: 2px;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 8px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      header.page .subtitle {
+        color: var(--fg-muted);
+        margin: 0;
+        font-size: 15px;
+      }
+      header.page .meta {
+        margin-top: 16px;
+        color: var(--fg-muted);
+        font-size: 13px;
+        font-family: var(--mono);
+      }
+      section { margin-bottom: 40px; }
+      section > h2 {
+        font-size: 20px;
+        margin: 0 0 4px;
+        font-weight: 600;
+        color: var(--fg);
+      }
+      section > h2 .num {
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 15px;
+        margin-right: 10px;
+        font-weight: 500;
+      }
+      section > .lead {
+        color: var(--fg-muted);
+        margin: 0 0 16px;
+        font-size: 14px;
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: var(--bg-muted);
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      code, .mono {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        background: var(--bg-muted);
+        padding: 1px 6px;
+        border-radius: 3px;
+      }
+      td code { background: transparent; padding: 0; }
+      ul.observations, ul.recommendations {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      ul.observations li, ul.recommendations li {
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 10px;
+        background: var(--bg);
+      }
+      ul.recommendations li { border-left: 3px solid var(--accent); }
+      ul.observations li .tag,
+      ul.recommendations li .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        background: var(--accent-soft);
+        padding: 2px 8px;
+        border-radius: 3px;
+        margin-right: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      ul.observations li p,
+      ul.recommendations li p { margin: 6px 0 0; color: var(--fg); }
+      footer.page {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--fg-muted);
+        font-size: 12px;
+        font-family: var(--mono);
+        text-align: center;
+      }
+    </style>
   </head>
   <body>
-    <header>
-      <h1>Codebase Discovery Report</h1>
-      <p>Sample output placeholder.</p>
-    </header>
     <main>
+      <header class="page">
+        <div class="mark">●─▶●─▶●─▶●</div>
+        <h1>relay</h1>
+        <p class="subtitle">A TypeScript monorepo that ships a CLI and a library for running multi-step Claude Code workflows that resume after crashes, bill through a subscription, and produce the same artifact every time.</p>
+        <div class="meta">
+          6 packages ·
+          primary language: TypeScript ·
+          generated 2026-04-20
+        </div>
+      </header>
+
       <section>
-        <h2>Packages</h2>
-        <p>Replaced by the real report at run time.</p>
+        <h2><span class="num">1</span>Overview</h2>
+        <p class="lead">
+          What this repository is and how it is organized at a glance.
+        </p>
+        <p>
+          Relay is a pnpm workspace organized into three library packages
+          (<code>@relay/core</code>, <code>@relay/cli</code>,
+          <code>@relay/generator</code>), one reference flow package
+          (<code>@ganderbite/flow-codebase-discovery</code>), and two
+          example flows (<code>hello-world</code>,
+          <code>hello-world-mocked</code>). The core library exposes a
+          typed DSL (<code>defineFlow</code>, <code>step</code>) and a
+          <code>Runner</code> that executes flows against a pluggable
+          <code>Provider</code>. The CLI is a thin orchestrator around the
+          library; the generator is a Claude Code skill that scaffolds new
+          flow packages. The project targets Node 20.10+ and ships as
+          ESM-only.
+        </p>
       </section>
+
       <section>
-        <h2>Entities</h2>
-        <p>Replaced by the real report at run time.</p>
+        <h2><span class="num">2</span>Inventory</h2>
+        <p class="lead">
+          Every package in the repository, its primary language, and its
+          entry points.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Path</th>
+              <th>Language</th>
+              <th>Entry points</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>@relay/core</code></td>
+              <td><code>packages/core</code></td>
+              <td>TypeScript</td>
+              <td><code>src/index.ts</code>, <code>src/testing/index.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>@relay/cli</code></td>
+              <td><code>packages/cli</code></td>
+              <td>TypeScript</td>
+              <td><code>src/cli.ts</code>, <code>bin/relay.js</code></td>
+            </tr>
+            <tr>
+              <td><code>@relay/generator</code></td>
+              <td><code>packages/generator</code></td>
+              <td>TypeScript</td>
+              <td><code>src/install.ts</code>, <code>src/scaffold.ts</code>, <code>bin/install.js</code></td>
+            </tr>
+            <tr>
+              <td><code>@ganderbite/flow-codebase-discovery</code></td>
+              <td><code>packages/flows/codebase-discovery</code></td>
+              <td>TypeScript</td>
+              <td><code>flow.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>hello-world</code></td>
+              <td><code>examples/hello-world</code></td>
+              <td>TypeScript</td>
+              <td><code>flow.ts</code></td>
+            </tr>
+            <tr>
+              <td><code>hello-world-mocked</code></td>
+              <td><code>examples/hello-world-mocked</code></td>
+              <td>TypeScript</td>
+              <td><code>flow.ts</code>, <code>run-mocked.ts</code></td>
+            </tr>
+          </tbody>
+        </table>
       </section>
+
       <section>
-        <h2>Services</h2>
-        <p>Replaced by the real report at run time.</p>
+        <h2><span class="num">3</span>Entities</h2>
+        <p class="lead">
+          Top-level named constructs — models, services, controllers, and
+          utilities — grouped across packages.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Kind</th>
+              <th>Package</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>defineFlow</code></td>
+              <td>util</td>
+              <td><code>@relay/core</code></td>
+              <td>Compiles a <code>FlowSpec</code> into an executable <code>Flow</code> and validates the step graph. Returns a <code>Result</code> with a <code>FlowDefinitionError</code> on failure.</td>
+            </tr>
+            <tr>
+              <td><code>Runner</code></td>
+              <td>service</td>
+              <td><code>@relay/core</code></td>
+              <td>Orchestrates execution of a compiled flow — resolves the DAG, executes steps against a <code>Provider</code>, writes checkpoints, and emits step-level events.</td>
+            </tr>
+            <tr>
+              <td><code>ClaudeProvider</code></td>
+              <td>service</td>
+              <td><code>@relay/core</code></td>
+              <td>Default provider. Wraps <code>@anthropic-ai/claude-agent-sdk</code>, translates SDK messages into typed <code>InvocationEvent</code>s, and enforces the subscription-billing safety guard.</td>
+            </tr>
+            <tr>
+              <td><code>MockProvider</code></td>
+              <td>service</td>
+              <td><code>@relay/core</code></td>
+              <td>Provider for tests and the <code>hello-world-mocked</code> example. Returns canned responses keyed by step id. No network, no Claude binary, no credentials.</td>
+            </tr>
+            <tr>
+              <td><code>HandoffStore</code></td>
+              <td>service</td>
+              <td><code>@relay/core</code></td>
+              <td>Atomic reader and writer for the per-run <code>handoffs/*.json</code> files that carry structured context between steps.</td>
+            </tr>
+            <tr>
+              <td><code>StateMachine</code></td>
+              <td>model</td>
+              <td><code>@relay/core</code></td>
+              <td>The serialized run-state (<code>state.json</code>) schema and the legal-transition rules that govern step status (<code>pending</code>, <code>running</code>, <code>succeeded</code>, <code>failed</code>).</td>
+            </tr>
+            <tr>
+              <td><code>PipelineError</code></td>
+              <td>model</td>
+              <td><code>@relay/core</code></td>
+              <td>Root of the typed error hierarchy. Concrete subclasses include <code>ProviderAuthError</code>, <code>HandoffSchemaError</code>, <code>StateCorruptError</code>, and <code>AtomicWriteError</code> — each mapped to a distinct CLI exit code.</td>
+            </tr>
+            <tr>
+              <td><code>relay</code> command</td>
+              <td>controller</td>
+              <td><code>@relay/cli</code></td>
+              <td>Commander-based CLI entry. Subcommands live in <code>src/commands/</code>: <code>run</code>, <code>resume</code>, <code>list</code>, <code>search</code>, <code>install</code>, <code>new</code>, <code>test</code>, <code>runs</code>, <code>doctor</code>, <code>upgrade</code>.</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
+
       <section>
-        <h2>Architecture</h2>
-        <p>Replaced by the real report at run time.</p>
+        <h2><span class="num">4</span>Services</h2>
+        <p class="lead">
+          Cross-cutting runtime concerns that more than one package depends
+          on or participates in.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Description</th>
+              <th>Used by</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Provider abstraction</code></td>
+              <td>A single interface (<code>Provider</code>) with an async-iterator <code>invoke</code> contract. Lets the <code>Runner</code> stay unaware of whether Claude is being reached via the SDK, a subprocess, or a mock. The registry (<code>defaultRegistry</code>) binds provider ids to implementations.</td>
+              <td><code>@relay/core</code>, <code>@relay/cli</code>, <code>hello-world-mocked</code></td>
+            </tr>
+            <tr>
+              <td><code>Subscription-billing guard</code></td>
+              <td>A pre-run check that refuses to start if <code>ANTHROPIC_API_KEY</code> is present in the environment without an explicit opt-in (<code>--api-key</code> or <code>RELAY_ALLOW_API_KEY=1</code>). Prevents a Max subscriber from silently routing tokens to a paid API account. Enforced in <code>ClaudeProvider</code> and surfaced by <code>relay doctor</code>.</td>
+              <td><code>@relay/core</code>, <code>@relay/cli</code></td>
+            </tr>
+            <tr>
+              <td><code>State persistence</code></td>
+              <td>Atomic writes (<code>atomicWriteJson</code>, <code>atomicWriteText</code>) for <code>state.json</code>, <code>handoffs/*.json</code>, <code>metrics.json</code>, and the <code>live/</code> directory. Tempfile-plus-rename under the hood so a crashed writer never leaves a partially written file a later resume would read.</td>
+              <td><code>@relay/core</code>, <code>@relay/cli</code></td>
+            </tr>
+          </tbody>
+        </table>
       </section>
+
+      <section>
+        <h2><span class="num">5</span>Design review</h2>
+        <p class="lead">
+          Observations about the architecture: what patterns are present,
+          where coupling is concentrated, which boundaries hold.
+        </p>
+        <ul class="observations">
+          <li>
+            <span class="tag">Layering</span>
+            <strong>Clean dependency direction.</strong>
+            <p>The CLI depends on core; core depends on nothing in the workspace. Flow packages declare core as a <code>peerDependency</code>, which is the right choice for distribution — a flow installed against a newer core picks up fixes without re-publishing.</p>
+          </li>
+          <li>
+            <span class="tag">Errors</span>
+            <strong>Results over exceptions across core.</strong>
+            <p>Fallible functions return <code>Result&lt;T, PipelineError&gt;</code> via <code>neverthrow</code> rather than throwing. The error hierarchy is domain-generic (<code>ProviderAuthError</code>, <code>AtomicWriteError</code>) and each subclass maps to a distinct exit code. Downstream code can pattern-match without <code>try</code>/<code>catch</code> ceremony.</p>
+          </li>
+          <li>
+            <span class="tag">Provider</span>
+            <strong>The Provider boundary is the high-leverage seam.</strong>
+            <p><code>ClaudeProvider</code> and <code>MockProvider</code> satisfy the same contract, which is what makes <code>hello-world-mocked</code> possible and what keeps the test suite off the Claude binary. The translation layer from SDK messages to typed <code>InvocationEvent</code>s is the one part of core that would need care when the SDK version changes.</p>
+          </li>
+          <li>
+            <span class="tag">Coupling</span>
+            <strong>CLI commands share conventions, not a framework.</strong>
+            <p>Each file in <code>packages/cli/src/commands/</code> owns its argument parsing, banner, and exit-code mapping. That keeps any one command easy to read, at the cost of some duplicated shape. The shared pieces that matter (banner rendering, progress display, input parsing, exit codes) already live in their own modules, which is the right place for the repetition to collapse if it gets expensive.</p>
+          </li>
+          <li>
+            <span class="tag">Schemas</span>
+            <strong>Handoffs are Zod-validated at every boundary.</strong>
+            <p>Reference-flow handoff schemas live next to the flow (<code>schemas/inventory.ts</code>, <code>schemas/entities.ts</code>) and run against each step's output before the next step reads it. A malformed handoff surfaces as a typed <code>HandoffSchemaError</code> with the exact issue path, not a downstream <code>undefined</code>.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span class="num">6</span>Recommendations</h2>
+        <p class="lead">
+          Concrete, actionable changes worth considering — ordered by
+          estimated payoff against effort.
+        </p>
+        <ul class="recommendations">
+          <li>
+            <span class="tag">High</span>
+            <strong>Pin the Claude Agent SDK version tested in CI.</strong>
+            <p>The SDK is declared as a <code>peerDependency</code> at <code>0.2.112</code>, which is correct for consumers but means the translation layer in <code>ClaudeProvider</code> only ever sees that exact version in practice. Add a scheduled CI job that installs the latest SDK patch against core's test suite so regressions surface before a user hits them.</p>
+          </li>
+          <li>
+            <span class="tag">Medium</span>
+            <strong>Extract a <code>CommandBase</code> for CLI subcommands.</strong>
+            <p>Each file in <code>packages/cli/src/commands/</code> repeats the same shape: parse input, render the banner, run the operation, map errors to exit codes. A thin shared helper that accepts a handler and a banner config would remove about a third of the duplication without giving up per-command ownership of argument parsing. Worth doing once <code>new</code> and <code>test</code> stabilize.</p>
+          </li>
+          <li>
+            <span class="tag">Low</span>
+            <strong>Ship a flow-package linter as part of the <code>relay</code> CLI.</strong>
+            <p>The §7 format is currently enforced by convention. A <code>relay lint &lt;dir&gt;</code> subcommand that checks the <code>relay</code> metadata block, required README sections, and the <code>dist/flow.js</code> entry point would make the catalog onboarding story less fragile, and the same logic can back the registry generator for the static catalog site.</p>
+          </li>
+        </ul>
+      </section>
+
+      <footer class="page">
+        Generated by codebase-discovery · relay ●─▶
+      </footer>
     </main>
   </body>
 </html>
