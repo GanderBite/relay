@@ -118,9 +118,8 @@ function buildRegistry(flow: Flow<unknown>): ProviderRegistry {
   providerNames.add(flow.defaultProvider ?? 'claude');
   providerNames.add('mock');
 
-  for (const stepId of Object.keys(flow.steps)) {
-    const step = flow.steps[stepId];
-    if (step !== undefined && 'provider' in step && typeof step.provider === 'string') {
+  for (const step of Object.values(flow.steps)) {
+    if (step.kind === 'prompt' && step.provider !== undefined) {
       providerNames.add(step.provider);
     }
   }
@@ -172,7 +171,7 @@ async function runFixture(
   }
 
   const fixture: Fixture = parseResult.data;
-  const flow = loadedFlow.flow as Flow<unknown>;
+  const flow = loadedFlow.flow;
   const registry = buildRegistry(flow);
 
   // Create a temp run directory

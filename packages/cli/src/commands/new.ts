@@ -97,7 +97,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
     const installed = await skillIsInstalled();
     if (installed) {
       printModeA();
-      process.exit(0);
+      process.exit(EXIT_CODES.success);
     }
   }
 
