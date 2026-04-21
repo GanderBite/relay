@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Relay — Claude flows you can run twice</title>
+  <meta name="description" content="Deterministic orchestration. Crash-proof state. Transparent cost. Runs on your Pro/Max subscription." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+  ========================================================= -->
+  <header class="site-header">
+    <div class="container">
+      <div class="header-mark">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</div>
+      <span class="header-name">Relay</span>
+      <nav class="header-nav">
+        <a href="#flows">flows</a>
+        <a href="#why">why Relay</a>
+        <a href="https://github.com/ganderbite/relay">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       HERO
+  ========================================================= -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-mark" aria-hidden="true">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</div>
+
+      <h1 class="hero-headline">Claude flows you can run twice.</h1>
+
+      <p class="hero-sub">
+        Deterministic orchestration. Crash-proof state.<br />
+        Transparent cost. Runs on your Pro/Max subscription.
+      </p>
+
+      <div class="hero-rule"></div>
+
+      <pre class="hero-command"><code>$ npx relay run codebase-discovery .</code></pre>
+
+      <div class="hero-rule"></div>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/ganderbite/relay#installation">install</a>
+        <a class="btn btn-secondary" href="#flows">browse catalog</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       FEATURE COPY  (§8.6)
+  ========================================================= -->
+  <section class="features" id="features">
+    <div class="container features-grid">
+
+      <div class="feature-block">
+        <h3>Run twice, get the same result.</h3>
+        <p>Every flow is a typed DAG in a file. Same input, same steps, same
+        artifact — reproducible by design.</p>
+      </div>
+
+      <div class="feature-block">
+        <h3>Survive crashes.</h3>
+        <p>State is saved after every step. A failed run resumes with
+        <code>relay resume &lt;runId&gt;</code>. Successful work never gets redone.</p>
+      </div>
+
+      <div class="feature-block">
+        <h3>Never surprise-billed.</h3>
+        <p>The CLI checks your auth before the first token. If
+        <code>ANTHROPIC_API_KEY</code> is set, Relay refuses to run until you opt in.</p>
+      </div>
+
+      <div class="feature-block">
+        <h3>Hire a pre-built flow.</h3>
+        <p>The public catalog ships verified flows for codebase discovery, API
+        audits, and migration planning. Installable in one command.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- =========================================================
+       CATALOG FLOW LIST
+  ========================================================= -->
+  <section class="catalog-section" id="flows">
+    <div class="container">
+      <h2 class="section-heading">Catalog</h2>
+      <p class="section-sub">Verified flows, installable in one command.</p>
+
+      <div class="filter-bar" id="filter-bar" aria-label="Filter flows by tag">
+        <!-- tag buttons rendered by app.js -->
+      </div>
+
+      <div id="flows-loading" class="flows-loading" aria-live="polite">
+        Loading catalog&#x2026;
+      </div>
+
+      <div id="flows-error" class="flows-error" hidden aria-live="assertive"></div>
+
+      <div id="flows" class="flows-grid" aria-label="Flow catalog"></div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       COMPARISON GRID  (§9 — verbatim column/row order)
+  ========================================================= -->
+  <section class="comparison-section" id="why">
+    <div class="container">
+      <h2 class="section-heading">Where Relay fits</h2>
+
+      <div class="comparison-wrapper">
+        <table class="comparison-table" aria-label="Comparison grid">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">stateful resume</th>
+              <th scope="col">subscription-safe by default</th>
+              <th scope="col">pre-built flows</th>
+              <th scope="col">Claude-native</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-relay">
+              <th scope="row"><strong>Relay</strong></th>
+              <td class="cell-yes">&#10003;</td>
+              <td class="cell-yes">&#10003;</td>
+              <td class="cell-catalog">catalog</td>
+              <td class="cell-yes">&#10003;</td>
+            </tr>
+            <tr>
+              <th scope="row"><code>claude -p</code> shell</th>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-partial">depends on env</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-yes">&#10003;</td>
+            </tr>
+            <tr>
+              <th scope="row">LangGraph</th>
+              <td class="cell-partial">partial</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-partial">partial</td>
+            </tr>
+            <tr>
+              <th scope="row">CrewAI</th>
+              <td class="cell-yes">&#10003;</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-no">&#xB7;</td>
+            </tr>
+            <tr>
+              <th scope="row">SuperClaude</th>
+              <td class="cell-partial">partial</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-partial">partial</td>
+              <td class="cell-yes">&#10003;</td>
+            </tr>
+            <tr>
+              <th scope="row"><code>claude-pipeline</code></th>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-partial">templates</td>
+              <td class="cell-yes">&#10003;</td>
+            </tr>
+            <tr>
+              <th scope="row">Skills (native)</th>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-yes">&#10003;</td>
+              <td class="cell-no">&#xB7;</td>
+              <td class="cell-yes">&#10003;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="comparison-close">
+        Relay is the only tool that fills all four. That's the pitch.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       FOOTER
+  ========================================================= -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-mark" aria-hidden="true">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</span>
+      <span class="footer-copy">
+        Relay is open source. Built by Ganderbite.
+        <a href="https://github.com/ganderbite/relay">GitHub</a>
+      </span>
+    </div>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

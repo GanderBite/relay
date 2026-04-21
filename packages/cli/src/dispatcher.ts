@@ -162,9 +162,10 @@ export function buildProgram(): Command {
   program
     .command('publish <path>')
     .description('lint and publish a flow to npm')
-    .action(async (path: string) => {
+    .option('--dry-run', 'lint and build but skip the actual npm publish')
+    .action(async (path: string, cmdOpts: { dryRun?: boolean }) => {
       const handler = await loadCommand('publish');
-      await handler([path], program.opts());
+      await handler([path], { ...program.opts(), ...cmdOpts });
     });
 
   // ----------------------------------------------------------------- test --
