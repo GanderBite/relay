@@ -5,6 +5,10 @@ import { buildProgram } from './dispatcher.js';
 import { MARK } from './visual.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
 
+// Public API re-exports — consumed by bin shims and catalog tooling.
+export { generateRegistryJson } from './registry.js';
+export type { RegistryDoc, RegistryEntry, RegistryError } from './registry.js';
+
 // Indent for --version continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
 

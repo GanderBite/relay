@@ -6,7 +6,8 @@
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
   "bin": {
-    "relay": "./bin/relay.js"
+    "relay": "./bin/relay.js",
+    "generate-registry": "./bin/generate-registry.js"
   },
   "files": [
     "bin",
@@ -24,10 +25,12 @@
     "chalk": "^5.4.1",
     "chokidar": "^5.0.0",
     "commander": "13.1.0",
-    "log-update": "^7.2.0"
+    "log-update": "^7.2.0",
+    "semver": "^7.7.4"
   },
   "devDependencies": {
     "@types/node": "22.15.3",
+    "@types/semver": "^7.5.8",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.4"

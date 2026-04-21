@@ -21,6 +21,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import {
@@ -37,6 +38,7 @@ import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { parseInputFromArgv } from '../input-parser.js';
 import { ProgressDisplay, type AuthInfo } from '../progress.js';
+import { maybeSendRunEvent } from '../telemetry.js';
 
 // ---------------------------------------------------------------------------
 // Public command interface
@@ -248,6 +250,25 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
   // Step 8 — read per-step data and render the appropriate banner
   // ---------------------------------------------------------------------------
+
+  // Resolve relay version for the telemetry event. Falls back to 'unknown'
+  // when the package.json is not available (e.g. running from source).
+  const _require = createRequire(import.meta.url);
+  let relayVersion = 'unknown';
+  try {
+    const meta: unknown = _require('@relay/cli/package.json');
+    if (
+      meta !== null &&
+      typeof meta === 'object' &&
+      'version' in meta &&
+      typeof (meta as Record<string, unknown>)['version'] === 'string'
+    ) {
+      relayVersion = (meta as Record<string, unknown>)['version'] as string;
+    }
+  } catch {
+    // version stays 'unknown'
+  }
+
   if (result.status === 'succeeded') {
     const stepRows = await buildSuccessStepRows(result.runDir, flow.stepOrder);
     const outputPath = result.artifacts.length > 0
@@ -271,6 +292,18 @@ export default async function runCommand(
       process.stdout.write(buildCostTable(stepRows) + '\n');
     }
 
+    await maybeSendRunEvent({
+      flowName: flow.name,
+      flowVersion: flow.version,
+      status: 'success',
+      durationMs: result.durationMs,
+      stepsCount: flow.stepOrder.length,
+      totalCostUsd: result.cost.totalUsd,
+      relayVersion,
+      nodeVersion: process.version.replace(/^v/, ''),
+      platform: process.platform,
+    });
+
     process.exit(0);
   } else {
     // failed or aborted
@@ -283,6 +316,19 @@ export default async function runCommand(
     });
 
     process.stdout.write(failureBanner);
+
+    await maybeSendRunEvent({
+      flowName: flow.name,
+      flowVersion: flow.version,
+      status: result.status === 'aborted' ? 'aborted' : 'failure',
+      durationMs: result.durationMs,
+      stepsCount: flow.stepOrder.length,
+      totalCostUsd: result.cost.totalUsd,
+      relayVersion,
+      nodeVersion: process.version.replace(/^v/, ''),
+      platform: process.platform,
+    });
+
     process.exit(1);
   }
 }
