@@ -13,48 +13,44 @@ Runs on your Pro/Max subscription — no surprise API bills.
 
 ```bash
 npm install -g @relay/cli
+relay init                                # choose claude-cli for subscription billing
 relay doctor                              # check your environment
 relay run codebase-discovery .            # ship a real artifact
 ```
 
-The first command tells you if you're safe to run. The second command
+The `relay init` step writes your provider choice to `~/.relay/settings.json`. Without
+it the runner exits with `NoProviderConfiguredError` before any step runs.
+
+`relay doctor` tells you if your environment is safe to run. `relay run codebase-discovery .`
 produces an HTML report describing this repo — in about 12 minutes,
 for about $0.40 (estimated API equivalent; billed to your subscription).
 
-## What is relay
+## Why not X?
 
-relay is a TypeScript library and CLI for running multi-step Claude flows
-that resume after crashes, never bill the API by surprise, and produce
-the same artifact every time.
-
-Each flow is a sequence of named steps. Each step runs a prompt, reads
-a handoff from the previous step, and writes a handoff for the next.
-State is saved after every step.
-
-## Packages
-
-| Package | Purpose |
+| I already use... | ...and Relay gives you |
 |---|---|
-| `@relay/core` | Library — `defineFlow`, `Runner`, `Provider`, step types |
-| `@relay/cli` | CLI — `relay run`, `relay resume`, `relay doctor` |
-| `@relay/generator` | Claude Code skill that scaffolds new flow packages |
+| `claude -p` in a shell script | checkpoint, resume, typed handoffs, cost tracking, TTY progress |
+| LangGraph or CrewAI | a Claude-native runner; no framework to learn; ships with pre-built flows |
+| SuperClaude / BMAD | a tool, not a persona layer; you define the pipeline |
+| `aaddrick/claude-pipeline` | a generator + catalog, not a static template to hand-adapt |
+| Claude Code Skills | multi-step orchestration across skills, with state and resume |
 
-## Primitives
+## Docs
 
-```
-flow        a named, versioned pipeline you can run
-step        one node in a flow (prompt, script, branch, parallel)
-handoff     the JSON one step produces and a later step consumes
-run         one execution of a flow; identified by a run id
-checkpoint  the saved state of a run after each step completes
-```
+- [Flow Package Format](docs/flow-package-format.md) — directory layout, package.json shape, step types, versioning
+- [Billing Safety](docs/billing-safety.md) — the API-key guard, opt-in paths, env allowlist, `relay doctor`
+- [Naming Conventions](docs/naming-conventions.md) — vocabulary table, words to avoid, PR checklist
 
-## Requirements
+## Flows
 
-- Node.js ≥ 25.8
-- `claude` CLI installed and authenticated (Pro or Max subscription)
-- pnpm ≥ 10 (for contributors)
+The catalog at `packages/flows/` contains reference flows. Install any flow with `relay install <name>`.
+Browse available flows with `relay list`.
 
-## Status
+Start from the first-flow guide: [docs/first-flow](docs/first-flow.md)
 
-Pre-release. Not yet published to npm.
+## License
+
+MIT — [full text](LICENSE)
+
+Made by [Ganderbite](https://ganderbite.com). Dogfooded on our own codebase-discovery
+and API-audit flows. Install with `npm install -g @relay/cli`.

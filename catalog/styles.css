@@ -489,6 +489,13 @@ code {
   font-size: 0.8125rem;
 }
 
+.cell-templates {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-style: italic;
+}
+
 .comparison-close {
   font-size: 0.9375rem;
   color: var(--text-muted);

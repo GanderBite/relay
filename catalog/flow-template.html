@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!--
+    flow-template.html
+    Per-flow landing page. Placeholders in the form <!-- {{KEY}} --> are
+    replaced at runtime by app.js when rendering a flow detail view.
+    This file is also valid standalone HTML for visual development — the
+    placeholder comments render as empty content in a browser.
+  -->
+  <title><!-- {{FLOW_NAME}} --> — Relay</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./flow-template.css" />
+</head>
+<body>
+
+  <!-- =========================================================
+       SITE HEADER (shared with index.html)
+  ========================================================= -->
+  <header class="site-header">
+    <div class="container">
+      <a href="./index.html" class="header-mark" aria-label="Relay home">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</a>
+      <span class="header-name">Relay</span>
+      <nav class="header-nav">
+        <a href="./index.html#flows">flows</a>
+        <a href="./index.html#why">why Relay</a>
+        <a href="https://github.com/ganderbite/relay">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       FLOW PAGE BODY
+  ========================================================= -->
+  <main class="flow-page-main">
+    <div class="container">
+      <div class="flow-page">
+
+        <!-- ── mark + name ──────────────────────────────────── -->
+        <header class="flow-header">
+          <span class="flow-mark"><!-- {{MARK}} --></span>
+          <h1 class="flow-name"><!-- {{FLOW_NAME}} --></h1>
+        </header>
+
+        <!-- ── one-paragraph description ────────────────────── -->
+        <p class="flow-description"><!-- {{FLOW_DESCRIPTION}} --></p>
+
+        <!-- ── 4-row metadata grid ───────────────────────────── -->
+        <dl class="flow-meta-dl">
+          <div class="flow-meta-dl-row">
+            <dt>COST</dt>
+            <dd><!-- {{COST}} --></dd>
+          </div>
+          <div class="flow-meta-dl-row">
+            <dt>DURATION</dt>
+            <dd><!-- {{DURATION}} --></dd>
+          </div>
+          <div class="flow-meta-dl-row">
+            <dt>AUDIENCE</dt>
+            <dd><!-- {{AUDIENCE}} --></dd>
+          </div>
+          <div class="flow-meta-dl-row flow-meta-dl-row--tier">
+            <dt class="flow-tier-label"><!-- {{TIER_LABEL}} --></dt>
+            <dd><!-- {{TIER_VALUE}} --></dd>
+          </div>
+        </dl>
+
+        <hr class="flow-rule" />
+
+        <!-- ── run command ───────────────────────────────────── -->
+        <pre class="flow-run-command"><code><span class="flow-run-prompt">$</span> <!-- {{RUN_COMMAND}} --></code></pre>
+
+        <hr class="flow-rule" />
+
+        <!-- ── three tabs ────────────────────────────────────── -->
+        <div class="flow-tabs">
+          <div class="tab-bar" role="tablist" aria-label="Flow details">
+            <button class="tab-btn active" data-tab="sample" role="tab" aria-selected="true" aria-controls="panel-sample" id="tab-sample">[ sample output ]</button>
+            <button class="tab-btn" data-tab="how" role="tab" aria-selected="false" aria-controls="panel-how" id="tab-how">[ how it works ]</button>
+            <button class="tab-btn" data-tab="customize" role="tab" aria-selected="false" aria-controls="panel-customize" id="tab-customize">[ customize ]</button>
+          </div>
+
+          <div class="tab-panel active" data-panel="sample" id="panel-sample" role="tabpanel" aria-labelledby="tab-sample">
+            <!-- {{SAMPLE_OUTPUT_CONTENT}} -->
+          </div>
+
+          <div class="tab-panel" data-panel="how" id="panel-how" role="tabpanel" aria-labelledby="tab-how">
+            <!-- {{HOW_IT_WORKS_CONTENT}} -->
+          </div>
+
+          <div class="tab-panel" data-panel="customize" id="panel-customize" role="tabpanel" aria-labelledby="tab-customize">
+            <!-- {{CUSTOMIZE_CONTENT}} -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================
+       FOOTER (shared with index.html)
+  ========================================================= -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-mark" aria-hidden="true">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</span>
+      <span class="footer-copy">
+        Relay is open source. Built by Ganderbite.
+        <a href="https://github.com/ganderbite/relay">GitHub</a>
+      </span>
+    </div>
+  </footer>
+
+  <!-- =========================================================
+       TAB SWITCHING
+       Wire up after DOM is ready. The script is self-contained
+       so this template works standalone without app.js.
+  ========================================================= -->
+  <script>
+    (function () {
+      var buttons = document.querySelectorAll('.tab-btn');
+      buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          // Deactivate all
+          document.querySelectorAll('.tab-btn').forEach(function (b) {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+          });
+          document.querySelectorAll('.tab-panel').forEach(function (p) {
+            p.classList.remove('active');
+          });
+          // Activate clicked tab
+          btn.classList.add('active');
+          btn.setAttribute('aria-selected', 'true');
+          var panel = document.querySelector('[data-panel="' + btn.dataset.tab + '"]');
+          if (panel) panel.classList.add('active');
+        });
+      });
+    }());
+  </script>
+
+</body>
+</html>

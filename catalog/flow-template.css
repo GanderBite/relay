@@ -1,0 +1,335 @@
+/* ============================================================
+   flow-template.css
+   Styles for the per-flow landing page.
+   Scoped to .flow-page and .flow-page-main to avoid bleeding
+   into catalog/index.html when both are loaded together.
+   Design tokens are inherited from styles.css (:root vars).
+   No external fonts or frameworks.
+   ============================================================ */
+
+/* --- page wrapper ------------------------------------------ */
+
+.flow-page-main {
+  padding: 3rem 0 5rem;
+  min-height: calc(100vh - 120px);
+}
+
+.flow-page {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* --- mark + h1 header -------------------------------------- */
+
+.flow-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.flow-mark {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  color: var(--mark);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.flow-name {
+  font-family: var(--font-mono);
+  font-size: clamp(1.25rem, 3vw, 1.625rem);
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+/* --- description paragraph --------------------------------- */
+
+.flow-description {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-bottom: 1.75rem;
+  max-width: 680px;
+}
+
+/* --- 4-row metadata definition list ------------------------ */
+
+.flow-meta-dl {
+  display: table;
+  border-collapse: collapse;
+  margin-bottom: 1.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.flow-meta-dl-row {
+  display: table-row;
+}
+
+.flow-meta-dl-row dt,
+.flow-meta-dl-row dd {
+  display: table-cell;
+  padding: 0.2rem 0;
+  line-height: 1.8;
+  vertical-align: top;
+}
+
+.flow-meta-dl-row dt {
+  width: 120px;
+  min-width: 120px;
+  color: var(--text-muted);
+  opacity: 0.65;
+  padding-right: 1.25rem;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.flow-meta-dl-row dd {
+  color: var(--text);
+  padding-left: 0;
+  margin-left: 0;
+}
+
+/* tier row: label changes color by value */
+
+.flow-meta-dl-row--tier dt {
+  opacity: 1;
+}
+
+/* VERIFIED label: green text */
+.flow-tier-label[data-tier="verified"] {
+  color: var(--green);
+}
+
+/* COMMUNITY label: muted/gray text (default, no extra rule needed) */
+.flow-tier-label[data-tier="community"] {
+  color: var(--text-muted);
+}
+
+/* fallback when data-tier not set — JS sets it at render time */
+.flow-tier-label {
+  color: var(--text-muted);
+}
+
+/* --- horizontal rule --------------------------------------- */
+
+.flow-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.75rem 0;
+}
+
+/* --- run command block ------------------------------------- */
+
+.flow-run-command {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.flow-run-command code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+.flow-run-prompt {
+  color: var(--text-muted);
+  user-select: none;
+}
+
+/* --- tab bar ----------------------------------------------- */
+
+.flow-tabs {
+  margin-top: 0;
+}
+
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  margin-bottom: 1.25rem;
+}
+
+.tab-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0.35rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.tab-btn.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.06);
+}
+
+/* --- tab panels -------------------------------------------- */
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* --- sample output tab contents ---------------------------- */
+
+.flow-sample-iframe {
+  width: 100%;
+  min-height: 480px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.flow-sample-img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: block;
+}
+
+.flow-sample-placeholder {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  padding: 2rem 0;
+  line-height: 1.8;
+}
+
+/* --- how it works tab contents ----------------------------- */
+
+.flow-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.flow-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.flow-step-number {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  min-width: 1.5rem;
+  padding-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.flow-step-body {
+  flex: 1;
+}
+
+.flow-step-name {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.2rem;
+}
+
+.flow-step-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+/* --- customize tab contents -------------------------------- */
+
+.flow-customize-intro {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-bottom: 1.25rem;
+}
+
+.flow-fork-command {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+  margin-bottom: 1rem;
+}
+
+.flow-fork-command code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+.flow-customize-note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+/* --- responsive -------------------------------------------- */
+
+@media (max-width: 600px) {
+  .flow-page-main {
+    padding: 2rem 0 3rem;
+  }
+
+  .flow-header {
+    flex-direction: column;
+    gap: 0.375rem;
+    align-items: flex-start;
+  }
+
+  .flow-meta-dl {
+    width: 100%;
+  }
+
+  .flow-meta-dl-row dt {
+    width: 90px;
+    min-width: 90px;
+  }
+
+  .tab-bar {
+    gap: 0.375rem;
+  }
+}
