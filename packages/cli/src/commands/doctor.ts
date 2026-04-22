@@ -4,7 +4,7 @@
  * Checks five things before any flow is run:
  *   1. node version  (≥ 20.10.0 required)
  *   2. claude binary (version + path)
- *   3. auth          (billing source via ClaudeProvider)
+ *   3. auth          (billing source via ClaudeAgentSdkProvider)
  *   4. env           (ANTHROPIC_API_KEY safety guard)
  *   5. dir           (.relay directory writable)
  *
@@ -19,7 +19,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 
-import { ClaudeProvider } from '@relay/core';
+import { ClaudeAgentSdkProvider } from '@relay/core';
 import { MARK, SYMBOLS, green, red, yellow } from '../visual.js';
 
 const execFileAsync = promisify(execFile);
@@ -171,10 +171,9 @@ function formatAuthValue(billingSource: string, detail: string): string {
 
 /** 3. auth check */
 async function checkAuth(): Promise<CheckResult> {
-  // Use allowApiKey: true so we can display what auth would be regardless
-  // of whether ANTHROPIC_API_KEY is present. The env check below handles
-  // the billing-safety guard separately.
-  const provider = new ClaudeProvider({ allowApiKey: true });
+  // Instantiate the provider to check what auth state the environment provides.
+  // The env check below handles the billing-safety guard separately.
+  const provider = new ClaudeAgentSdkProvider();
   const result = await provider.authenticate();
 
   if (result.isErr()) {

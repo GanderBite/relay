@@ -57,7 +57,6 @@ export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
   kind: z.literal('prompt'),
   promptFile: nonEmptyString,
   dependsOn: z.array(stepId).optional(),
-  provider: z.string().optional(),
   model: z.string().optional(),
   tools: z.array(z.string()).optional(),
   systemPrompt: z.string().optional(),
@@ -67,7 +66,6 @@ export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
   maxBudgetUsd: z.number().optional(),
   timeoutMs: z.number().int().nonnegative().default(DEFAULT_PROMPT_TIMEOUT_MS),
   onFail: onFailValue.optional(),
-  providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const scriptStepSpecSchema: z.ZodType<ScriptStepSpec> = z.strictObject({
@@ -133,7 +131,6 @@ export const flowSpecInputSchema = z.strictObject({
     error: 'flow version must be semver-ish (e.g. 1.0.0)',
   }),
   description: z.string().optional(),
-  defaultProvider: z.string().optional(),
   input: zodSchemaValue,
   steps: z.record(stepId, z.unknown()).refine((o) => Object.keys(o).length > 0, {
     message: 'flow "steps" must be a non-empty object',

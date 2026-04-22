@@ -34,6 +34,7 @@ export {
   HandoffSchemaError,
   HandoffWriteError,
   MetricsWriteError,
+  NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
@@ -99,9 +100,9 @@ export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 // Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly
 export { z } from './zod.js';
 
-// ClaudeProvider
-export { ClaudeProvider, registerDefaultProviders } from './providers/claude/index.js';
-export type { ClaudeProviderOptions } from './providers/claude/index.js';
+// ClaudeAgentSdkProvider
+export { ClaudeAgentSdkProvider, registerDefaultProviders } from './providers/claude/index.js';
+export type { ClaudeAgentSdkProviderOptions } from './providers/claude/index.js';
 
 // Runner — orchestrates flow execution
 export { createRunner, Runner } from './runner/index.js';
@@ -112,3 +113,14 @@ export type {
   StepExecutionContext,
   StepResult,
 } from './runner/index.js';
+
+// Settings — provider selection and path resolution
+export {
+  loadFlowSettings,
+  loadGlobalSettings,
+  flowSettingsPath,
+  globalSettingsPath,
+  resolveProvider,
+  RelaySettings,
+} from './settings/index.js';
+export type { ResolveProviderArgs, RelaySettingsType } from './settings/index.js';

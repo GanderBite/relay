@@ -16,7 +16,6 @@ import { defineFlow, step, z } from '@relay/core';
 export const flow = defineFlow({
   name: 'branch-resume-flow',
   version: '0.1.0',
-  defaultProvider: 'mock',
   input: z.object({}),
   start: 'entry',
   steps: {

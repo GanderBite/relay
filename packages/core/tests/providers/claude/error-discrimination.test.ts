@@ -18,7 +18,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-import { ClaudeProvider } from '../../../src/providers/claude/provider.js';
+import { ClaudeAgentSdkProvider } from '../../../src/providers/claude/provider.js';
 import {
   ERROR_CODES,
   ProviderRateLimitError,
@@ -81,7 +81,7 @@ function makeThrowingIterable(error: unknown): AsyncIterable<unknown> {
   };
 }
 
-describe('ClaudeProvider error discrimination', () => {
+describe('ClaudeAgentSdkProvider error discrimination', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('ANTHROPIC_API_KEY', '');
@@ -104,7 +104,7 @@ describe('ClaudeProvider error discrimination', () => {
     abort.name = 'AbortError';
     sdkQuery.mockReturnValue(makeThrowingIterable(abort));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     await expect(p.invoke(makeReq(), makeCtx())).rejects.toBe(abort);
   });
 
@@ -115,7 +115,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(abort));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     await expect(p.invoke(makeReq(), makeCtx())).rejects.toBe(abort);
   });
 
@@ -126,7 +126,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(rateLimited));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     const e = r._unsafeUnwrapErr();
@@ -146,7 +146,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(typed));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(ProviderRateLimitError);
@@ -159,7 +159,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(rateLimited));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     const rle = r._unsafeUnwrapErr() as ProviderRateLimitError;
@@ -174,7 +174,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(rateLimited));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     const rle = r._unsafeUnwrapErr() as ProviderRateLimitError;
     expect(rle.retryAfterMs).toBe(5_000);
@@ -186,7 +186,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(timedOut));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     const e = r._unsafeUnwrapErr();
@@ -201,7 +201,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(timedOut));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(TimeoutError);
   });
@@ -210,7 +210,7 @@ describe('ClaudeProvider error discrimination', () => {
     const generic = new Error('boom');
     sdkQuery.mockReturnValue(makeThrowingIterable(generic));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     const e = r._unsafeUnwrapErr();
@@ -226,7 +226,7 @@ describe('ClaudeProvider error discrimination', () => {
   it('[ERR-DISC-010] non-Error thrown values still flow through StepFailureError', async () => {
     sdkQuery.mockReturnValue(makeThrowingIterable('string rejection'));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     const e = r._unsafeUnwrapErr();
     expect(e).toBeInstanceOf(StepFailureError);
@@ -240,7 +240,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(rateLimited));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(ProviderRateLimitError);
   });
@@ -252,7 +252,7 @@ describe('ClaudeProvider error discrimination', () => {
     });
     sdkQuery.mockReturnValue(makeThrowingIterable(rateLimited));
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     const e = r._unsafeUnwrapErr();
     expect(e).toBeInstanceOf(ProviderRateLimitError);

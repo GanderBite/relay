@@ -20,7 +20,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-import { ClaudeProvider } from '../../../src/providers/claude/provider.js';
+import { ClaudeAgentSdkProvider } from '../../../src/providers/claude/provider.js';
 import type {
   InvocationContext,
   InvocationRequest,
@@ -89,7 +89,7 @@ function successMessages() {
   ];
 }
 
-describe('ClaudeProvider', () => {
+describe('ClaudeAgentSdkProvider', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     // Clear every env var that could steer authenticate().
@@ -108,23 +108,21 @@ describe('ClaudeProvider', () => {
     sdkQuery.mockReset();
   });
 
-  it('[CLAUDE-001] authenticate() delegates to inspectClaudeAuth honoring allowApiKey', async () => {
+  it('[CLAUDE-001] authenticate() accepts ANTHROPIC_API_KEY and returns api-account billing', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
 
-    // allowApiKey: true should flow through — observable via returned AuthState
-    // billingSource 'api-account' + warning, rather than the block path.
-    const p = new ClaudeProvider({ allowApiKey: true });
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.authenticate();
 
     expect(r.isOk()).toBe(true);
     const state = r._unsafeUnwrap();
     expect(state.billingSource).toBe('api-account');
-    expect(state.detail).toContain('runner.allowApiKey()');
+    expect(state.detail).toContain('ANTHROPIC_API_KEY');
   });
 
   it('[CLAUDE-002] invoke aggregates stream events into a single InvocationResponse', async () => {
     sdkQuery.mockReturnValue(makeAsyncIterable(successMessages()));
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isOk()).toBe(true);
     const resp = r._unsafeUnwrap();
@@ -146,7 +144,7 @@ describe('ClaudeProvider', () => {
       return makeAsyncIterable(successMessages());
     });
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     await p.invoke(makeReq(), makeCtx());
 
     expect(capturedOptions).toBeDefined();
@@ -166,7 +164,7 @@ describe('ClaudeProvider', () => {
       return makeAsyncIterable(successMessages());
     });
 
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     await p.invoke(makeReq(), makeCtx({ abortSignal: outerController.signal }));
 
     expect(capturedController).toBeDefined();
@@ -174,7 +172,7 @@ describe('ClaudeProvider', () => {
   });
 
   it('[CLAUDE-005] capabilities advertise the documented built-in tools + model aliases', () => {
-    const p = new ClaudeProvider();
+    const p = new ClaudeAgentSdkProvider();
     const caps = p.capabilities;
     expect(caps.streaming).toBe(true);
     expect(caps.structuredOutput).toBe(true);
@@ -191,23 +189,17 @@ describe('ClaudeProvider', () => {
     expect(caps.maxContextTokens).toBeGreaterThanOrEqual(100_000);
   });
 
-  it('[CLAUDE-006] providerOptions flow through to SDK; safety-critical fields are not overridden', async () => {
+  it('[CLAUDE-006] abortController and env are always set by provider on every invocation', async () => {
     let capturedOptions: Record<string, unknown> | undefined;
     sdkQuery.mockImplementation((params: { prompt: string; options?: Record<string, unknown> }) => {
       capturedOptions = params.options;
       return makeAsyncIterable(successMessages());
     });
 
-    const p = new ClaudeProvider();
-    await p.invoke(
-      makeReq({ providerOptions: { customFlag: true, maxTurns: 10 } }),
-      makeCtx(),
-    );
+    const p = new ClaudeAgentSdkProvider();
+    await p.invoke(makeReq(), makeCtx());
 
-    expect(capturedOptions?.customFlag).toBe(true);
-    expect(capturedOptions?.maxTurns).toBe(10);
-    // abortController and env must be set by provider — never overridden by
-    // providerOptions. Construction logic re-applies them after the merge.
+    // Safety-critical fields are always set by the provider.
     expect(capturedOptions?.abortController).toBeDefined();
     expect(capturedOptions?.env).toBeDefined();
   });

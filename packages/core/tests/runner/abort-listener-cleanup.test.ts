@@ -66,7 +66,6 @@ function twoStepFlow() {
   return defineFlow({
     name: 'abort-listener-cleanup-flow',
     version: '0.1.0',
-    defaultProvider: 'mock',
     input: z.object({}),
     steps: {
       a: step.prompt({

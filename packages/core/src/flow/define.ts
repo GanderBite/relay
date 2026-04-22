@@ -30,7 +30,6 @@ interface FlowInput<TInput> {
   name: string;
   version: string;
   description?: string;
-  defaultProvider?: string;
   input: z.ZodType<TInput>;
   steps: Record<string, StepBuilderOutput>;
   start?: string;

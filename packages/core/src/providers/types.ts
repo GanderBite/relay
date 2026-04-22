@@ -6,7 +6,7 @@
  * interface itself. Pure TypeScript interfaces and type aliases — no runtime
  * logic, no classes. The only imports are type-only.
  *
- * Consumers: Runner, ClaudeProvider, MockProvider, flow authors.
+ * Consumers: Runner, ClaudeAgentSdkProvider, MockProvider, flow authors.
  */
 
 import type { Result } from 'neverthrow';
@@ -129,9 +129,6 @@ export interface InvocationRequest {
 
   maxBudgetUsd?: number;
   timeoutMs?: number;
-
-  /** Provider-specific opaque options — escape hatch, not used by core. */
-  providerOptions?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

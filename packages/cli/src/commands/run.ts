@@ -4,7 +4,7 @@
  * Flow:
  *   1. loadFlow(nameOrPath, cwd) — resolve the flow package.
  *   2. parseInputFromArgv(flow.input, argv) — validate CLI arguments.
- *   3. Authenticate via ClaudeProvider — surface billing mode before any tokens.
+ *   3. Authenticate via ClaudeAgentSdkProvider — surface billing mode before any tokens.
  *   4. renderStartBanner — shows flow, input, run id, bill row, estimate.
  *   5. ProgressDisplay.start(runId) — live TTY progress grid.
  *   6. runner.run(flow, input, { runDir, flowPath }) — execute all steps.
@@ -25,7 +25,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import {
-  ClaudeProvider,
+  ClaudeAgentSdkProvider,
   Runner,
   type AuthState,
   type RunResult,
@@ -124,7 +124,7 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
   // Step 3 — authenticate to get billing state for the banner
   // ---------------------------------------------------------------------------
-  const provider = new ClaudeProvider({ allowApiKey: options.apiKey });
+  const provider = new ClaudeAgentSdkProvider();
   const authResult = await provider.authenticate();
 
   if (authResult.isErr()) {

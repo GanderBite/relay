@@ -113,23 +113,11 @@ class NamedMockProvider implements Provider {
 // Build a ProviderRegistry covering all providers the flow references
 // ---------------------------------------------------------------------------
 
-function buildRegistry(flow: Flow<unknown>): ProviderRegistry {
-  const providerNames = new Set<string>();
-  providerNames.add(flow.defaultProvider ?? 'claude');
-  providerNames.add('mock');
-
-  for (const step of Object.values(flow.steps)) {
-    if (step.kind === 'prompt' && step.provider !== undefined) {
-      providerNames.add(step.provider);
-    }
-  }
-
+function buildRegistry(_flow: Flow<unknown>): ProviderRegistry {
   const registry = new ProviderRegistry();
-  for (const name of providerNames) {
-    const provider = new NamedMockProvider(name);
-    const regResult = registry.register(provider);
-    if (regResult.isErr()) throw regResult.error;
-  }
+  const mock = new NamedMockProvider('mock');
+  const regResult = registry.register(mock);
+  if (regResult.isErr()) throw regResult.error;
   return registry;
 }
 
@@ -187,7 +175,7 @@ async function runFixture(
   try {
     const runner = new Runner({
       providers: registry,
-      defaultProvider: flow.defaultProvider ?? 'mock',
+      defaultProvider: 'mock',
       runDir: tempDir,
     });
     runResult = await runner.run(flow, fixture.input, {

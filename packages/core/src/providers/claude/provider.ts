@@ -1,5 +1,5 @@
 /**
- * ClaudeProvider — the concrete Provider shipped in v1.
+ * ClaudeAgentSdkProvider — the concrete Provider backed by the Anthropic Agent SDK.
  *
  * Wraps `@anthropic-ai/claude-agent-sdk`'s `query()` function. Authentication
  * goes through `inspectClaudeAuth`, never through the SDK directly, so the
@@ -47,14 +47,7 @@ import { extractSdkResultSummary, mergeUsage, translateSdkMessage } from './tran
 // Public options
 // ---------------------------------------------------------------------------
 
-export interface ClaudeProviderOptions {
-  /**
-   * Omit or set to false to block runs when `ANTHROPIC_API_KEY` is present in
-   * the environment. Set to true to explicitly bill the API account (emits a
-   * single warning per run).
-   */
-  allowApiKey?: boolean;
-
+export interface ClaudeAgentSdkProviderOptions {
   /**
    * Per-run env overrides merged on top of the filtered host env before
    * handoff to the SDK. Keys here always win over anything in process.env.
@@ -108,11 +101,11 @@ type SdkQueryOptions = Parameters<typeof query>[0]['options'];
 
 function buildSdkOptions(
   req: InvocationRequest,
-  providerOpts: ClaudeProviderOptions,
+  providerOpts: ClaudeAgentSdkProviderOptions,
   abortController: AbortController,
 ): SdkQueryOptions {
   const env = buildEnvAllowlist({
-    allowApiKey: providerOpts.allowApiKey,
+    providerKind: 'claude-agent-sdk',
     extra: providerOpts.extraEnv,
   });
 
@@ -155,21 +148,11 @@ function buildSdkOptions(
   // The SDK has no direct timeout field on Options; timeouts are enforced by
   // the Runner via AbortController, so `req.timeoutMs` is handled upstream.
 
-  // providerOptions is the declared escape hatch for SDK-specific fields the
-  // core type does not model. Merge last so caller-supplied keys override any
-  // computed default — but never shadow the abortController or env, which are
-  // safety-critical and owned by this method.
-  if (req.providerOptions !== undefined) {
-    Object.assign(options, req.providerOptions);
-    options.abortController = abortController;
-    options.env = env;
-  }
-
   return options;
 }
 
 // ---------------------------------------------------------------------------
-// ClaudeProvider
+// ClaudeAgentSdkProvider
 // ---------------------------------------------------------------------------
 
 /**
@@ -182,18 +165,18 @@ interface InvocationStep {
   readonly events: readonly InvocationEvent[];
 }
 
-export class ClaudeProvider implements Provider {
-  readonly name = 'claude' as const;
+export class ClaudeAgentSdkProvider implements Provider {
+  readonly name = 'claude-agent-sdk' as const;
   readonly capabilities: ProviderCapabilities = CAPABILITIES;
 
-  readonly #options: ClaudeProviderOptions;
+  readonly #options: ClaudeAgentSdkProviderOptions;
 
-  constructor(options: ClaudeProviderOptions = {}) {
+  constructor(options: ClaudeAgentSdkProviderOptions = {}) {
     this.#options = options;
   }
 
   async authenticate(): Promise<Result<AuthState, PipelineError>> {
-    return inspectClaudeAuth({ allowApiKey: this.#options.allowApiKey });
+    return inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
   }
 
   /**
@@ -505,5 +488,5 @@ function isResultMessage(msg: unknown): boolean {
 export function registerDefaultProviders(
   registry: ProviderRegistry = defaultRegistry,
 ): Result<'registered' | 'already-present', never> {
-  return registry.registerIfAbsent(new ClaudeProvider());
+  return registry.registerIfAbsent(new ClaudeAgentSdkProvider());
 }

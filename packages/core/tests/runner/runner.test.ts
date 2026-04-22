@@ -37,7 +37,6 @@ function linearFlow() {
   return defineFlow({
     name: 'linear',
     version: '0.1.0',
-    defaultProvider: 'mock',
     input: z.object({}),
     steps: {
       a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -120,7 +119,6 @@ describe('Runner — DAG walker', () => {
     const flow = defineFlow({
       name: 'fan',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         r: step.terminal({}),
@@ -146,7 +144,6 @@ describe('Runner — DAG walker', () => {
     const flow = defineFlow({
       name: 'chain',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -186,7 +183,6 @@ describe('Runner — DAG walker', () => {
     const flow = defineFlow({
       name: 'soft',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({
@@ -229,7 +225,6 @@ describe('Runner — DAG walker', () => {
     const flow = defineFlow({
       name: 'typed',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({ repoPath: z.string() }),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -261,7 +256,6 @@ describe('Runner — DAG walker', () => {
     const flow = defineFlow({
       name: 'two',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -340,7 +334,6 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const flow = defineFlow({
       name: 'abortable',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
@@ -368,7 +361,6 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const flow = defineFlow({
       name: 'a2',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
@@ -406,7 +398,6 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const flow = defineFlow({
       name: 'a3',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -429,7 +420,6 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const flow = defineFlow({
       name: 'a4',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
@@ -451,7 +441,6 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const flow = defineFlow({
       name: 'a5',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),

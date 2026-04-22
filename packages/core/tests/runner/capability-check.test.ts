@@ -1,6 +1,6 @@
 /**
- * Sprint 5 task_32 contract tests for capability negotiation.
- * References packages/core/src/runner/capability-check.ts — not yet implemented.
+ * Contract tests for capability negotiation.
+ * References packages/core/src/runner/capability-check.ts.
  */
 import { describe, it, expect } from 'vitest';
 
@@ -31,7 +31,6 @@ describe('capability-check', () => {
     const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({
@@ -55,7 +54,6 @@ describe('capability-check', () => {
     const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({
@@ -80,7 +78,6 @@ describe('capability-check', () => {
     const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({ promptFile: 'p.md', model: 'opus', output: { handoff: 'x' } }),
@@ -101,7 +98,6 @@ describe('capability-check', () => {
     const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps: {
         a: step.prompt({
@@ -115,40 +111,32 @@ describe('capability-check', () => {
     expect(() => checkCapabilities(flow, registry, 'mock')).toThrow(/budget/i);
   });
 
-  it('[CAP-005] resolveProvider precedence: step > flow > runner default', () => {
-    const stepProv = new MockProvider({ responses: {} });
-    (stepProv as unknown as { name: string }).name = 'stepProv';
-    const flowProv = new MockProvider({ responses: {} });
-    (flowProv as unknown as { name: string }).name = 'flowProv';
+  it('[CAP-005] resolveProvider uses runner default when no per-step or per-flow override', () => {
     const runnerProv = new MockProvider({ responses: {} });
     (runnerProv as unknown as { name: string }).name = 'runnerProv';
 
     const registry = new ProviderRegistry();
-    registry.register(stepProv);
-    registry.register(flowProv);
     registry.register(runnerProv);
 
     const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
-      defaultProvider: 'flowProv',
       input: z.object({}),
       steps: {
         a: step.prompt({
           promptFile: 'p.md',
-          provider: 'stepProv',
           output: { handoff: 'x' },
         }),
       },
     }));
 
     const resolved = resolveProvider(flow.steps.a, flow, { defaultProvider: 'runnerProv', providers: registry });
-    expect(resolved).toBe(stepProv);
+    expect(resolved).toBe(runnerProv);
   });
 
-  it('[CAP-006] resolveProvider falls back to runner default when step + flow omit', () => {
+  it('[CAP-006] resolveProvider falls back to runner default', () => {
     const claudeLike = new MockProvider({ responses: {} });
-    (claudeLike as unknown as { name: string }).name = 'claude';
+    (claudeLike as unknown as { name: string }).name = 'claude-agent-sdk';
     const registry = new ProviderRegistry();
     registry.register(claudeLike);
 
@@ -161,7 +149,7 @@ describe('capability-check', () => {
       },
     }));
 
-    const resolved = resolveProvider(flow.steps.a, flow, { defaultProvider: 'claude', providers: registry });
+    const resolved = resolveProvider(flow.steps.a, flow, { defaultProvider: 'claude-agent-sdk', providers: registry });
     expect(resolved).toBe(claudeLike);
   });
 });

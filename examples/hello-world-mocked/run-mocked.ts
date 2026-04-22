@@ -5,7 +5,7 @@
  * environment where a real provider is unavailable.
  *
  * The flow itself is provider-agnostic — the same `flow.ts` runs against
- * ClaudeProvider in production. Swapping in MockProvider happens here, at
+ * ClaudeAgentSdkProvider in production. Swapping in MockProvider happens here, at
  * the Runner's construction site, not inside the flow.
  *
  * Invoke:

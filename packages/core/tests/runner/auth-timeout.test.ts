@@ -71,7 +71,6 @@ function singleStepFlow() {
   return defineFlow({
     name: 'auth-timeout-flow',
     version: '0.1.0',
-    defaultProvider: 'mock',
     input: z.object({}),
     steps: {
       a: step.prompt({

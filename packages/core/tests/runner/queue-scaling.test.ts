@@ -51,7 +51,6 @@ function buildChainFlow(n: number) {
     flow: defineFlow({
       name: 'chain-200',
       version: '0.1.0',
-      defaultProvider: 'mock',
       input: z.object({}),
       steps,
     }),

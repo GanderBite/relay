@@ -8,7 +8,7 @@ export {
   buildEnvAllowlist,
 } from './env.js';
 export type { BuildEnvAllowlistOptions } from './env.js';
-export { ClaudeProvider, registerDefaultProviders } from './provider.js';
-export type { ClaudeProviderOptions } from './provider.js';
+export { ClaudeAgentSdkProvider, registerDefaultProviders } from './provider.js';
+export type { ClaudeAgentSdkProviderOptions } from './provider.js';
 export { extractSdkResultSummary, mergeUsage, translateSdkMessage } from './translate.js';
 export type { SdkResultSummary } from './translate.js';

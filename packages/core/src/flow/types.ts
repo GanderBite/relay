@@ -28,7 +28,6 @@ export type PromptStepOutput =
 export interface PromptStepSpec extends StepBase {
   kind: 'prompt';
   promptFile: string;
-  provider?: string;
   model?: string;
   tools?: string[];
   systemPrompt?: string;
@@ -38,7 +37,6 @@ export interface PromptStepSpec extends StepBase {
   maxBudgetUsd?: number;
   timeoutMs?: number;
   onFail?: 'abort' | 'continue' | string;
-  providerOptions?: Record<string, unknown>;
 }
 
 /**
@@ -110,7 +108,6 @@ export interface FlowSpec<TInput> {
   name: string;
   version: string;
   description?: string;
-  defaultProvider?: string;
   input: z.ZodType<TInput>;
   steps: Record<string, Step>;
   start?: string;

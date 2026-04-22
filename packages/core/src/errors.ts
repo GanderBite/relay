@@ -11,6 +11,7 @@ export const ERROR_CODES = {
   HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
   HANDOFF_WRITE: 'relay_HANDOFF_WRITE',
   METRICS_WRITE: 'relay_METRICS_WRITE',
+  NO_PROVIDER: 'E_NO_PROVIDER',
   PROVIDER_AUTH: 'relay_PROVIDER_AUTH',
   PROVIDER_CAPABILITY: 'relay_PROVIDER_CAPABILITY',
   PROVIDER_RATE_LIMIT: 'relay_PROVIDER_RATE_LIMIT',
@@ -415,6 +416,27 @@ export class AtomicWriteError extends PipelineError {
 /** Wrap a Zod parse error into a FlowDefinitionError with a prettified message. */
 export function toFlowDefError(err: z.core.$ZodError, prefix: string): FlowDefinitionError {
   return new FlowDefinitionError(`${prefix}: ${z.prettifyError(err)}`);
+}
+
+/**
+ * Raised when no provider is configured — neither a CLI flag, nor a flow-level
+ * settings.json, nor a global settings.json carries a `provider` value.
+ *
+ * CLI exit code: 2 (shares FlowDefinitionError's exit code — the run cannot
+ * proceed before any tokens are spent).
+ */
+export class NoProviderConfiguredError extends PipelineError {
+  constructor(details?: Record<string, unknown>) {
+    super(
+      'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli` or `--provider claude-agent-sdk`.',
+      ERROR_CODES.NO_PROVIDER,
+      details,
+    );
+    this.name = 'NoProviderConfiguredError';
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
 }
 
 /**

@@ -30,7 +30,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-import { ClaudeProvider } from '../../../src/providers/claude/provider.js';
+import { ClaudeAgentSdkProvider } from '../../../src/providers/claude/provider.js';
 import type {
   InvocationContext,
   InvocationEvent,
@@ -85,7 +85,7 @@ function makeAsyncIterable<T>(items: T[]): AsyncIterable<T> {
   };
 }
 
-describe('ClaudeProvider translator integration', () => {
+describe('ClaudeAgentSdkProvider translator integration', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('ANTHROPIC_API_KEY', '');
@@ -150,7 +150,7 @@ describe('ClaudeProvider translator integration', () => {
     ];
 
     sdkQuery.mockReturnValue(makeAsyncIterable(messages));
-    const provider = new ClaudeProvider();
+    const provider = new ClaudeAgentSdkProvider();
 
     const events: InvocationEvent[] = [];
     if (provider.stream === undefined) {
@@ -208,7 +208,7 @@ describe('ClaudeProvider translator integration', () => {
     ];
 
     sdkQuery.mockReturnValue(makeAsyncIterable(messages));
-    const provider = new ClaudeProvider();
+    const provider = new ClaudeAgentSdkProvider();
     const result = await provider.invoke(makeReq(), makeCtx());
 
     expect(result.isOk()).toBe(true);
@@ -236,7 +236,7 @@ describe('ClaudeProvider translator integration', () => {
         ]),
       );
 
-      const provider = new ClaudeProvider();
+      const provider = new ClaudeAgentSdkProvider();
       const result = await provider.invoke(makeReq(), makeCtx());
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().stopReason).toBe(stopReason);

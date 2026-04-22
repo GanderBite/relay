@@ -16,7 +16,8 @@ export interface RunnerProviderConfig {
 /**
  * Resolve which Provider instance serves a given step.
  *
- * Resolution order: step.provider → flow.defaultProvider → runner.defaultProvider.
+ * Resolution: runner.defaultProvider (the sole tier after author-facing
+ * provider fields were removed in the breaking-change refactor).
  *
  * Accepts Step | undefined because flow.steps is Record<string, Step> and
  * indexed access under noUncheckedIndexedAccess returns Step | undefined.
@@ -26,7 +27,7 @@ export interface RunnerProviderConfig {
  */
 export function resolveProvider(
   step: Step | undefined,
-  flow: Flow<unknown>,
+  _flow: Flow<unknown>,
   runner: RunnerProviderConfig,
 ): Provider {
   if (step === undefined) {
@@ -42,7 +43,10 @@ export function resolveProvider(
     );
   }
 
-  const providerName = step.provider ?? flow.defaultProvider ?? runner.defaultProvider;
+  // Provider is resolved from the runner's default. Per-step and per-flow
+  // provider overrides were removed — task_123 will wire the full resolved-
+  // provider contract when the runner context carries it.
+  const providerName = runner.defaultProvider;
 
   const result = runner.providers.get(providerName);
   if (result.isErr()) {
@@ -63,8 +67,9 @@ export function resolveProvider(
 }
 
 /**
- * Walk every prompt step in the flow, resolve its provider via the three-layer
- * chain, and validate the step's requirements against that provider's capabilities.
+ * Walk every prompt step in the flow, resolve its provider via the runner
+ * default, and validate the step's requirements against that provider's
+ * capabilities.
  *
  * Returns a Map<stepId, Provider> so the Runner can reuse the resolved binding
  * during execution without repeating the lookup.

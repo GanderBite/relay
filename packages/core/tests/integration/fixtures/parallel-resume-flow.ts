@@ -14,7 +14,6 @@ import { defineFlow, step, z } from '@relay/core';
 export const flow = defineFlow({
   name: 'parallel-resume-flow',
   version: '0.1.0',
-  defaultProvider: 'mock',
   input: z.object({}),
   start: 'entry',
   steps: {

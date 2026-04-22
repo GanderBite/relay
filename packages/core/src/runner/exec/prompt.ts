@@ -316,9 +316,6 @@ export async function executePrompt(
       ...(jsonSchema !== undefined ? { jsonSchema } : {}),
       ...(step.maxBudgetUsd !== undefined ? { maxBudgetUsd: step.maxBudgetUsd } : {}),
       ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}),
-      ...(step.providerOptions !== undefined
-        ? { providerOptions: step.providerOptions }
-        : {}),
     };
 
     const invocationCtx: InvocationContext = {

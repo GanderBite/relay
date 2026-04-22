@@ -14,7 +14,7 @@ import {
 import type { Flow, RunState, Step, StepState } from '../flow/types.js';
 import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
-import { ClaudeProvider } from '../providers/claude/provider.js';
+import { ClaudeAgentSdkProvider } from '../providers/claude/provider.js';
 import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
@@ -32,7 +32,7 @@ import { withRetry } from './retry.js';
 import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
-const DEFAULT_PROVIDER_NAME = 'claude';
+const DEFAULT_PROVIDER_NAME = 'claude-agent-sdk';
 // Mirrors the default in flow/schemas.ts. Duplicated here so the Runner
 // can backstop hand-built PromptStepSpec values that bypassed the schema parse
 // (e.g. spec literals authored without going through promptStep(...)).
@@ -97,8 +97,8 @@ export interface RunResult {
  * The ANTHROPIC_API_KEY opt-in is intentionally not threaded here: it must be
  * applied at provider construction time (so authenticate() and the env
  * allowlist for the SDK subprocess both see it) rather than per-step, and the
- * Runner substitutes a fresh ClaudeProvider with the flag wired before any
- * authenticate() call rather than passing the flag through this context.
+ * Runner substitutes a fresh ClaudeAgentSdkProvider before any authenticate()
+ * call rather than passing the flag through this context.
  */
 export interface StepExecutionContext {
   flow: Flow<unknown>;
@@ -586,26 +586,26 @@ export class Runner {
 
   /**
    * When the caller opted into ANTHROPIC_API_KEY billing via runner.allowApiKey(),
-   * substitute the registry's `claude` entry with a fresh ClaudeProvider that
-   * carries the flag — both authenticate() (the §8.1 guard) and the SDK env
-   * allowlist read this from the provider's own constructor options, so wiring
-   * the flag any other way silently disables the opt-in. Returns the original
-   * registry unchanged when no opt-in is in effect or when the registered
-   * `claude` provider is not a stock ClaudeProvider (custom registrations win).
+   * substitute the registry's `claude-agent-sdk` entry with a fresh
+   * ClaudeAgentSdkProvider — the SDK provider naturally accepts ANTHROPIC_API_KEY
+   * so replacing it forces a clean authenticate() call with the new instance.
+   * Returns the original registry unchanged when no opt-in is in effect or when
+   * the registered provider is not a stock ClaudeAgentSdkProvider (custom
+   * registrations win).
    */
   #applyAllowApiKey(registry: ProviderRegistry): ProviderRegistry {
     if (!this.#allowApiKey) return registry;
-    const existing = registry.get('claude');
+    const existing = registry.get('claude-agent-sdk');
     if (existing.isErr()) return registry;
-    if (!(existing.value instanceof ClaudeProvider)) return registry;
+    if (!(existing.value instanceof ClaudeAgentSdkProvider)) return registry;
 
     const next = new ProviderRegistry();
     for (const provider of registry.list()) {
-      if (provider.name === 'claude') continue;
+      if (provider.name === 'claude-agent-sdk') continue;
       const result = next.register(provider);
       if (result.isErr()) throw result.error;
     }
-    const replacement = new ClaudeProvider({ allowApiKey: true });
+    const replacement = new ClaudeAgentSdkProvider();
     const registered = next.register(replacement);
     if (registered.isErr()) throw registered.error;
     return next;
