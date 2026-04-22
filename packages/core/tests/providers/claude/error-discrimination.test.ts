@@ -133,7 +133,7 @@ describe('ClaudeAgentSdkProvider error discrimination', () => {
     expect(e).toBeInstanceOf(ProviderRateLimitError);
     expect(e.code).toBe(ERROR_CODES.PROVIDER_RATE_LIMIT);
     const rle = e as ProviderRateLimitError;
-    expect(rle.providerName).toBe('claude');
+    expect(rle.providerName).toBe('claude-agent-sdk');
     expect(rle.stepId).toBe('step-1');
     expect(rle.attempt).toBe(2);
     expect(rle.retryAfterMs).toBe(30_000);
