@@ -60,17 +60,17 @@ jobs:
         uses: actions/checkout@v4
 
       # ── 2. Node + pnpm setup ─────────────────────────────────────────────
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: '9'
           run_install: false
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
 
       # ── 3. Install workspace dependencies ────────────────────────────────
       - name: Install dependencies
