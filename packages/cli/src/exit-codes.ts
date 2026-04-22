@@ -28,6 +28,7 @@ import {
   PipelineError,
   ProviderAuthError,
   StepFailureError,
+  SubscriptionTosLeakError,
   TimeoutError,
 } from '@relay/core';
 import { red, gray } from './visual.js';
@@ -125,6 +126,21 @@ export function formatError(err: unknown): string {
       red(`✕ Unknown command or option: ${err.message}`),
       BLANK,
       remediation('relay --help'),
+    ].join('\n');
+  }
+
+  // ----------------------------------------------------------------
+  // SubscriptionTosLeakError — must come before ClaudeAuthError (subclass)
+  // ----------------------------------------------------------------
+  if (err instanceof SubscriptionTosLeakError) {
+    return [
+      red('✕ TOS constraint: subscription token rejected by claude-agent-sdk'),
+      BLANK,
+      `${INDENT}${err.message}`,
+      BLANK,
+      remediation('unset CLAUDE_CODE_OAUTH_TOKEN'),
+      remediation('set ANTHROPIC_API_KEY                use the SDK provider with API billing'),
+      remediation('relay init --provider claude-cli      use the subscription-safe provider'),
     ].join('\n');
   }
 

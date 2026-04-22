@@ -4,7 +4,7 @@
  * Flow:
  *   1. loadFlow(nameOrPath, cwd) — resolve the flow package.
  *   2. parseInputFromArgv(flow.input, argv) — validate CLI arguments.
- *   3. Authenticate via ClaudeAgentSdkProvider — surface billing mode before any tokens.
+ *   3. Register providers, load settings, resolve provider, authenticate — surface billing mode.
  *   4. renderStartBanner — shows flow, input, run id, bill row, estimate.
  *   5. ProgressDisplay.start(runId) — live TTY progress grid.
  *   6. runner.run(flow, input, { runDir, flowPath }) — execute all steps.
@@ -25,8 +25,11 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import {
-  ClaudeAgentSdkProvider,
+  defaultRegistry,
+  loadFlowSettings,
+  loadGlobalSettings,
   registerDefaultProviders,
+  resolveProvider,
   Runner,
   type AuthState,
   type RunResult,
@@ -125,10 +128,36 @@ export default async function runCommand(
   const input = parseResult.value;
 
   // ---------------------------------------------------------------------------
-  // Step 3 — authenticate to get billing state for the banner
+  // Step 3 — resolve provider from settings, then authenticate
   // ---------------------------------------------------------------------------
-  const provider = new ClaudeAgentSdkProvider();
-  const authResult = await provider.authenticate();
+
+  // Register both Claude providers idempotently so the resolver chain can
+  // find whichever the user (or settings) selected.
+  registerDefaultProviders();
+
+  // Load settings in parallel; failures are non-fatal — treat as null.
+  const [globalSettingsResult, flowSettingsResult] = await Promise.all([
+    loadGlobalSettings(),
+    loadFlowSettings(flowDir),
+  ]);
+
+  const globalSettings = globalSettingsResult.isOk() ? globalSettingsResult.value : null;
+  const flowSettings = flowSettingsResult.isOk() ? flowSettingsResult.value : null;
+
+  const resolveResult = resolveProvider({
+    flagProvider: options.provider,
+    flowSettings: flowSettings ?? null,
+    globalSettings: globalSettings ?? null,
+    registry: defaultRegistry,
+  });
+
+  if (resolveResult.isErr()) {
+    process.stderr.write(formatError(resolveResult.error) + '\n');
+    process.exit(exitCodeFor(resolveResult.error));
+  }
+
+  const resolvedProvider = resolveResult.value;
+  const authResult = await resolvedProvider.authenticate();
 
   if (authResult.isErr()) {
     process.stderr.write(formatError(authResult.error) + '\n');
@@ -249,10 +278,6 @@ export default async function runCommand(
   }
 
   const startMs = Date.now();
-
-  // Register both Claude providers idempotently so the resolver chain in
-  // Runner.run() can pick whichever the user (or settings) selected.
-  registerDefaultProviders();
 
   const runner = new Runner({ runDir });
   if (options.apiKey === true) {
