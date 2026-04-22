@@ -22,7 +22,6 @@ export const ERROR_CODES = {
   STATE_WRITE: 'relay_STATE_WRITE',
   RUNNER_FAILURE: 'relay_RUNNER_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
-  TOS_LEAK_BLOCKED: 'E_TOS_LEAK_BLOCKED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -78,7 +77,12 @@ export class RunnerFailureError extends PipelineError {
   readonly runnerId: string;
   readonly attempt: number;
 
-  constructor(message: string, runnerId: string, attempt: number, details?: Record<string, unknown>) {
+  constructor(
+    message: string,
+    runnerId: string,
+    attempt: number,
+    details?: Record<string, unknown>,
+  ) {
     super(message, ERROR_CODES.RUNNER_FAILURE, details);
     this.name = 'RunnerFailureError';
     this.runnerId = runnerId;
@@ -108,29 +112,6 @@ export class ClaudeAuthError extends PipelineError {
   ) {
     super(message, code, details);
     this.name = 'ClaudeAuthError';
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, new.target);
-    }
-  }
-}
-
-/**
- * Thrown when a subscription OAuth token would otherwise be routed to a
- * provider whose terms forbid subscription credentials. Carries a distinct
- * code so the CLI and tests can branch on the TOS-leak case specifically
- * rather than the generic auth-misconfiguration case.
- *
- * Example: `CLAUDE_CODE_OAUTH_TOKEN` is present in the environment but the
- * caller selected the API-billed claude-agent-sdk provider — Anthropic's
- * commercial terms do not permit subscription tokens to be used through
- * the SDK, so the run is blocked before any subprocess is launched.
- *
- * CLI exit code: 3 (shares the auth-error exit code with `ClaudeAuthError`).
- */
-export class SubscriptionTosLeakError extends ClaudeAuthError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, details, ERROR_CODES.TOS_LEAK_BLOCKED);
-    this.name = 'SubscriptionTosLeakError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -428,7 +409,7 @@ export function toRaceDefError(err: z.core.$ZodError, prefix: string): RaceDefin
 export class NoProviderConfiguredError extends PipelineError {
   constructor(details?: Record<string, unknown>) {
     super(
-      'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli` or `--provider claude-agent-sdk`.',
+      'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli`.',
       ERROR_CODES.NO_PROVIDER,
       details,
     );

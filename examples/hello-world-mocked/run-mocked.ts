@@ -4,8 +4,8 @@
  * no subscription, no API key. Useful for CI, smoke tests, and any
  * environment where a real provider is unavailable.
  *
- * The race itself is provider-agnostic — the same `race.ts` runs against
- * ClaudeAgentSdkProvider in production. Swapping in MockProvider happens here,
+ * The race itself is provider-agnostic — the same `race.ts` runs against any
+ * configured provider in production. Swapping in MockProvider happens here,
  * at the Orchestrator's construction site, not inside the race.
  *
  * Invoke:
@@ -16,11 +16,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  createOrchestrator,
-  ProviderRegistry,
-  type InvocationResponse,
-} from '@relay/core';
+import { createOrchestrator, type InvocationResponse, ProviderRegistry } from '@relay/core';
 import { MockProvider } from '@relay/core/testing';
 
 import race from './race.js';

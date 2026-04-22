@@ -46,7 +46,6 @@ export {
   RaceStateVersionMismatchError,
   RaceStateWriteError,
   RunnerFailureError,
-  SubscriptionTosLeakError,
   TimeoutError,
   toRaceDefError,
 } from './errors.js';

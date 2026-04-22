@@ -2,15 +2,14 @@
  * Contract tests for capability negotiation.
  * References packages/core/src/orchestrator/capability-check.ts.
  */
-import { describe, it, expect } from 'vitest';
-
-import { checkCapabilities } from '../../src/orchestrator/capability-check.js';
-import { resolveProvider } from '../../src/settings/resolve.js';
-import { ProviderRegistry } from '../../src/providers/registry.js';
-import { MockProvider } from '../../src/testing/mock-provider.js';
+import { describe, expect, it } from 'vitest';
 import { ProviderCapabilityError } from '../../src/errors.js';
+import { checkCapabilities } from '../../src/orchestrator/capability-check.js';
+import { ProviderRegistry } from '../../src/providers/registry.js';
 import { defineRace } from '../../src/race/define.js';
 import { runner } from '../../src/race/runner.js';
+import { resolveProvider } from '../../src/settings/resolve.js';
+import { MockProvider } from '../../src/testing/mock-provider.js';
 import { z } from '../../src/zod.js';
 
 function makeFlow(build: () => Parameters<typeof defineRace>[0]) {
@@ -118,16 +117,16 @@ describe('capability-check', () => {
   });
 
   it('[CAP-006] resolveProvider falls back to global-settings when no flag is supplied', () => {
-    const claudeLike = new MockProvider({ responses: {} });
-    (claudeLike as unknown as { name: string }).name = 'claude-agent-sdk';
+    const providerA = new MockProvider({ responses: {} });
+    (providerA as unknown as { name: string }).name = 'custom-provider';
     const registry = new ProviderRegistry();
-    registry.register(claudeLike);
+    registry.register(providerA);
 
     const resolved = resolveProvider({
       raceSettings: null,
-      globalSettings: { provider: 'claude-agent-sdk' },
+      globalSettings: { provider: 'custom-provider' },
       registry,
     });
-    expect(resolved.isOk() && resolved.value).toBe(claudeLike);
+    expect(resolved.isOk() && resolved.value).toBe(providerA);
   });
 });

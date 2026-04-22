@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { RaceDefinitionError, NoProviderConfiguredError } from '../../src/errors.js';
+import { NoProviderConfiguredError, RaceDefinitionError } from '../../src/errors.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { resolveProvider } from '../../src/settings/resolve.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
@@ -37,9 +37,7 @@ describe('resolveProvider', () => {
   });
 
   it('[RESOLVE-002] flow settings win over global settings when no flag', () => {
-    registry.register(
-      new MockProvider({ responses: {} }),
-    );
+    registry.register(new MockProvider({ responses: {} }));
     // The second MockProvider registers as 'mock' again — test via distinct names is
     // better achieved by constructing a fresh registry with two named providers.
     // Re-use registry with only 'mock'; just test priority ordering via flow > global.
@@ -120,7 +118,7 @@ describe('resolveProvider', () => {
     const e = new NoProviderConfiguredError();
     expect(e.code).toBe('E_NO_PROVIDER');
     expect(e.message).toBe(
-      'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli` or `--provider claude-agent-sdk`.',
+      'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli`.',
     );
   });
 });

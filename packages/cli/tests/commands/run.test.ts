@@ -100,9 +100,11 @@ function makeProvider() {
   return {
     name: 'claude-cli',
     capabilities: {},
-    authenticate: vi.fn().mockResolvedValue(
-      ok({ ok: true, billingSource: 'subscription', detail: 'subscription (test)' }),
-    ),
+    authenticate: vi
+      .fn()
+      .mockResolvedValue(
+        ok({ ok: true, billingSource: 'subscription', detail: 'subscription (test)' }),
+      ),
   };
 }
 
@@ -155,9 +157,9 @@ afterEach(() => {
 
 describe('relay run — --fresh flag', () => {
   it('[RUN-FRESH-001] --fresh=true is forwarded to runner.run() as { fresh: true }', async () => {
-    await expect(
-      runCommand(['test-flow', '.'], { fresh: true }),
-    ).rejects.toThrow('process.exit called');
+    await expect(runCommand(['test-flow', '.'], { fresh: true })).rejects.toThrow(
+      'process.exit called',
+    );
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
@@ -165,9 +167,7 @@ describe('relay run — --fresh flag', () => {
   });
 
   it('[RUN-FRESH-002] without --fresh, fresh is not set in runner.run() options', async () => {
-    await expect(
-      runCommand(['test-flow', '.'], {}),
-    ).rejects.toThrow('process.exit called');
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
@@ -175,9 +175,9 @@ describe('relay run — --fresh flag', () => {
   });
 
   it('[RUN-FRESH-003] --fresh=false does not set fresh in runner.run() options', async () => {
-    await expect(
-      runCommand(['test-flow', '.'], { fresh: false }),
-    ).rejects.toThrow('process.exit called');
+    await expect(runCommand(['test-flow', '.'], { fresh: false })).rejects.toThrow(
+      'process.exit called',
+    );
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
@@ -187,12 +187,12 @@ describe('relay run — --fresh flag', () => {
 
 describe('relay run — --provider flag forwarding', () => {
   it('[RUN-PROV-001] --provider is forwarded to runner.run() as flagProvider', async () => {
-    await expect(
-      runCommand(['test-flow', '.'], { provider: 'claude-agent-sdk' }),
-    ).rejects.toThrow('process.exit called');
+    await expect(runCommand(['test-flow', '.'], { provider: 'claude-cli' })).rejects.toThrow(
+      'process.exit called',
+    );
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts['flagProvider']).toBe('claude-agent-sdk');
+    expect(runOpts['flagProvider']).toBe('claude-cli');
   });
 });

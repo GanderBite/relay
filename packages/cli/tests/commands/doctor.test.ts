@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const mockCliAuthenticate = vi.hoisted(() => vi.fn());
-const mockSdkAuthenticate = vi.hoisted(() => vi.fn());
 const mockRegisterDefaultProviders = vi.hoisted(() => vi.fn());
 const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
 const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
@@ -27,15 +26,10 @@ vi.mock('@relay/core', async (importOriginal) => {
     capabilities: {},
     authenticate: mockCliAuthenticate,
   };
-  const mockSdk = {
-    name: 'claude-agent-sdk',
-    capabilities: {},
-    authenticate: mockSdkAuthenticate,
-  };
 
-  // defaultRegistry.list() must return both providers.
+  // defaultRegistry.list() returns the single registered provider.
   const mockRegistry = {
-    list: () => [mockCli, mockSdk],
+    list: () => [mockCli],
     register: vi.fn(),
     registerIfAbsent: vi.fn(),
     get: vi.fn(),
@@ -100,7 +94,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-import { ok, err, NoProviderConfiguredError } from '@relay/core';
+import { err, NoProviderConfiguredError, ok } from '@relay/core';
 import doctorCommand from '../../src/commands/doctor.js';
 
 // ---------------------------------------------------------------------------
@@ -117,7 +111,12 @@ function authOk(billingSource: string) {
 
 function stubClaudeBinaryOk(): void {
   execFileMock.mockImplementation(
-    (_cmd: string, args: string[], _opts: unknown, cb: (e: Error | null, so: string, se: string) => void) => {
+    (
+      _cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (e: Error | null, so: string, se: string) => void,
+    ) => {
       if (String(args[0]) === '--version') {
         cb(null, 'claude 2.4.1\n', '');
         return;
@@ -133,7 +132,12 @@ function stubClaudeBinaryOk(): void {
 
 function stubClaudeBinaryMissing(): void {
   execFileMock.mockImplementation(
-    (_cmd: string, _args: unknown, _opts: unknown, cb: (e: Error | null, so: string, se: string) => void) => {
+    (
+      _cmd: string,
+      _args: unknown,
+      _opts: unknown,
+      cb: (e: Error | null, so: string, se: string) => void,
+    ) => {
       const e = Object.assign(new Error('not found'), { code: 'ENOENT' });
       cb(e, '', '');
     },
@@ -145,28 +149,27 @@ function stubClaudeBinaryMissing(): void {
 // ---------------------------------------------------------------------------
 
 let stdoutOutput: string;
-let stderrOutput: string;
+let _stderrOutput: string;
 
 beforeEach(() => {
   stdoutOutput = '';
-  stderrOutput = '';
+  _stderrOutput = '';
 
   vi.spyOn(process.stdout, 'write').mockImplementation((s: unknown) => {
     stdoutOutput += String(s);
     return true;
   });
   vi.spyOn(process.stderr, 'write').mockImplementation((s: unknown) => {
-    stderrOutput += String(s);
+    _stderrOutput += String(s);
     return true;
   });
   vi.spyOn(process, 'exit').mockImplementation(() => {
     throw new Error('process.exit called');
   });
 
-  // Default: claude binary OK, both providers auth OK, resolver finds claude-cli from global.
+  // Default: claude binary OK, provider auth OK, resolver finds claude-cli from global.
   stubClaudeBinaryOk();
   mockCliAuthenticate.mockResolvedValue(authOk('subscription'));
-  mockSdkAuthenticate.mockResolvedValue(authOk('api-account'));
   mockLoadGlobalSettings.mockResolvedValue(ok({ provider: 'claude-cli' }));
   mockLoadFlowSettings.mockResolvedValue(ok(null));
   mockResolveProvider.mockReturnValue(
@@ -179,7 +182,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
   execFileMock.mockReset();
   mockCliAuthenticate.mockReset();
-  mockSdkAuthenticate.mockReset();
   mockLoadGlobalSettings.mockReset();
   mockLoadFlowSettings.mockReset();
   mockResolveProvider.mockReset();
@@ -197,12 +199,6 @@ describe('relay doctor', () => {
       expect(stdoutOutput).toContain('claude-cli');
       expect(stdoutOutput).toContain('subscription-safe');
     });
-
-    it('[DOCTOR-002] lists claude-agent-sdk with API-account billing descriptor', async () => {
-      await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
-      expect(stdoutOutput).toContain('claude-agent-sdk');
-      expect(stdoutOutput).toContain('API-account billing');
-    });
   });
 
   describe('auth block', () => {
@@ -215,12 +211,6 @@ describe('relay doctor', () => {
       mockCliAuthenticate.mockResolvedValue(authOk('subscription'));
       await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
       expect(stdoutOutput).toContain('subscription ready');
-    });
-
-    it('[DOCTOR-005] shows API-account ready for claude-agent-sdk when auth ok', async () => {
-      mockSdkAuthenticate.mockResolvedValue(authOk('api-account'));
-      await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
-      expect(stdoutOutput).toContain('API-account ready');
     });
   });
 

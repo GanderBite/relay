@@ -18,20 +18,19 @@
  *     → <exact command or edit to try next>
  */
 
-import { CommanderError } from 'commander';
 import {
   AuthTimeoutError,
   BatonSchemaError,
   ClaudeAuthError,
-  RaceDefinitionError,
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
+  RaceDefinitionError,
   RunnerFailureError,
-  SubscriptionTosLeakError,
   TimeoutError,
 } from '@relay/core';
-import { red, gray } from './visual.js';
+import { CommanderError } from 'commander';
+import { gray, red } from './visual.js';
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -58,16 +57,16 @@ export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
  */
 export function exitCodeFor(err: unknown): number {
   if (err instanceof NoProviderConfiguredError) return EXIT_CODES.no_provider;
-  if (err instanceof RunnerFailureError)   return EXIT_CODES.runner_failure;
+  if (err instanceof RunnerFailureError) return EXIT_CODES.runner_failure;
   if (err instanceof RaceDefinitionError) return EXIT_CODES.definition_error;
-  if (err instanceof ClaudeAuthError)     return EXIT_CODES.auth_error;
-  if (err instanceof AuthTimeoutError)    return EXIT_CODES.timeout;
-  if (err instanceof TimeoutError)        return EXIT_CODES.timeout;
-  if (err instanceof BatonSchemaError)    return EXIT_CODES.baton_error;
-  if (err instanceof ProviderAuthError)   return EXIT_CODES.auth_error;
-  if (err instanceof PipelineError)       return EXIT_CODES.runner_failure;
-  if (err instanceof CommanderError)      return err.exitCode;
-  if (err instanceof Error)               return EXIT_CODES.runner_failure;
+  if (err instanceof ClaudeAuthError) return EXIT_CODES.auth_error;
+  if (err instanceof AuthTimeoutError) return EXIT_CODES.timeout;
+  if (err instanceof TimeoutError) return EXIT_CODES.timeout;
+  if (err instanceof BatonSchemaError) return EXIT_CODES.baton_error;
+  if (err instanceof ProviderAuthError) return EXIT_CODES.auth_error;
+  if (err instanceof PipelineError) return EXIT_CODES.runner_failure;
+  if (err instanceof CommanderError) return err.exitCode;
+  if (err instanceof Error) return EXIT_CODES.runner_failure;
   return EXIT_CODES.runner_failure;
 }
 
@@ -130,28 +129,17 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // SubscriptionTosLeakError — must come before ClaudeAuthError (subclass)
-  // ----------------------------------------------------------------
-  if (err instanceof SubscriptionTosLeakError) {
-    return [
-      red('✕ TOS constraint: subscription token rejected by claude-agent-sdk'),
-      BLANK,
-      `${INDENT}${err.message}`,
-      BLANK,
-      remediation('unset CLAUDE_CODE_OAUTH_TOKEN'),
-      remediation('set ANTHROPIC_API_KEY                use the SDK provider with API billing'),
-      remediation('relay init --provider claude-cli      use the subscription-safe provider'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
   // ClaudeAuthError — two distinct shapes
   // ----------------------------------------------------------------
   if (err instanceof ClaudeAuthError) {
     const msg = err.message.toLowerCase();
 
     // Shape: binary missing
-    if (msg.includes('binary missing') || msg.includes('not found') || msg.includes('not installed')) {
+    if (
+      msg.includes('binary missing') ||
+      msg.includes('not found') ||
+      msg.includes('not installed')
+    ) {
       return [
         red("✕ 'claude' command not found"),
         BLANK,
@@ -170,9 +158,8 @@ export function formatError(err: unknown): string {
       `${INDENT}bill your API account instead of your Max subscription — a surprise we`,
       `${INDENT}prevent by default.`,
       BLANK,
-      remediation('unset ANTHROPIC_API_KEY                                    use subscription (recommended)'),
-      remediation('relay run codebase-discovery --provider claude-agent-sdk   use API billing'),
-      remediation('relay doctor                                               full environment check'),
+      remediation('unset ANTHROPIC_API_KEY    use subscription (recommended)'),
+      remediation('relay doctor              full environment check'),
     ].join('\n');
   }
 
@@ -269,7 +256,8 @@ export function formatError(err: unknown): string {
     });
 
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-    const runnerName = typeof err.details?.['runnerName'] === 'string' ? err.details['runnerName'] : batonId;
+    const runnerName =
+      typeof err.details?.['runnerName'] === 'string' ? err.details['runnerName'] : batonId;
     const promptFile =
       typeof err.details?.['promptFile'] === 'string'
         ? err.details['promptFile']
@@ -312,9 +300,8 @@ export function formatError(err: unknown): string {
       BLANK,
       `${INDENT}Relay does not know which backend to run your race on.`,
       BLANK,
-      remediation('relay init                                          pick a provider interactively'),
-      remediation('relay run <race> --provider claude-cli              use the subscription-safe provider'),
-      remediation('relay run <race> --provider claude-agent-sdk        use the API-account provider'),
+      remediation('relay init                           pick a provider interactively'),
+      remediation('relay run <race> --provider claude-cli   use the subscription-safe provider'),
     ].join('\n');
   }
 

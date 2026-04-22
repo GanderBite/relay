@@ -31,14 +31,14 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 
+import { ClaudeAuthError, PipelineError } from '../../../src/errors.js';
+import type { Logger } from '../../../src/logger.js';
 import { ClaudeCliProvider } from '../../../src/providers/claude-cli/provider.js';
-import { ClaudeAuthError, PipelineError, SubscriptionTosLeakError } from '../../../src/errors.js';
 import type {
   InvocationContext,
   InvocationEvent,
   InvocationRequest,
 } from '../../../src/providers/types.js';
-import type { Logger } from '../../../src/logger.js';
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -59,12 +59,10 @@ function makeChild(): MockChildHandles {
   });
   const stderr = new EventEmitter();
   const stdin = Object.assign(new EventEmitter(), {
-    write: vi.fn(
-      (_chunk: string, _enc: string, cb?: (err?: Error | null) => void) => {
-        if (typeof cb === 'function') cb(null);
-        return true;
-      },
-    ),
+    write: vi.fn((_chunk: string, _enc: string, cb?: (err?: Error | null) => void) => {
+      if (typeof cb === 'function') cb(null);
+      return true;
+    }),
     end: vi.fn(),
   });
   const child = Object.assign(new EventEmitter(), {
@@ -111,7 +109,12 @@ function makeReq(overrides: Partial<InvocationRequest> = {}): InvocationRequest 
 // Stubs execFile so the claude --version preflight always passes.
 function stubExecFileOk(): void {
   execFileMock.mockImplementation(
-    (_cmd: string, _args: unknown, _opts: unknown, cb: (e: Error | null, so: string, se: string) => void) => {
+    (
+      _cmd: string,
+      _args: unknown,
+      _opts: unknown,
+      cb: (e: Error | null, so: string, se: string) => void,
+    ) => {
       cb(null, 'claude 2.4.1\n', '');
     },
   );
@@ -120,7 +123,12 @@ function stubExecFileOk(): void {
 // Stubs execFile to simulate missing claude binary.
 function stubExecFileEnoent(): void {
   execFileMock.mockImplementation(
-    (_cmd: string, _args: unknown, _opts: unknown, cb: (e: Error | null, so: string, se: string) => void) => {
+    (
+      _cmd: string,
+      _args: unknown,
+      _opts: unknown,
+      cb: (e: Error | null, so: string, se: string) => void,
+    ) => {
       const e = Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' });
       cb(e, '', '');
     },
@@ -132,78 +140,73 @@ function stubExecFileEnoent(): void {
 // ---------------------------------------------------------------------------
 
 // system.init envelope — emitted at start of each `claude -p` run.
-const FIXTURE_SYSTEM_INIT = JSON.stringify({
-  type: 'system',
-  subtype: 'init',
-  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-  model: 'claude-sonnet-4-6',
-}) + '\n';
+const FIXTURE_SYSTEM_INIT =
+  JSON.stringify({
+    type: 'system',
+    subtype: 'init',
+    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+    model: 'claude-sonnet-4-6',
+  }) + '\n';
 
 // stream_event with content_block_delta — carries per-token text delta.
-const FIXTURE_DELTA_HELLO = JSON.stringify({
-  type: 'stream_event',
-  event: {
-    type: 'content_block_delta',
-    index: 0,
-    delta: { type: 'text_delta', text: 'Hello' },
-  },
-  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-}) + '\n';
+const FIXTURE_DELTA_HELLO =
+  JSON.stringify({
+    type: 'stream_event',
+    event: {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'Hello' },
+    },
+    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+  }) + '\n';
 
-const FIXTURE_DELTA_THERE = JSON.stringify({
-  type: 'stream_event',
-  event: {
-    type: 'content_block_delta',
-    index: 0,
-    delta: { type: 'text_delta', text: ' there, friend.' },
-  },
-  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-}) + '\n';
+const FIXTURE_DELTA_THERE =
+  JSON.stringify({
+    type: 'stream_event',
+    event: {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: ' there, friend.' },
+    },
+    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+  }) + '\n';
 
 // message_delta stream_event — carries stop_reason and usage totals.
-const FIXTURE_MESSAGE_DELTA = JSON.stringify({
-  type: 'stream_event',
-  event: {
-    type: 'message_delta',
-    delta: { stop_reason: 'end_turn', stop_sequence: null },
+const FIXTURE_MESSAGE_DELTA =
+  JSON.stringify({
+    type: 'stream_event',
+    event: {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      usage: {
+        input_tokens: 2,
+        cache_creation_input_tokens: 23980,
+        cache_read_input_tokens: 0,
+        output_tokens: 8,
+      },
+    },
+    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+  }) + '\n';
+
+// result — final envelope with totals.
+const FIXTURE_RESULT =
+  JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    duration_ms: 2169,
+    num_turns: 1,
+    result: 'Hello there, friend.',
+    stop_reason: 'end_turn',
+    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+    total_cost_usd: 0.090051,
     usage: {
       input_tokens: 2,
       cache_creation_input_tokens: 23980,
       cache_read_input_tokens: 0,
       output_tokens: 8,
     },
-  },
-  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-}) + '\n';
-
-// result — final envelope with totals.
-const FIXTURE_RESULT = JSON.stringify({
-  type: 'result',
-  subtype: 'success',
-  is_error: false,
-  duration_ms: 2169,
-  num_turns: 1,
-  result: 'Hello there, friend.',
-  stop_reason: 'end_turn',
-  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-  total_cost_usd: 0.090051,
-  usage: {
-    input_tokens: 2,
-    cache_creation_input_tokens: 23980,
-    cache_read_input_tokens: 0,
-    output_tokens: 8,
-  },
-}) + '\n';
-
-// result envelope that simulates a non-zero exit (error case).
-const FIXTURE_RESULT_RATE_LIMIT = JSON.stringify({
-  type: 'result',
-  subtype: 'error',
-  is_error: true,
-  result: null,
-  stop_reason: null,
-  session_id: null,
-}) + '\n';
+  }) + '\n';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -273,7 +276,6 @@ describe('ClaudeCliProvider', () => {
 
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr()).toBeInstanceOf(ClaudeAuthError);
-      expect(result._unsafeUnwrapErr()).not.toBeInstanceOf(SubscriptionTosLeakError);
       // Must mention how to fix — the CLI path.
       expect(result._unsafeUnwrapErr().message).toContain('claude /login');
     });
