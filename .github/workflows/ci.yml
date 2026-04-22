@@ -62,10 +62,10 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
-      # ── 6. Test all packages ──────────────────────────────────────────────
-      - name: Test
-        run: pnpm -r test
-
-      # ── 7. Build all packages ─────────────────────────────────────────────
+      # ── 6. Build all packages ─────────────────────────────────────────────
       - name: Build
         run: pnpm -r build
+
+      # ── 7. Test all packages ──────────────────────────────────────────────
+      - name: Test
+        run: pnpm -r test

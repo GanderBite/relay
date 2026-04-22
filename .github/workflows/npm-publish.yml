@@ -104,5 +104,5 @@ jobs:
           }
 
           publish_if_new packages/core
-          publish_if_new packages/cli
           publish_if_new packages/generator
+          publish_if_new packages/cli
