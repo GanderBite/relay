@@ -1,21 +1,15 @@
 /**
- * Per-provider auth inspection — runs BEFORE any Claude SDK call or
- * `claude -p` subprocess and decides whether the run may proceed.
+ * Auth inspection for the claude-cli provider — runs BEFORE any `claude -p`
+ * subprocess and decides whether the run may proceed.
  *
- * Two providers, two billing surfaces, two TOS contracts:
+ * The claude-cli provider spawns the `claude` binary, which uses the user's
+ * stored subscription credentials. An `ANTHROPIC_API_KEY` in the host env
+ * would silently route tokens through the API, which is the inverse of what
+ * the user asked for when they picked this provider; the case is flagged as
+ * an auth error so the user does not assume the key is in use.
  *
- *   claude-agent-sdk → calls the Anthropic API directly. Anthropic's
- *     commercial terms do not permit Pro/Max subscription credentials to be
- *     used through the SDK, so a `CLAUDE_CODE_OAUTH_TOKEN` in the host env
- *     under this provider is a TOS-leak risk that is blocked here.
- *
- *   claude-cli      → spawns the `claude -p` binary, which uses the user's
- *     stored subscription credentials. An `ANTHROPIC_API_KEY` in the host
- *     env would silently route tokens through the API, which is the inverse
- *     of what the user asked for when they picked this provider.
- *
- * Cloud routing (Bedrock/Vertex/Foundry) bypasses both checks under either
- * provider — those tokens bill to the cloud account, not to Anthropic.
+ * Cloud routing (Bedrock/Vertex/Foundry) bypasses the subscription check —
+ * those tokens bill to the cloud account, not to Anthropic.
  *
  * Returns `Result<AuthState, ClaudeAuthError>`. Never throws.
  */
@@ -28,7 +22,7 @@ import { promisify } from 'node:util';
 
 import { err, ok, type Result } from 'neverthrow';
 
-import { ClaudeAuthError, SubscriptionTosLeakError } from '../../errors.js';
+import { ClaudeAuthError } from '../../errors.js';
 import type { AuthState } from '../types.js';
 
 const execFileAsync = promisify(execFile);
@@ -40,14 +34,6 @@ const CLAUDE_VERSION_TIMEOUT_MS = 5_000;
 const CLAUDE_MISSING_MESSAGE =
   'claude command not found on PATH. Install it: npm install -g @anthropic-ai/claude-code';
 
-/** Remediation when the SDK provider has no API key and no cloud routing. */
-const SDK_REQUIRES_API_KEY =
-  'claude-agent-sdk requires ANTHROPIC_API_KEY. Set it, or run `relay init` and choose claude-cli.';
-
-/** Remediation when an OAuth subscription token is present under the SDK provider — TOS forbids that combination. */
-const SDK_TOS_LEAK_MESSAGE =
-  'subscription tokens may not be used with claude-agent-sdk. Set ANTHROPIC_API_KEY for API billing, or switch to claude-cli.';
-
 /** Remediation when the CLI provider has no detectable subscription credentials. */
 const CLI_REQUIRES_SUBSCRIPTION =
   'claude-cli requires subscription auth. Run `claude /login`, or run `relay init` and choose claude-agent-sdk.';
@@ -56,31 +42,23 @@ const CLI_REQUIRES_SUBSCRIPTION =
 const CLI_API_KEY_NOT_USABLE =
   'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first. Alternatively, run `relay init` and choose claude-agent-sdk.';
 
-/** Warning surfaced once per run whenever the SDK provider routes via API account billing. */
-const API_ACCOUNT_WARNING = 'billing to API account, not subscription';
-
 /** Provider identifiers accepted by `inspectClaudeAuth`. */
-export type ClaudeProviderKind = 'claude-agent-sdk' | 'claude-cli';
+export type ClaudeProviderKind = 'claude-cli';
 
 export interface InspectClaudeAuthOptions {
-  /** Which Claude-backed provider is asking. Determines which TOS contract is enforced. */
+  /** Which Claude-backed provider is asking. Reserved for future providers; currently only `'claude-cli'` is accepted. */
   providerKind: ClaudeProviderKind;
 }
 
 /**
- * Inspect the host env and return the billing surface that the chosen
- * provider would use, or an error explaining why the run cannot proceed.
+ * Inspect the host env and return the billing surface the claude-cli provider
+ * would use, or an error explaining why the run cannot proceed.
  *
- * Per-provider precedence (a match short-circuits the rest):
+ * Precedence (a match short-circuits the rest):
  *
- *   Both providers — cloud routing wins:
+ *   Cloud routing wins for all providers:
  *     CLAUDE_CODE_USE_BEDROCK / CLAUDE_CODE_USE_VERTEX
  *     CLAUDE_CODE_USE_FOUNDRY / ANTHROPIC_FOUNDRY_URL
- *
- *   claude-agent-sdk:
- *     1. ANTHROPIC_API_KEY set → ok(api-account) with warning.
- *     2. CLAUDE_CODE_OAUTH_TOKEN set without ANTHROPIC_API_KEY → err(TOS-leak).
- *     3. Nothing set → err(missing API key).
  *
  *   claude-cli:
  *     1. CLAUDE_CODE_OAUTH_TOKEN set → ok(subscription, token mode).
@@ -102,62 +80,25 @@ export async function inspectClaudeAuth(
 
   const useBedrock = env.CLAUDE_CODE_USE_BEDROCK === '1';
   const useVertex = env.CLAUDE_CODE_USE_VERTEX === '1';
-  const useFoundry =
-    env.CLAUDE_CODE_USE_FOUNDRY === '1' || isNonEmpty(env.ANTHROPIC_FOUNDRY_URL);
+  const useFoundry = env.CLAUDE_CODE_USE_FOUNDRY === '1' || isNonEmpty(env.ANTHROPIC_FOUNDRY_URL);
   const hasCloudRouting = useBedrock || useVertex || useFoundry;
 
-  // Cloud routing is acceptable under either provider; tokens bill to the
-  // cloud account and neither TOS contract applies. Decide before any of the
-  // provider-specific branches so a misconfigured ANTHROPIC_API_KEY or
-  // CLAUDE_CODE_OAUTH_TOKEN does not block a legitimate cloud-routed run.
+  // Cloud routing is acceptable; tokens bill to the cloud account and the
+  // subscription contract does not apply. Decide before the CLI-specific
+  // branch so a stray ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN does not
+  // block a legitimate cloud-routed run.
   if (hasCloudRouting) {
     const binaryCheck = await ensureClaudeBinary();
     if (binaryCheck.isErr()) return err(binaryCheck.error);
-    return ok(cloudRoutingAuthState({ useBedrock, useVertex, foundryUrl: env.ANTHROPIC_FOUNDRY_URL }));
-  }
-
-  if (opts.providerKind === 'claude-agent-sdk') {
-    return inspectAgentSdk({ hasApiKey, hasOauth });
-  }
-  return inspectCli({ hasApiKey, hasOauth });
-}
-
-async function inspectAgentSdk(args: {
-  hasApiKey: boolean;
-  hasOauth: boolean;
-}): Promise<Result<AuthState, ClaudeAuthError>> {
-  // (1) An API key wins — the SDK's own auth precedence puts ANTHROPIC_API_KEY
-  // ahead of any subscription token, so the OAuth env var is harmless here
-  // and we surface the API-account billing warning instead.
-  if (args.hasApiKey) {
-    const binaryCheck = await ensureClaudeBinary();
-    if (binaryCheck.isErr()) return err(binaryCheck.error);
-    return ok({
-      ok: true,
-      billingSource: 'api-account',
-      detail: 'API account (ANTHROPIC_API_KEY)',
-      warnings: [API_ACCOUNT_WARNING],
-    });
-  }
-
-  // (2) OAuth subscription token without an API key is a TOS leak under the
-  // SDK provider. Block before launching anything.
-  if (args.hasOauth) {
-    return err(
-      new SubscriptionTosLeakError(SDK_TOS_LEAK_MESSAGE, {
-        envObserved: ['CLAUDE_CODE_OAUTH_TOKEN'],
-        billingSource: 'subscription',
-      }),
+    return ok(
+      cloudRoutingAuthState({ useBedrock, useVertex, foundryUrl: env.ANTHROPIC_FOUNDRY_URL }),
     );
   }
 
-  // (3) Nothing at all — the SDK has no credentials to authenticate with.
-  return err(
-    new ClaudeAuthError(SDK_REQUIRES_API_KEY, {
-      envObserved: [],
-      billingSource: 'api-account',
-    }),
-  );
+  // providerKind is currently restricted to 'claude-cli' by the type union;
+  // the opts argument is kept for forward-compat with future provider kinds.
+  void opts;
+  return inspectCli({ hasApiKey, hasOauth });
 }
 
 async function inspectCli(args: {
@@ -251,7 +192,16 @@ function cloudRoutingAuthState(args: {
  * both platforms; the rest prevent locale and temp-dir surprises.
  */
 const PREFLIGHT_ENV_KEYS = [
-  'PATH', 'Path', 'HOME', 'USERPROFILE', 'USER', 'LANG', 'LC_ALL', 'TZ', 'TMPDIR', 'SHELL',
+  'PATH',
+  'Path',
+  'HOME',
+  'USERPROFILE',
+  'USER',
+  'LANG',
+  'LC_ALL',
+  'TZ',
+  'TMPDIR',
+  'SHELL',
 ] as const;
 
 function preflightEnv(): Record<string, string | undefined> {

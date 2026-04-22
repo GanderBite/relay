@@ -1,12 +1,11 @@
 /**
- * relay init — choose a provider and write ~/.relay/settings.json.
+ * relay init — probe auth for claude-cli and write ~/.relay/settings.json.
  *
- * Presents a two-option provider menu, probes auth for the chosen provider,
- * and writes the global settings file atomically. On claude-cli auth failure,
- * offers to spawn `claude /login` inline. On claude-agent-sdk auth failure,
- * prints the remediation and exits non-zero without prompting for an API key.
+ * Prints a one-line header confirming the only available provider
+ * (claude-cli · subscription billing), probes auth via ClaudeCliProvider,
+ * handles the not-logged-in path (offer `claude /login`), and writes
+ * ~/.relay/settings.json with { "provider": "claude-cli" }.
  *
- * Non-interactive mode: --provider <name> skips the menu.
  * Overwrite guard: prompts before replacing an existing settings file with a
  * different provider value (skip with --force in non-interactive mode).
  */
@@ -17,21 +16,19 @@ import * as readline from 'node:readline';
 
 import {
   atomicWriteJson,
-  ClaudeAgentSdkProvider,
   ClaudeAuthError,
   ClaudeCliProvider,
   globalSettingsPath,
   loadGlobalSettings,
-  SubscriptionTosLeakError,
 } from '@relay/core';
 
-import { MARK, SYMBOLS, green, gray } from '../visual.js';
+import { gray, green, MARK, SYMBOLS } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const VALID_PROVIDERS = ['claude-cli', 'claude-agent-sdk'] as const;
+const VALID_PROVIDERS = ['claude-cli'] as const;
 type ValidProvider = (typeof VALID_PROVIDERS)[number];
 
 // ---------------------------------------------------------------------------
@@ -46,10 +43,7 @@ export interface InitCommandOptions {
 /**
  * Entry point for `relay init`.
  */
-export default async function initCommand(
-  _args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function initCommand(_args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as InitCommandOptions;
 
   // Header — always print regardless of interactive/non-interactive mode.
@@ -64,29 +58,16 @@ export default async function initCommand(
     if (!isValidProvider(options.provider)) {
       process.stderr.write(
         `unknown provider: ${options.provider}\n` +
-        `valid providers: ${VALID_PROVIDERS.join(', ')}\n`,
+          `valid providers: ${VALID_PROVIDERS.join(', ')}\n`,
       );
       process.exit(1);
     }
     providerName = options.provider as ValidProvider;
   } else {
-    // Interactive: show menu.
-    process.stdout.write('select a provider to run your races:\n');
+    // Only one provider is available — confirm it and proceed.
+    process.stdout.write('provider  claude-cli · subscription billing\n');
     process.stdout.write('\n');
-    process.stdout.write('  1. claude-cli         runs on your Claude Pro/Max subscription (no extra charges)\n');
-    process.stdout.write('  2. claude-agent-sdk   runs on the Anthropic API (billed per token to your API account)\n');
-    process.stdout.write('\n');
-
-    const choice = await prompt('select provider [1-2]: ');
-
-    if (choice === '1') {
-      providerName = 'claude-cli';
-    } else if (choice === '2') {
-      providerName = 'claude-agent-sdk';
-    } else {
-      process.stderr.write(`invalid selection: ${choice}\n`);
-      process.exit(1);
-    }
+    providerName = 'claude-cli';
   }
 
   // ---- Check existing settings ----
@@ -102,7 +83,7 @@ export default async function initCommand(
         // Non-interactive without --force: block overwrite.
         process.stderr.write(
           `~/.relay/settings.json already configures provider: ${existing.provider}\n` +
-          `pass --force to overwrite\n`,
+            `pass --force to overwrite\n`,
         );
         process.exit(1);
       } else {
@@ -119,11 +100,7 @@ export default async function initCommand(
   }
 
   // ---- Probe auth ----
-  if (providerName === 'claude-cli') {
-    await handleClaudeCliAuth(settingsPath, providerName);
-  } else {
-    await handleClaudeAgentSdkAuth(settingsPath, providerName);
-  }
+  await handleClaudeCliAuth(settingsPath, providerName);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,32 +161,6 @@ async function handleClaudeCliAuth(
   // Re-probe succeeded — write settings.
   process.stdout.write(green(`${SYMBOLS.ok} authenticated`) + '\n');
   await writeSettings(settingsPath, providerName);
-}
-
-async function handleClaudeAgentSdkAuth(
-  settingsPath: string,
-  providerName: ValidProvider,
-): Promise<void> {
-  const provider = new ClaudeAgentSdkProvider();
-  const authResult = await provider.authenticate();
-
-  if (authResult.isOk()) {
-    await writeSettings(settingsPath, providerName);
-    return;
-  }
-
-  const authErr = authResult.error;
-
-  // SubscriptionTosLeakError: print remediation and exit — do not write settings.
-  if (authErr instanceof SubscriptionTosLeakError) {
-    process.stderr.write(authErr.message + '\n');
-    process.exit(3);
-  }
-
-  // Any other auth failure (missing API key, etc.): print remediation and exit.
-  // Do NOT prompt for an API key inline — secret-in-terminal-history risk.
-  process.stderr.write(authErr.message + '\n');
-  process.exit(3);
 }
 
 // ---------------------------------------------------------------------------

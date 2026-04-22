@@ -21,16 +21,16 @@ import { promisify } from 'node:util';
 
 import {
   defaultRegistry,
-  loadRaceSettings,
   loadGlobalSettings,
+  loadRaceSettings,
   NoProviderConfiguredError,
-  ProviderRegistry,
+  type Provider,
+  type ProviderRegistry,
+  type RelaySettingsType,
   registerDefaultProviders,
   resolveProvider,
-  type Provider,
-  type RelaySettingsType,
 } from '@relay/core';
-import { MARK, SYMBOLS, green, red, yellow } from '../visual.js';
+import { green, MARK, red, SYMBOLS, yellow } from '../visual.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -132,7 +132,7 @@ async function checkClaude(): Promise<CheckResult> {
     };
   } catch {
     return {
-      line: failRow('claude', "not found — install from https://claude.com/code/install"),
+      line: failRow('claude', 'not found — install from https://claude.com/code/install'),
       blocked: true,
     };
   }
@@ -162,21 +162,17 @@ async function checkDir(): Promise<CheckResult> {
 // ---------------------------------------------------------------------------
 // Provider blocks — providers / auth / resolver
 //
-// `registerDefaultProviders` is idempotent and registers BOTH the
-// subscription-safe `claude-cli` provider AND the API-account-billed
-// `claude-agent-sdk` provider. The doctor reports both rows so the user can
-// see at a glance which billing surface each backend would hit before they
-// commit to one via `relay init` or `--provider`.
+// `registerDefaultProviders` is idempotent and registers the subscription-safe
+// `claude-cli` provider. The providers block shows one row so the user can
+// confirm the billing surface before committing via `relay init` or `--provider`.
 // ---------------------------------------------------------------------------
 
 /**
  * Static billing descriptor for each known provider name. Subscription-safe
- * providers are surfaced in green; API-account billing is surfaced in yellow
- * to flag the cost surface before the user commits.
+ * providers are surfaced in green.
  */
 function billingDescriptor(name: string): { text: string; color: 'green' | 'yellow' | 'none' } {
   if (name === 'claude-cli') return { text: 'subscription-safe', color: 'green' };
-  if (name === 'claude-agent-sdk') return { text: 'API-account billing', color: 'yellow' };
   return { text: 'unknown billing surface', color: 'none' };
 }
 
@@ -299,9 +295,7 @@ async function checkResolver(
     }) ?? 'global-settings';
 
   return {
-    lines: [
-      green(`  → resolves to: ${provider.name} (${source})`),
-    ],
+    lines: [green(`  → resolves to: ${provider.name} (${source})`)],
     blocked: false,
   };
 }
@@ -321,10 +315,7 @@ interface DoctorCommandOptions {
  *   0 — no blockers
  *   1 — blockers present
  */
-export default async function doctorCommand(
-  _args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function doctorCommand(_args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as DoctorCommandOptions;
 
   // Header
@@ -341,7 +332,7 @@ export default async function doctorCommand(
     process.stdout.write(r.line + '\n');
   }
 
-  // Register both Claude providers idempotently so the providers/auth/resolver
+  // Register the claude-cli provider idempotently so the providers/auth/resolver
   // blocks reflect what a `relay run` would see. Custom registrations on the
   // default registry win — registerIfAbsent never overwrites.
   registerDefaultProviders(defaultRegistry);
@@ -358,10 +349,8 @@ export default async function doctorCommand(
   // -------------------------------------------------------------------------
   // auth block — per-provider authenticate() probe
   //
-  // The per-provider rows are informational only. A user configured for one
-  // backend will fail authenticate() on the other, which is expected — those
-  // rows do not flow into the blocker tally below. The resolver block is the
-  // single blocker for "can a run start right now?".
+  // Informational only — does not flow into the blocker tally below.
+  // The resolver block is the single blocker for "can a run start right now?".
   // -------------------------------------------------------------------------
   process.stdout.write('\nauth\n\n');
   for (const provider of providers) {

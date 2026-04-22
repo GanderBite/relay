@@ -1,21 +1,20 @@
 /**
  * ClaudeCliProvider — the subprocess-backed Provider that spawns `claude -p`.
  *
- * Wraps the `claude` binary's stream-json output instead of going through
- * `@anthropic-ai/claude-agent-sdk`. The two providers share the same auth
- * inspector (`inspectClaudeAuth`) and the same env allowlist builder
- * (`buildEnvAllowlist`), each routed under the `'claude-cli'` providerKind so
- * the TOS-leak surface (a stray `ANTHROPIC_API_KEY` in the host env) is
- * stripped at the subprocess boundary.
+ * Wraps the `claude` binary's stream-json output. The provider uses the auth
+ * inspector (`inspectClaudeAuth`) and env allowlist builder
+ * (`buildEnvAllowlist`) under the `'claude-cli'` providerKind so the TOS-leak
+ * surface (a stray `ANTHROPIC_API_KEY` in the host env) is stripped at the
+ * subprocess boundary.
  *
- * Translator decision: the stream-json envelopes from `claude -p` are largely
- * identical to the shapes the SDK already yields — `system`, `assistant`,
- * `user`, `result`. The CLI adds one wrapper, `stream_event`, that carries the
- * wire-level Messages-API streaming events (text deltas, turn boundaries) one
- * level deeper. We therefore reuse the existing SDK translator for everything
- * else and add a thin `claude-cli/translate.ts` shim that unwraps
- * `stream_event` before delegating. This preserves token-level streaming for
- * the live progress display without duplicating the SDK translator's logic.
+ * Translator: the stream-json envelopes from `claude -p` have stable
+ * snake_case shapes — `system`, `assistant`, `user`, `result`, plus the
+ * `stream_event` wrapper that carries wire-level Messages-API streaming
+ * events (text deltas, turn boundaries) one level deeper. The local
+ * `claude-cli/translate.ts` module handles every envelope type directly;
+ * the translator unwraps `stream_event` before delegating to the same
+ * handlers used for top-level envelopes, preserving token-level streaming
+ * for the live progress display.
  *
  * Design invariants:
  *   - authenticate() delegates to `inspectClaudeAuth({ providerKind: 'claude-cli' })`;
@@ -38,7 +37,6 @@
 import { err, ok, type Result } from 'neverthrow';
 
 import { PipelineError, RunnerFailureError } from '../../errors.js';
-import { extractSdkResultSummary, mergeUsage } from '../claude/translate.js';
 import { inspectClaudeAuth } from '../claude/auth.js';
 import { buildEnvAllowlist } from '../claude/env.js';
 import type {
@@ -53,8 +51,8 @@ import type {
 } from '../types.js';
 import { buildCliArgs, type ClaudeCliProviderOptions } from './args.js';
 import { classifyExit } from './classify-exit.js';
-import { runClaudeProcess, type RunClaudeProcessResult } from './process.js';
-import { translateCliMessage } from './translate.js';
+import { type RunClaudeProcessResult, runClaudeProcess } from './process.js';
+import { extractResultSummary, mergeUsage, translateCliMessage } from './translate.js';
 
 // ---------------------------------------------------------------------------
 // Capabilities — published to the Runner so static capability checks can
@@ -80,14 +78,7 @@ const CAPABILITIES: ProviderCapabilities = {
   ],
   multimodal: true,
   budgetCap: true,
-  models: [
-    'haiku',
-    'sonnet',
-    'opus',
-    'claude-haiku-4-5',
-    'claude-sonnet-4-6',
-    'claude-opus-4-7',
-  ],
+  models: ['haiku', 'sonnet', 'opus', 'claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-7'],
   maxContextTokens: 200_000,
 };
 
@@ -196,7 +187,7 @@ export class ClaudeCliProvider implements Provider {
         if (event.type === 'tool.result') {
           const resolved =
             event.toolUseId !== undefined
-              ? toolNames.get(event.toolUseId) ?? 'unknown'
+              ? (toolNames.get(event.toolUseId) ?? 'unknown')
               : 'unknown';
           events.push({ ...event, name: resolved });
           continue;
@@ -249,10 +240,7 @@ export class ClaudeCliProvider implements Provider {
     return exitResult;
   }
 
-  async *stream(
-    req: InvocationRequest,
-    ctx: InvocationContext,
-  ): AsyncIterable<InvocationEvent> {
+  async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
     try {
       for await (const runner of this.#iterate(req, ctx)) {
         for (const event of runner.events) {
@@ -293,8 +281,8 @@ export class ClaudeCliProvider implements Provider {
       cacheCreationTokens: 0,
     };
     let fallbackTurnCount = 0;
-    let lastRawMessage: unknown = undefined;
-    let lastResultMessage: unknown = undefined;
+    let lastRawMessage: unknown;
+    let lastResultMessage: unknown;
 
     try {
       for await (const runner of this.#iterate(req, ctx)) {
@@ -342,7 +330,7 @@ export class ClaudeCliProvider implements Provider {
 
     // The result envelope is the source of truth for response-level metadata.
     // The request's model is only used as a fallback if the envelope omits it.
-    const summary = extractSdkResultSummary(lastResultMessage);
+    const summary = extractResultSummary(lastResultMessage);
     const totalCostUsd = extractTotalCostUsd(lastResultMessage);
 
     const response: InvocationResponse = {

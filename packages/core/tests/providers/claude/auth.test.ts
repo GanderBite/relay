@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Hoisted mocks. execFile is promisified at module init, so the mock must be
 // registered before auth.ts loads. fs.existsSync is the subscription probe for
@@ -28,8 +28,8 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 
+import { ClaudeAuthError, ERROR_CODES } from '../../../src/errors.js';
 import { inspectClaudeAuth } from '../../../src/providers/claude/auth.js';
-import { ClaudeAuthError, SubscriptionTosLeakError, ERROR_CODES } from '../../../src/errors.js';
 
 function stubExecFileOk(): void {
   mockExecFile.mockImplementation(
@@ -63,7 +63,7 @@ function clearAllAuthEnv(): void {
   }
 }
 
-describe('inspectClaudeAuth — per-provider TOS contracts', () => {
+describe('inspectClaudeAuth — claude-cli TOS contract', () => {
   beforeEach(() => {
     clearAllAuthEnv();
     mockExecFile.mockReset();
@@ -76,126 +76,6 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
     vi.unstubAllEnvs();
     mockExecFile.mockReset();
     mockExistsSync.mockReset();
-  });
-
-  // -----------------------------------------------------------------------
-  // claude-agent-sdk truth table
-  // -----------------------------------------------------------------------
-
-  describe('providerKind: claude-agent-sdk', () => {
-    it('[AUTH-SDK-001] no env at all returns ClaudeAuthError requiring ANTHROPIC_API_KEY', async () => {
-      stubExecFileOk(); // should not be reached
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isErr()).toBe(true);
-      const err = result._unsafeUnwrapErr();
-      expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err).not.toBeInstanceOf(SubscriptionTosLeakError);
-      expect(err.message).toBe(
-        'claude-agent-sdk requires ANTHROPIC_API_KEY. Set it, or run `relay init` and choose claude-cli.',
-      );
-      expect(err.code).toBe(ERROR_CODES.CLAUDE_AUTH);
-      expect(mockExecFile).not.toHaveBeenCalled();
-    });
-
-    it('[AUTH-SDK-002] ANTHROPIC_API_KEY set returns ok(api-account) with warning', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isOk()).toBe(true);
-      const state = result._unsafeUnwrap();
-      expect(state.billingSource).toBe('api-account');
-      expect(state.detail).toContain('ANTHROPIC_API_KEY');
-      expect(state.warnings).toContain('billing to API account, not subscription');
-    });
-
-    it('[AUTH-SDK-003] CLAUDE_CODE_OAUTH_TOKEN only returns SubscriptionTosLeakError', async () => {
-      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
-      stubExecFileOk(); // should not be reached
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isErr()).toBe(true);
-      const err = result._unsafeUnwrapErr();
-      expect(err).toBeInstanceOf(SubscriptionTosLeakError);
-      // Subclass relationship — SubscriptionTosLeakError extends ClaudeAuthError.
-      expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err.code).toBe(ERROR_CODES.TOS_LEAK_BLOCKED);
-      expect(err.code).toBe('E_TOS_LEAK_BLOCKED');
-      expect(err.message).toBe(
-        'subscription tokens may not be used with claude-agent-sdk. Set ANTHROPIC_API_KEY for API billing, or switch to claude-cli.',
-      );
-      expect(err.details?.envObserved).toContain('CLAUDE_CODE_OAUTH_TOKEN');
-      expect(mockExecFile).not.toHaveBeenCalled();
-    });
-
-    it('[AUTH-SDK-004] both ANTHROPIC_API_KEY and OAuth set — API key wins, no leak error', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isOk()).toBe(true);
-      const state = result._unsafeUnwrap();
-      expect(state.billingSource).toBe('api-account');
-      expect(state.warnings).toContain('billing to API account, not subscription');
-    });
-
-    it('[AUTH-SDK-005] cloud routing (Bedrock) bypasses both checks even with OAuth set', async () => {
-      vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '1');
-      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isOk()).toBe(true);
-      const state = result._unsafeUnwrap();
-      expect(state.billingSource).toBe('bedrock');
-      expect(state.detail).toContain('Bedrock');
-    });
-
-    it('[AUTH-SDK-006] cloud routing (Vertex) reports billingSource=vertex', async () => {
-      vi.stubEnv('CLAUDE_CODE_USE_VERTEX', '1');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap().billingSource).toBe('vertex');
-      expect(result._unsafeUnwrap().detail).toContain('Vertex');
-    });
-
-    it('[AUTH-SDK-007] Foundry via CLAUDE_CODE_USE_FOUNDRY=1 OR ANTHROPIC_FOUNDRY_URL', async () => {
-      stubExecFileOk();
-
-      vi.stubEnv('CLAUDE_CODE_USE_FOUNDRY', '1');
-      const resultA = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-      expect(resultA.isOk()).toBe(true);
-      expect(resultA._unsafeUnwrap().billingSource).toBe('foundry');
-      expect(resultA._unsafeUnwrap().detail).toContain('CLAUDE_CODE_USE_FOUNDRY=1');
-
-      vi.stubEnv('CLAUDE_CODE_USE_FOUNDRY', '');
-      vi.stubEnv('ANTHROPIC_FOUNDRY_URL', 'https://foundry.example.com');
-      const resultB = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-      expect(resultB.isOk()).toBe(true);
-      expect(resultB._unsafeUnwrap().billingSource).toBe('foundry');
-      expect(resultB._unsafeUnwrap().detail).toContain('ANTHROPIC_FOUNDRY_URL');
-    });
-
-    it('[AUTH-SDK-008] cloud routing + ANTHROPIC_API_KEY → cloud wins', async () => {
-      vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '1');
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap().billingSource).toBe('bedrock');
-    });
   });
 
   // -----------------------------------------------------------------------
@@ -212,7 +92,6 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
       expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err).not.toBeInstanceOf(SubscriptionTosLeakError);
       expect(err.message).toBe(
         'claude-cli requires subscription auth. Run `claude /login`, or run `relay init` and choose claude-agent-sdk.',
       );
@@ -328,20 +207,20 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
       await inspectClaudeAuth({ providerKind: 'claude-cli' });
 
       expect(capturedPath).toBeDefined();
-      expect(capturedPath).toMatch(/\.claude[\/\\]\.credentials\.json$/);
+      expect(capturedPath).toMatch(/\.claude[/\\]\.credentials\.json$/);
     });
   });
 
   // -----------------------------------------------------------------------
-  // Shared binary check
+  // Binary preflight probe
   // -----------------------------------------------------------------------
 
-  describe('shared ensureClaudeBinary probe', () => {
-    it('[AUTH-BIN-001] missing claude binary returns ClaudeAuthError with install instructions (sdk path)', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
+  describe('ensureClaudeBinary probe', () => {
+    it('[AUTH-BIN-001] missing claude binary returns ClaudeAuthError with install instructions', async () => {
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileEnoent();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
+      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
 
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
@@ -352,29 +231,7 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
       expect((err.details?.cause as string).length).toBeGreaterThan(0);
     });
 
-    it('[AUTH-BIN-002] missing claude binary returns ClaudeAuthError with install instructions (cli path)', async () => {
-      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
-      stubExecFileEnoent();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
-
-      expect(result.isErr()).toBe(true);
-      const err = result._unsafeUnwrapErr();
-      expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err.message).toContain('claude command not found on PATH');
-    });
-
-    it('[AUTH-BIN-003] empty-string ANTHROPIC_API_KEY treated as unset under sdk', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', '');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
-
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr().message).toContain('requires ANTHROPIC_API_KEY');
-    });
-
-    it('[AUTH-BIN-004] empty-string OAuth treated as unset under cli', async () => {
+    it('[AUTH-BIN-002] empty-string OAuth treated as unset under cli', async () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '');
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk();
@@ -385,8 +242,8 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
       expect(result._unsafeUnwrapErr().message).toContain('requires subscription auth');
     });
 
-    it('[AUTH-BIN-005] claude --version probe uses a filtered env', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
+    it('[AUTH-BIN-003] claude --version probe uses a filtered env', async () => {
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       vi.stubEnv('PATH', '/usr/bin');
       vi.stubEnv('HOME', '/root');
       vi.stubEnv('SLACK_TOKEN', 'xoxb-secret-123');
@@ -403,7 +260,7 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
         },
       );
 
-      await inspectClaudeAuth({ providerKind: 'claude-agent-sdk' });
+      await inspectClaudeAuth({ providerKind: 'claude-cli' });
 
       expect(capturedEnv).toBeDefined();
       expect(capturedEnv?.PATH).toBe('/usr/bin');

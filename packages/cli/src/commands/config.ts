@@ -7,7 +7,7 @@
  *   relay config set <key> <v>   write one value atomically
  *
  * Supported keys:
- *   provider          string — one of: claude-cli, claude-agent-sdk
+ *   provider          string — one of: claude-cli
  *   telemetry.enabled boolean — accepts "true"/"false" strings
  *   color             "auto" | "always" | "never"
  *
@@ -25,13 +25,13 @@ import {
   type RelaySettings,
 } from '@relay/core';
 
-import { MARK, SYMBOLS, green, red, gray } from '../visual.js';
+import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Valid keys and their constraints
 // ---------------------------------------------------------------------------
 
-const VALID_PROVIDERS = ['claude-cli', 'claude-agent-sdk'] as const;
+const VALID_PROVIDERS = ['claude-cli'] as const;
 const VALID_COLORS = ['auto', 'always', 'never'] as const;
 
 /** All keys this command accepts, in display order. */
@@ -91,7 +91,7 @@ function coerceValue(
       }
       return {
         ok: false,
-        reason: `must be one of: ${VALID_PROVIDERS.join(', ')}`,
+        reason: `unknown provider '${raw}'`,
       };
     }
     case 'telemetry.enabled': {
@@ -239,9 +239,7 @@ async function cmdSet(key: string, rawValue: string): Promise<void> {
 
   const coerced = coerceValue(key, rawValue);
   if (!coerced.ok) {
-    process.stderr.write(
-      `${red(SYMBOLS.fail)} invalid value for ${key}: ${coerced.reason}\n`,
-    );
+    process.stderr.write(`${red(SYMBOLS.fail)} invalid value for ${key}: ${coerced.reason}\n`);
     process.exit(1);
   }
 
@@ -292,10 +290,7 @@ function printUnknownKey(key: string): void {
  * Receives args=[] and opts from the dispatcher; subcommand is parsed from
  * process.argv directly (same pattern as runs.ts).
  */
-export default async function configCommand(
-  _args: unknown[],
-  _opts: unknown,
-): Promise<void> {
+export default async function configCommand(_args: unknown[], _opts: unknown): Promise<void> {
   const { sub, subArgs } = parseSubcommand();
 
   switch (sub) {
