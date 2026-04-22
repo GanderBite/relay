@@ -5,20 +5,20 @@
  * Receives the run directory as the first command-line argument.
  *
  * Behavior:
- *   - Step "a": completes immediately with a valid JSON handoff response.
- *   - Step "b": sends process.send({ type: 'live-state-observed' }) to the
+ *   - Runner "a": completes immediately with a valid JSON handoff response.
+ *   - Runner "b": sends process.send({ type: 'live-state-observed' }) to the
  *     parent once its stream() is invoked (which happens after the live-state
  *     file for "b" is written to disk), then hangs forever. The parent SIGKILL
  *     terminates the process before the stream resolves.
  *
- * The runner writes flow-ref.json pointing to crash-test-flow.ts so that
- * Runner.resume() in the parent can re-import the flow.
+ * The orchestrator writes race-ref.json pointing to crash-test-race.ts so
+ * that Orchestrator.resume() in the parent can re-import the race.
  */
 import { writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, type Result } from 'neverthrow';
-import { createRunner, ProviderRegistry } from '@relay/core';
+import { createOrchestrator, ProviderRegistry } from '@relay/core';
 import type {
   AuthState,
   InvocationContext,
@@ -29,7 +29,7 @@ import type {
   ProviderCapabilities,
 } from '@relay/core';
 import type { PipelineError } from '@relay/core';
-import { flow } from './crash-test-flow.ts';
+import { race } from './crash-test-race.ts';
 
 const runDir = process.argv[2];
 if (typeof runDir !== 'string' || runDir.length === 0) {
@@ -38,7 +38,7 @@ if (typeof runDir !== 'string' || runDir.length === 0) {
 }
 
 const hereDir = dirname(fileURLToPath(import.meta.url));
-const flowPath = join(hereDir, 'crash-test-flow.ts');
+const racePath = join(hereDir, 'crash-test-race.ts');
 
 const ZERO_USAGE = {
   inputTokens: 10,
@@ -82,10 +82,10 @@ const provider: Provider = {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
-    if (ctx.stepId === 'a') {
+    if (ctx.runnerId === 'a') {
       return ok(STEP_A_RESPONSE);
     }
-    // Step "b": signal parent, then hang forever.
+    // Runner "b": signal parent, then hang forever.
     if (!ipCSent) {
       ipCSent = true;
       if (typeof process.send === 'function') {
@@ -101,14 +101,14 @@ const provider: Provider = {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): AsyncIterable<InvocationEvent> {
-    if (ctx.stepId === 'a') {
+    if (ctx.runnerId === 'a') {
       yield { type: 'turn.start', turn: 1 };
       yield { type: 'text.delta', delta: '{"ok":true}' };
       yield { type: 'usage', usage: ZERO_USAGE };
       yield { type: 'turn.end', turn: 1 };
       return;
     }
-    // Step "b": signal parent, then hang forever inside the async generator.
+    // Runner "b": signal parent, then hang forever inside the async generator.
     if (!ipCSent) {
       ipCSent = true;
       if (typeof process.send === 'function') {
@@ -124,24 +124,24 @@ const provider: Provider = {
 const registry = new ProviderRegistry();
 registry.register(provider);
 
-// The prompt executor reads promptFile relative to flowDir. Write a minimal
+// The prompt executor reads promptFile relative to raceDir. Write a minimal
 // template so the executor does not trip on ENOENT during both steps.
 await writeFile(join(hereDir, 'p.md'), 'ping', 'utf8');
 
-const runner = createRunner({
+const orchestrator = createOrchestrator({
   providers: registry,
   runDir,
 });
 
 try {
-  await runner.run(flow, {}, {
-    flowPath,
-    flowDir: hereDir,
+  await orchestrator.run(race, {}, {
+    racePath,
+    raceDir: hereDir,
     authTimeoutMs: 5_000,
     flagProvider: 'mock',
   });
 } catch {
-  // run() may throw if the process is still alive when the flow fails;
-  // the parent SIGKILLs this process before that happens in normal test flow.
+  // run() may throw if the process is still alive when the race fails;
+  // the parent SIGKILLs this process before that happens in normal test race.
   process.exit(1);
 }

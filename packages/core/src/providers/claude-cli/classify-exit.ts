@@ -22,7 +22,7 @@ export interface ClassifyExitArgs {
   exitCode: number | null;
   stderr: string;
   aborted: boolean;
-  stepId: string;
+  runnerId: string;
   attempt: number;
   providerName: string;
 }
@@ -39,7 +39,7 @@ export interface ClassifyExitArgs {
  *   4. Other       → StepFailureError
  */
 export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
-  const { exitCode, stderr, aborted, stepId, attempt, providerName } = args;
+  const { exitCode, stderr, aborted, runnerId, attempt, providerName } = args;
 
   if (aborted) {
     return null;
@@ -53,7 +53,7 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
     return new ProviderRateLimitError(
       `claude -p rate limit: ${stderr.slice(0, 400)}`,
       providerName,
-      stepId,
+      runnerId,
       attempt,
       undefined,
     );
@@ -62,7 +62,7 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
   if (TIMEOUT_RE.test(stderr)) {
     return new StepFailureError(
       `claude -p timeout: ${stderr.slice(0, 400)}`,
-      stepId,
+      runnerId,
       attempt,
       { providerName, errorCode: 'E_CLAUDE_CLI_TIMEOUT' },
     );
@@ -72,14 +72,14 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
     return new ProviderAuthError(
       `claude -p auth error: ${stderr.slice(0, 400)}`,
       providerName,
-      { stepId, attempt },
+      { runnerId, attempt },
     );
   }
 
   const code = exitCode === null ? 'null' : String(exitCode);
   return new StepFailureError(
     `claude -p exit ${code}: ${stderr.slice(0, 400)}`,
-    stepId,
+    runnerId,
     attempt,
     {
       errorCode: 'E_CLAUDE_CLI_FAIL',

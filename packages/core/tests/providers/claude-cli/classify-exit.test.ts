@@ -9,7 +9,7 @@ import {
 import { GITHUB_ISSUES_URL } from '../../../src/constants.js';
 
 const BASE = {
-  stepId: 'step-1',
+  runnerId: 'step-1',
   attempt: 1,
   providerName: 'claude-cli',
 };
@@ -36,7 +36,7 @@ describe('classifyExit', () => {
     });
     expect(err).toBeInstanceOf(ProviderRateLimitError);
     const rle = err as ProviderRateLimitError;
-    expect(rle.stepId).toBe(BASE.stepId);
+    expect(rle.runnerId).toBe(BASE.runnerId);
     expect(rle.attempt).toBe(BASE.attempt);
     expect(rle.providerName).toBe(BASE.providerName);
   });
@@ -80,7 +80,7 @@ describe('classifyExit', () => {
     });
     expect(err).toBeInstanceOf(StepFailureError);
     const sfe = err as StepFailureError;
-    expect(sfe.stepId).toBe(BASE.stepId);
+    expect(sfe.runnerId).toBe(BASE.runnerId);
     expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
@@ -161,7 +161,7 @@ describe('classifyExit', () => {
     expect(sfe.message).toContain('something unexpected happened');
     expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_FAIL');
     expect(sfe.details?.reportUrl).toBe(GITHUB_ISSUES_URL);
-    expect(sfe.stepId).toBe(BASE.stepId);
+    expect(sfe.runnerId).toBe(BASE.runnerId);
     expect(sfe.attempt).toBe(BASE.attempt);
   });
 

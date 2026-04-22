@@ -26,11 +26,11 @@ function makeLogger(): Logger {
   return stub as unknown as Logger;
 }
 
-function makeCtx(stepId: string, attempt = 1): InvocationContext {
+function makeCtx(runnerId: string, attempt = 1): InvocationContext {
   return {
-    flowName: 'f',
+    raceName: 'f',
     runId: 'r',
-    stepId,
+    runnerId,
     attempt,
     abortSignal: new AbortController().signal,
     logger: makeLogger(),
@@ -52,7 +52,7 @@ const canned: InvocationResponse = {
 };
 
 describe('MockProvider', () => {
-  it('[MOCK-001] invoke returns the configured response for a known stepId', async () => {
+  it('[MOCK-001] invoke returns the configured response for a known runnerId', async () => {
     const p = new MockProvider({ responses: { inventory: canned } });
     const r = await p.invoke(makeReq(), makeCtx('inventory'));
     expect(r.isOk()).toBe(true);
@@ -60,19 +60,19 @@ describe('MockProvider', () => {
     expect(r._unsafeUnwrap().usage.inputTokens).toBe(10);
   });
 
-  it('[MOCK-002] invoke with unknown stepId returns err(StepFailureError)', async () => {
+  it('[MOCK-002] invoke with unknown runnerId returns err(StepFailureError)', async () => {
     const p = new MockProvider({ responses: { known: canned } });
     const r = await p.invoke(makeReq(), makeCtx('unknownStep', 2));
     expect(r.isErr()).toBe(true);
     const err = r._unsafeUnwrapErr();
     expect(err).toBeInstanceOf(StepFailureError);
     if (err instanceof StepFailureError) {
-      expect(err.stepId).toBe('unknownStep');
+      expect(err.runnerId).toBe('unknownStep');
       expect(err.attempt).toBe(2);
     }
   });
 
-  it('[MOCK-003] stream with unknown stepId throws StepFailureError', async () => {
+  it('[MOCK-003] stream with unknown runnerId throws StepFailureError', async () => {
     const p = new MockProvider({ responses: { known: canned } });
     let thrown: unknown;
     try {
@@ -120,6 +120,6 @@ describe('MockProvider', () => {
     expect(r.isOk()).toBe(true);
     expect(captured?.req.prompt).toBe('hi');
     expect(captured?.req.model).toBe('sonnet');
-    expect(captured?.ctx.stepId).toBe('s');
+    expect(captured?.ctx.runnerId).toBe('s');
   });
 });

@@ -1,13 +1,13 @@
 import { err, ok, type Result } from 'neverthrow';
-import { FlowDefinitionError } from '../errors.js';
+import { RaceDefinitionError } from '../errors.js';
 import type { Provider } from './types.js';
 
 export class ProviderRegistry {
   readonly #providers = new Map<string, Provider>();
 
-  register(provider: Provider): Result<void, FlowDefinitionError> {
+  register(provider: Provider): Result<void, RaceDefinitionError> {
     if (this.#providers.has(provider.name)) {
-      return err(new FlowDefinitionError(`provider "${provider.name}" already registered`));
+      return err(new RaceDefinitionError(`provider "${provider.name}" already registered`));
     }
     this.#providers.set(provider.name, provider);
     return ok(undefined);
@@ -22,10 +22,10 @@ export class ProviderRegistry {
     return ok('registered');
   }
 
-  get(name: string): Result<Provider, FlowDefinitionError> {
+  get(name: string): Result<Provider, RaceDefinitionError> {
     const provider = this.#providers.get(name);
     if (provider === undefined) {
-      return err(new FlowDefinitionError(`unknown provider: ${name}`));
+      return err(new RaceDefinitionError(`unknown provider: ${name}`));
     }
     return ok(provider);
   }

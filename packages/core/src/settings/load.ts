@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { err, ok, type Result } from 'neverthrow';
 import { ERROR_CODES, PipelineError } from '../errors.js';
 import { z } from '../zod.js';
-import { flowSettingsPath, globalSettingsPath } from './paths.js';
+import { raceSettingsPath, globalSettingsPath } from './paths.js';
 import { RelaySettings } from './schema.js';
 
 async function loadSettings(filePath: string): Promise<Result<RelaySettings | null, PipelineError>> {
@@ -16,7 +16,7 @@ async function loadSettings(filePath: string): Promise<Result<RelaySettings | nu
     return err(
       new PipelineError(
         `failed to read settings file at ${filePath}: ${(e as Error).message}`,
-        ERROR_CODES.FLOW_DEFINITION,
+        ERROR_CODES.RACE_DEFINITION,
       ),
     );
   }
@@ -28,7 +28,7 @@ async function loadSettings(filePath: string): Promise<Result<RelaySettings | nu
     return err(
       new PipelineError(
         `settings file at ${filePath} contains invalid JSON: ${(e as Error).message}`,
-        ERROR_CODES.FLOW_DEFINITION,
+        ERROR_CODES.RACE_DEFINITION,
       ),
     );
   }
@@ -38,7 +38,7 @@ async function loadSettings(filePath: string): Promise<Result<RelaySettings | nu
     return err(
       new PipelineError(
         `settings file at ${filePath} failed schema validation: ${z.prettifyError(result.error)}`,
-        ERROR_CODES.FLOW_DEFINITION,
+        ERROR_CODES.RACE_DEFINITION,
       ),
     );
   }
@@ -50,8 +50,8 @@ export async function loadGlobalSettings(): Promise<Result<RelaySettings | null,
   return loadSettings(globalSettingsPath());
 }
 
-export async function loadFlowSettings(
-  flowDir: string,
+export async function loadRaceSettings(
+  raceDir: string,
 ): Promise<Result<RelaySettings | null, PipelineError>> {
-  return loadSettings(flowSettingsPath(flowDir));
+  return loadSettings(raceSettingsPath(raceDir));
 }

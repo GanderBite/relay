@@ -1,42 +1,42 @@
 import { err, ok, type Result } from 'neverthrow';
 
 import type {
-  FlowDefinitionError,
-  HandoffIoError,
-  HandoffNotFoundError,
-  HandoffSchemaError,
+  RaceDefinitionError,
+  BatonIoError,
+  BatonNotFoundError,
+  BatonSchemaError,
 } from './errors.js';
-import type { HandoffStore } from './handoffs.js';
+import type { BatonStore } from './batons.js';
 import { renderTemplate } from './template.js';
 import { safeStringify } from './util/json.js';
 
 export interface AssemblePromptArgs {
   promptBody: string;
-  handoffs: Record<string, unknown>;
+  batons: Record<string, unknown>;
   inputVars: Record<string, unknown>;
-  stepVars?: Record<string, unknown>;
+  runnerVars?: Record<string, unknown>;
 }
 
 /**
  * Assembles the final prompt string sent to the provider.
  *
- * Var merge order: input first, handoffs next, stepVars last.
- * stepVars win on collision — per-step overrides beat flow-level handoffs.
+ * Var merge order: input first, batons next, runnerVars last.
+ * runnerVars win on collision — per-runner overrides beat race-level batons.
  * Returns Err if the template fails to compile or render.
  */
 export function assemblePrompt({
   promptBody,
-  handoffs,
+  batons,
   inputVars,
-  stepVars,
-}: AssemblePromptArgs): Result<string, FlowDefinitionError> {
+  runnerVars,
+}: AssemblePromptArgs): Result<string, RaceDefinitionError> {
   const vars: Record<string, unknown> = {
     input: inputVars,
-    ...handoffs,
-    ...(stepVars ?? {}),
+    ...batons,
+    ...(runnerVars ?? {}),
   };
 
-  const entries = Object.entries(handoffs);
+  const entries = Object.entries(batons);
   let contextBlock = '';
   if (entries.length > 0) {
     const inner = entries
@@ -50,14 +50,14 @@ export function assemblePrompt({
   );
 }
 
-type LoadHandoffValuesError =
-  | HandoffNotFoundError
-  | HandoffSchemaError
-  | HandoffIoError
-  | FlowDefinitionError;
+type LoadBatonValuesError =
+  | BatonNotFoundError
+  | BatonSchemaError
+  | BatonIoError
+  | RaceDefinitionError;
 
 /**
- * Loads a set of handoff values from the store by id, preserving input order.
+ * Loads a set of baton values from the store by id, preserving input order.
  *
  * Calls store.read(id) for each id in sequence with no schema (values are
  * loaded as raw unknown). Fails fast on the first err — callers that need to
@@ -66,14 +66,14 @@ type LoadHandoffValuesError =
  * so downstream code that relies on Object.entries iteration order (such as
  * assemblePrompt's context-block emission) stays deterministic.
  */
-export async function loadHandoffValues(
-  store: HandoffStore,
+export async function loadBatonValues(
+  store: BatonStore,
   ids: string[],
-): Promise<Result<Record<string, unknown>, LoadHandoffValuesError>> {
+): Promise<Result<Record<string, unknown>, LoadBatonValuesError>> {
   const values: Record<string, unknown> = {};
   for (const id of ids) {
     const result = await store.read(id);
-    if (result.isErr()) return err<Record<string, unknown>, LoadHandoffValuesError>(result.error);
+    if (result.isErr()) return err<Record<string, unknown>, LoadBatonValuesError>(result.error);
     values[id] = result.value;
   }
   return ok(values);

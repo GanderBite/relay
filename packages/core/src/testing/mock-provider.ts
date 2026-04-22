@@ -53,12 +53,12 @@ export class MockProvider implements Provider {
     req: InvocationRequest,
     ctx: InvocationContext,
   ): Result<InvocationResponse | Promise<InvocationResponse>, PipelineError> {
-    const value = this.responses[ctx.stepId];
+    const value = this.responses[ctx.runnerId];
     if (value === undefined) {
       return err(
         new StepFailureError(
-          `MockProvider: no response configured for stepId "${ctx.stepId}"`,
-          ctx.stepId,
+          `MockProvider: no response configured for runnerId "${ctx.runnerId}"`,
+          ctx.runnerId,
           ctx.attempt,
         ),
       );
@@ -84,9 +84,9 @@ export class MockProvider implements Provider {
   }
 
   /**
-   * Streams invocation events for a given step.
+   * Streams invocation events for a given runner.
    *
-   * Missing stepId configuration causes `stream()` to throw `StepFailureError`
+   * Missing runnerId configuration causes `stream()` to throw `StepFailureError`
    * (via iterator termination) — the same error class `invoke()` would have
    * returned on its `err` branch. Consumers that call both must handle the two
    * surfaces consistently.

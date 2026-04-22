@@ -2,18 +2,18 @@ import { readFile } from 'node:fs/promises';
 
 import { err, fromPromise, ok, type Result } from 'neverthrow';
 
-import { MetricsWriteError, StateCorruptError } from './errors.js';
+import { MetricsWriteError, RaceStateCorruptError } from './errors.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
 import { z } from './zod.js';
 
 // ---------------------------------------------------------------------------
-// StepMetrics — one entry per completed prompt step
+// RunnerMetrics — one entry per completed prompt runner
 // ---------------------------------------------------------------------------
 
-export interface StepMetrics {
-  stepId: string;
-  flowName: string;
+export interface RunnerMetrics {
+  runnerId: string;
+  raceName: string;
   runId: string;
   /** ISO-8601 timestamp of when the step completed. */
   timestamp: string;
@@ -40,9 +40,9 @@ export interface StepMetrics {
 // Internal schemas — validate metrics.json on load, not exported
 // ---------------------------------------------------------------------------
 
-const StepMetricsSchema: z.ZodType<StepMetrics> = z.object({
-  stepId: z.string(),
-  flowName: z.string(),
+const RunnerMetricsSchema: z.ZodType<RunnerMetrics> = z.object({
+  runnerId: z.string(),
+  raceName: z.string(),
   runId: z.string(),
   timestamp: z.string(),
   model: z.string(),
@@ -58,7 +58,7 @@ const StepMetricsSchema: z.ZodType<StepMetrics> = z.object({
   isError: z.boolean().optional(),
 });
 
-const StepMetricsArraySchema: z.ZodType<StepMetrics[]> = z.array(StepMetricsSchema);
+const RunnerMetricsArraySchema: z.ZodType<RunnerMetrics[]> = z.array(RunnerMetricsSchema);
 
 // ---------------------------------------------------------------------------
 // CostSummary — aggregate view returned by CostTracker.summary()
@@ -74,9 +74,9 @@ export interface CostSummary {
   /** Count of all entries, regardless of whether costUsd is present. */
   costTotal: number;
   /** Defensive copy of recorded entries. */
-  perStep: StepMetrics[];
+  perStep: RunnerMetrics[];
   /**
-   * Per-model aggregation keyed by the raw `StepMetrics.model` string. Each
+   * Per-model aggregation keyed by the raw `RunnerMetrics.model` string. Each
    * entry holds the same totals as the top-level but scoped to entries that
    * named that model.
    */
@@ -102,7 +102,7 @@ function isCostKnown(v: number | undefined): v is number {
 
 export class CostTracker {
   readonly #metricsPath: string;
-  #entries: StepMetrics[] = [];
+  #entries: RunnerMetrics[] = [];
   #costKnownCount = 0;
 
   constructor(metricsPath: string) {
@@ -116,7 +116,7 @@ export class CostTracker {
    * Returns ok(undefined) on success.
    * Returns err(MetricsWriteError) when the atomic write fails.
    */
-  async record(metrics: StepMetrics): Promise<Result<void, MetricsWriteError>> {
+  async record(metrics: RunnerMetrics): Promise<Result<void, MetricsWriteError>> {
     this.#entries.push(metrics);
     if (isCostKnown(metrics.costUsd)) {
       this.#costKnownCount += 1;
@@ -180,10 +180,10 @@ export class CostTracker {
    *
    * ENOENT is treated as a fresh run — resets to an empty list and returns ok(undefined).
    * Other read errors return err(MetricsWriteError).
-   * A file whose JSON is malformed or does not match the StepMetrics array
-   * shape returns err(StateCorruptError).
+   * A file whose JSON is malformed or does not match the RunnerMetrics array
+   * shape returns err(RaceStateCorruptError).
    */
-  async load(): Promise<Result<void, StateCorruptError | MetricsWriteError>> {
+  async load(): Promise<Result<void, RaceStateCorruptError | MetricsWriteError>> {
     const readResult = await fromPromise(
       readFile(this.#metricsPath, { encoding: 'utf8' }),
       (e) => e as NodeJS.ErrnoException,
@@ -201,10 +201,10 @@ export class CostTracker {
       );
     }
 
-    const parseResult = parseWithSchema(readResult.value, StepMetricsArraySchema);
+    const parseResult = parseWithSchema(readResult.value, RunnerMetricsArraySchema);
     if (parseResult.isErr()) {
       return err(
-        new StateCorruptError(
+        new RaceStateCorruptError(
           'metrics.json is malformed: ' + parseResult.error.message,
           { path: this.#metricsPath, cause: parseResult.error.details?.cause },
         ),

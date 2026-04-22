@@ -1,5 +1,5 @@
 // Scoped NDJSON logger. Factory returns a pino instance pre-bound with
-// flowName/runId; per-step scope is logger.child({ stepId }). Secret redaction
+// raceName/runId; per-step scope is logger.child({ runnerId }). Secret redaction
 // is on by default so accidental dumps of env or auth headers stay safe.
 //
 // ANSI color output is stripped from console (stdout) streams when color is
@@ -17,18 +17,18 @@ import pino, { type DestinationStream, type Logger as PinoLogger, type LoggerOpt
 
 export type Logger = PinoLogger;
 
-// Required shape for every log line. flowName/runId are seeded by the factory;
-// stepId is attached via child bindings; event names the operation.
+// Required shape for every log line. raceName/runId are seeded by the factory;
+// runnerId is attached via child bindings; event names the operation.
 export interface LogEvent {
-  flowName: string;
+  raceName: string;
   runId: string;
-  stepId?: string;
+  runnerId?: string;
   event: string;
   [extra: string]: unknown;
 }
 
 export interface CreateLoggerOptions {
-  flowName: string;
+  raceName: string;
   runId: string;
   // When set, NDJSON is written to this path in addition to stdout. Parent
   // directories are created automatically.
@@ -113,7 +113,7 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
   const level = opts.level ?? process.env.LOG_LEVEL ?? 'info';
   const pinoOptions: LoggerOptions = {
     level,
-    base: { flowName: opts.flowName, runId: opts.runId },
+    base: { raceName: opts.raceName, runId: opts.runId },
     redact: { paths: [...REDACT_PATHS], censor: '[redacted]' },
     formatters: {
       log: (obj) => redactObj(obj) as Record<string, unknown>,

@@ -15,12 +15,12 @@ let counter = 0;
 
 async function capture(
   fn: (logger: Logger) => void,
-  opts?: { flowName?: string; runId?: string },
+  opts?: { raceName?: string; runId?: string },
 ): Promise<Record<string, unknown>[]> {
   counter += 1;
   const logFile = join(ROOT, `run-${counter}.log`);
   const logger = createLogger({
-    flowName: opts?.flowName ?? 'test-flow',
+    raceName: opts?.raceName ?? 'test-flow',
     runId: opts?.runId ?? 'r1',
     logFile,
     level: 'debug',
@@ -93,19 +93,19 @@ describe('createLogger — redaction and binding', () => {
     });
   });
 
-  it('[LOG-003] every emitted line auto-carries flowName and runId', async () => {
+  it('[LOG-003] every emitted line auto-carries raceName and runId', async () => {
     const lines = await capture(
       (logger) => {
-        logger.info({ event: 'step.start', stepId: 'inventory' }, 't');
+        logger.info({ event: 'runner.start', runnerId: 'inventory' }, 't');
       },
-      { flowName: 'codebase-discovery', runId: 'f9c3a2' },
+      { raceName: 'codebase-discovery', runId: 'f9c3a2' },
     );
     expect(lines.length).toBeGreaterThan(0);
     expect(lines[0]).toMatchObject({
-      flowName: 'codebase-discovery',
+      raceName: 'codebase-discovery',
       runId: 'f9c3a2',
-      stepId: 'inventory',
-      event: 'step.start',
+      runnerId: 'inventory',
+      event: 'runner.start',
     });
   });
 });

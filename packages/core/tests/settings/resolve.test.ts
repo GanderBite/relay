@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 
-import { FlowDefinitionError, NoProviderConfiguredError } from '../../src/errors.js';
+import { RaceDefinitionError, NoProviderConfiguredError } from '../../src/errors.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { resolveProvider } from '../../src/settings/resolve.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
@@ -22,13 +22,13 @@ describe('resolveProvider', () => {
 
   beforeEach(() => {
     registry = new ProviderRegistry();
-    registry.register(new MockProvider({ responses: { step: canned() } }));
+    registry.register(new MockProvider({ responses: { runner: canned() } }));
   });
 
   it('[RESOLVE-001] flagProvider wins over flow and global settings', () => {
     const result = resolveProvider({
       flagProvider: 'mock',
-      flowSettings: { provider: 'other' },
+      raceSettings: { provider: 'other' },
       globalSettings: { provider: 'another' },
       registry,
     });
@@ -45,7 +45,7 @@ describe('resolveProvider', () => {
     // Re-use registry with only 'mock'; just test priority ordering via flow > global.
     const result = resolveProvider({
       flagProvider: undefined,
-      flowSettings: { provider: 'mock' },
+      raceSettings: { provider: 'mock' },
       globalSettings: null,
       registry,
     });
@@ -55,7 +55,7 @@ describe('resolveProvider', () => {
   it('[RESOLVE-003] global settings used when no flag and no flow settings provider', () => {
     const result = resolveProvider({
       flagProvider: undefined,
-      flowSettings: null,
+      raceSettings: null,
       globalSettings: { provider: 'mock' },
       registry,
     });
@@ -69,11 +69,11 @@ describe('resolveProvider', () => {
     Object.defineProperty(flowProvider, 'name', { value: 'flow-provider', writable: false });
     reg2.register(new MockProvider({ responses: {} }));
 
-    // Use a simpler approach: check that flow.provider is used over global.provider
+    // Use a simpler approach: check that race.provider is used over global.provider
     // when both are set (using the existing 'mock' registry).
     const result = resolveProvider({
       flagProvider: undefined,
-      flowSettings: { provider: 'mock' },
+      raceSettings: { provider: 'mock' },
       globalSettings: { provider: 'nonexistent-global' },
       registry,
     });
@@ -84,7 +84,7 @@ describe('resolveProvider', () => {
   it('[RESOLVE-005] no provider anywhere returns NoProviderConfiguredError', () => {
     const result = resolveProvider({
       flagProvider: undefined,
-      flowSettings: null,
+      raceSettings: null,
       globalSettings: null,
       registry,
     });
@@ -95,7 +95,7 @@ describe('resolveProvider', () => {
   it('[RESOLVE-006] no provider from settings objects with undefined provider field', () => {
     const result = resolveProvider({
       flagProvider: undefined,
-      flowSettings: {},
+      raceSettings: {},
       globalSettings: {},
       registry,
     });
@@ -103,16 +103,16 @@ describe('resolveProvider', () => {
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(NoProviderConfiguredError);
   });
 
-  it('[RESOLVE-007] unknown provider name returns FlowDefinitionError', () => {
+  it('[RESOLVE-007] unknown provider name returns RaceDefinitionError', () => {
     const result = resolveProvider({
       flagProvider: 'nonexistent-provider',
-      flowSettings: null,
+      raceSettings: null,
       globalSettings: null,
       registry,
     });
     expect(result.isErr()).toBe(true);
     const e = result._unsafeUnwrapErr();
-    expect(e).toBeInstanceOf(FlowDefinitionError);
+    expect(e).toBeInstanceOf(RaceDefinitionError);
     expect(e.message).toContain('nonexistent-provider');
   });
 

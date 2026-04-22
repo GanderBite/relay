@@ -3,13 +3,13 @@ import { join } from 'node:path';
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 
 import {
-  StateCorruptError,
-  StateNotFoundError,
-  StateTransitionError,
-  StateVersionMismatchError,
-  StateWriteError,
+  RaceStateCorruptError,
+  RaceStateNotFoundError,
+  RaceStateTransitionError,
+  RaceStateVersionMismatchError,
+  RaceStateWriteError,
 } from './errors.js';
-import type { RunState, RunStatus, StepState } from './flow/types.js';
+import type { RaceState, RaceStatus, RunnerState } from './race/types.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
 import { createWriteSerializer } from './util/serialize.js';
@@ -21,113 +21,113 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-// Schema mirrors StepState from flow/types.ts. The explicit z.ZodType<StepState>
+// Schema mirrors RunnerState from flow/types.ts. The explicit z.ZodType<RunnerState>
 // annotation forces a compile-time equivalence check — if flow/types.ts adds a
 // required field, this line fails typecheck.
-const stepStateSchema: z.ZodType<StepState> = z.object({
+const stepStateSchema: z.ZodType<RunnerState> = z.object({
   status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
   attempts: z.number().int().nonnegative(),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   errorMessage: z.string().optional(),
   artifacts: z.array(z.string()).optional(),
-  handoffs: z.array(z.string()).optional(),
+  batons: z.array(z.string()).optional(),
 });
 
-// Schema mirrors RunState from flow/types.ts. `input: z.unknown()` matches the
-// `unknown` typing in the type declaration — the flow input shape is validated
-// by the flow's own Zod schema elsewhere, not by this state-file schema.
-const RunStateSchema: z.ZodType<RunState> = z.object({
+// Schema mirrors RaceState from flow/types.ts. `input: z.unknown()` matches the
+// `unknown` typing in the type declaration — the race input shape is validated
+// by the race's own Zod schema elsewhere, not by this state-file schema.
+const RaceStateSchema: z.ZodType<RaceState> = z.object({
   runId: z.string(),
-  flowName: z.string(),
-  flowVersion: z.string(),
+  raceName: z.string(),
+  raceVersion: z.string(),
   status: z.enum(['running', 'succeeded', 'failed', 'aborted']),
   startedAt: z.string(),
   updatedAt: z.string(),
   input: z.unknown(),
-  steps: z.record(z.string(), stepStateSchema),
+  runners: z.record(z.string(), stepStateSchema),
 });
 
 /**
- * StateMachine owns the in-memory RunState and the atomic persistence of
+ * RaceStateMachine owns the in-memory RaceState and the atomic persistence of
  * state.json. Every transition returns a Result — illegal transitions, unknown
  * step ids, and write failures surface as typed error variants rather than
  * thrown exceptions so callers can unwrap with neverthrow's combinators.
  */
-export class StateMachine {
+export class RaceStateMachine {
   readonly #runDir: string;
-  #state: RunState;
+  #state: RaceState;
   // Serializes concurrent save() calls so the on-disk snapshot is always a
   // monotonic prefix of the in-memory mutation history. Each save snapshots
   // the current state at the moment it runs (not at submission time), so
   // last-writer-wins matches the in-memory ordering.
   readonly #saveSerializer = createWriteSerializer();
-  // In-memory cache of completed-step outcomes, keyed by step id. Scoped to
-  // the life of this StateMachine instance — intentionally not serialized to
+  // In-memory cache of completed-step outcomes, keyed by runner id. Scoped to
+  // the life of this RaceStateMachine instance — intentionally not serialized to
   // state.json. Used by the parallel executor on in-process retry so a parent
-  // parallel step that the Runner retries can reconstruct the results of
+  // parallel runner that the Runner retries can reconstruct the results of
   // already-succeeded branches without re-dispatching them. A fresh resume in
   // another process starts with an empty cache; executors treat missing
-  // entries as "no cached value" and rely on the on-disk step status.
-  readonly #stepResults = new Map<string, unknown>();
+  // entries as "no cached value" and rely on the on-disk runner status.
+  readonly #runnerResults = new Map<string, unknown>();
 
-  constructor(runDir: string, flowName: string, flowVersion: string, runId: string) {
+  constructor(runDir: string, raceName: string, raceVersion: string, runId: string) {
     this.#runDir = runDir;
     const startedAt = nowIso();
     this.#state = {
       runId,
-      flowName,
-      flowVersion,
+      raceName,
+      raceVersion,
       startedAt,
       updatedAt: startedAt,
       input: undefined,
-      steps: {},
+      runners: {},
       status: 'running',
     };
   }
 
-  getState(): RunState {
+  getState(): RaceState {
     return this.#state;
   }
 
   /**
-   * Record a step's executor return value keyed by step id. Callers invoke
-   * this alongside completeStep so downstream logic (currently the parallel
+   * Record a step's executor return value keyed by runner id. Callers invoke
+   * this alongside completeRunner so downstream logic (currently the parallel
    * executor on retry) can read the value without re-dispatching.
    */
-  recordStepResult(id: string, result: unknown): void {
-    this.#stepResults.set(id, result);
+  recordRunnerResult(id: string, result: unknown): void {
+    this.#runnerResults.set(id, result);
   }
 
   /**
    * Retrieve a previously-recorded step result, or `undefined` when none has
-   * been recorded in this StateMachine instance. A fresh process that resumed
+   * been recorded in this RaceStateMachine instance. A fresh process that resumed
    * from on-disk state starts with an empty cache, so a return of `undefined`
    * is not equivalent to "the step did not produce a value" — callers must
    * cross-check the step's persisted status to disambiguate.
    */
-  getStepResult(id: string): unknown {
-    return this.#stepResults.get(id);
+  getRunnerResult(id: string): unknown {
+    return this.#runnerResults.get(id);
   }
 
   /**
    * Drop every cached step result. Invoked by the Runner on terminal run
    * completion to release references held by succeeded steps.
    */
-  clearStepResults(): void {
-    this.#stepResults.clear();
+  clearRunnerResults(): void {
+    this.#runnerResults.clear();
   }
 
   get runDir(): string {
     return this.#runDir;
   }
 
-  async init(steps: readonly string[]): Promise<Result<void, StateWriteError>> {
-    const seeded: Record<string, StepState> = {};
-    for (const id of steps) {
+  async init(runners: readonly string[]): Promise<Result<void, RaceStateWriteError>> {
+    const seeded: Record<string, RunnerState> = {};
+    for (const id of runners) {
       seeded[id] = { status: 'pending', attempts: 0 };
     }
-    this.#state = { ...this.#state, steps: seeded, updatedAt: nowIso() };
+    this.#state = { ...this.#state, runners: seeded, updatedAt: nowIso() };
     return this.save();
   }
 
@@ -135,64 +135,64 @@ export class StateMachine {
    * Replace the in-memory state with a previously persisted snapshot — used
    * when resuming a run. Caller is responsible for invoking save() afterwards
    * if the mutation needs to land on disk. Skips the pending-step seeding
-   * that `init()` performs so prior attempts/artifacts/handoffs survive.
+   * that `init()` performs so prior attempts/artifacts/batons survive.
    */
-  hydrate(state: RunState): void {
+  hydrate(state: RaceState): void {
     this.#state = state;
   }
 
-  startStep(id: string): Result<void, StateTransitionError> {
-    const stepResult = this.#requireStep(id);
-    if (stepResult.isErr()) return err(stepResult.error);
-    const step = stepResult.value;
-    if (step.status !== 'pending') {
+  startRunner(id: string): Result<void, RaceStateTransitionError> {
+    const runnerResult = this.#requireStep(id);
+    if (runnerResult.isErr()) return err(runnerResult.error);
+    const runner = runnerResult.value;
+    if (runner.status !== 'pending') {
       return err(
-        new StateTransitionError(
-          `cannot start step "${id}" from status "${step.status}"`,
+        new RaceStateTransitionError(
+          `cannot start runner "${id}" from status "${runner.status}"`,
           id,
-          { from: step.status, attempted: 'start' },
+          { from: runner.status, attempted: 'start' },
         ),
       );
     }
     this.#updateStep(id, {
-      ...step,
+      ...runner,
       status: 'running',
       startedAt: nowIso(),
-      attempts: (step.attempts ?? 0) + 1,
+      attempts: (runner.attempts ?? 0) + 1,
     });
     return ok(undefined);
   }
 
   /**
-   * Mark a step succeeded and persist its produced handoffs / artifacts on
-   * StepState. Both arrays are independent — a step may write a handoff with no
-   * artifact file (the value lives in `handoffs/<id>.json`), an artifact with
-   * no handoff (the file lives at the path verbatim), or both. Resume and the
-   * doctor command read both projections from StepState directly.
+   * Mark a step succeeded and persist its produced batons / artifacts on
+   * RunnerState. Both arrays are independent — a step may write a baton with no
+   * artifact file (the value lives in `batons/<id>.json`), an artifact with
+   * no baton (the file lives at the path verbatim), or both. Resume and the
+   * doctor command read both projections from RunnerState directly.
    */
-  completeStep(
+  completeRunner(
     id: string,
-    output: { handoffs?: readonly string[]; artifacts?: readonly string[] } = {},
-  ): Result<void, StateTransitionError> {
-    const stepResult = this.#requireStep(id);
-    if (stepResult.isErr()) return err(stepResult.error);
-    const step = stepResult.value;
-    if (step.status !== 'running') {
+    output: { batons?: readonly string[]; artifacts?: readonly string[] } = {},
+  ): Result<void, RaceStateTransitionError> {
+    const runnerResult = this.#requireStep(id);
+    if (runnerResult.isErr()) return err(runnerResult.error);
+    const runner = runnerResult.value;
+    if (runner.status !== 'running') {
       return err(
-        new StateTransitionError(
-          `cannot complete step "${id}" from status "${step.status}"`,
+        new RaceStateTransitionError(
+          `cannot complete runner "${id}" from status "${runner.status}"`,
           id,
-          { from: step.status, attempted: 'complete' },
+          { from: runner.status, attempted: 'complete' },
         ),
       );
     }
-    const next: StepState = {
-      ...step,
+    const next: RunnerState = {
+      ...runner,
       status: 'succeeded',
       completedAt: nowIso(),
     };
-    if (output.handoffs !== undefined && output.handoffs.length > 0) {
-      next.handoffs = [...output.handoffs];
+    if (output.batons !== undefined && output.batons.length > 0) {
+      next.batons = [...output.batons];
     }
     if (output.artifacts !== undefined && output.artifacts.length > 0) {
       next.artifacts = [...output.artifacts];
@@ -201,21 +201,21 @@ export class StateMachine {
     return ok(undefined);
   }
 
-  failStep(id: string, error: string): Result<void, StateTransitionError> {
-    const stepResult = this.#requireStep(id);
-    if (stepResult.isErr()) return err(stepResult.error);
-    const step = stepResult.value;
-    if (step.status !== 'running') {
+  failRunner(id: string, error: string): Result<void, RaceStateTransitionError> {
+    const runnerResult = this.#requireStep(id);
+    if (runnerResult.isErr()) return err(runnerResult.error);
+    const runner = runnerResult.value;
+    if (runner.status !== 'running') {
       return err(
-        new StateTransitionError(
-          `cannot fail step "${id}" from status "${step.status}"`,
+        new RaceStateTransitionError(
+          `cannot fail runner "${id}" from status "${runner.status}"`,
           id,
-          { from: step.status, attempted: 'fail' },
+          { from: runner.status, attempted: 'fail' },
         ),
       );
     }
     this.#updateStep(id, {
-      ...step,
+      ...runner,
       status: 'failed',
       completedAt: nowIso(),
       errorMessage: error,
@@ -226,20 +226,20 @@ export class StateMachine {
     return ok(undefined);
   }
 
-  skipStep(id: string): Result<void, StateTransitionError> {
-    const stepResult = this.#requireStep(id);
-    if (stepResult.isErr()) return err(stepResult.error);
-    const step = stepResult.value;
-    if (step.status !== 'pending') {
+  skipRunner(id: string): Result<void, RaceStateTransitionError> {
+    const runnerResult = this.#requireStep(id);
+    if (runnerResult.isErr()) return err(runnerResult.error);
+    const runner = runnerResult.value;
+    if (runner.status !== 'pending') {
       return err(
-        new StateTransitionError(
-          `cannot skip step "${id}" from status "${step.status}"`,
+        new RaceStateTransitionError(
+          `cannot skip runner "${id}" from status "${runner.status}"`,
           id,
-          { from: step.status, attempted: 'skip' },
+          { from: runner.status, attempted: 'skip' },
         ),
       );
     }
-    this.#updateStep(id, { ...step, status: 'skipped' });
+    this.#updateStep(id, { ...runner, status: 'skipped' });
     return ok(undefined);
   }
 
@@ -249,30 +249,30 @@ export class StateMachine {
    * of 3 attempts before a crash still has 1 attempt remaining on resume.
    * Clears `completedAt` and `errorMessage` from the prior failed attempt.
    */
-  resetStep(id: string): Result<void, StateTransitionError> {
-    const stepResult = this.#requireStep(id);
-    if (stepResult.isErr()) return err(stepResult.error);
-    const step = stepResult.value;
-    if (step.status !== 'failed') {
+  resetRunner(id: string): Result<void, RaceStateTransitionError> {
+    const runnerResult = this.#requireStep(id);
+    if (runnerResult.isErr()) return err(runnerResult.error);
+    const runner = runnerResult.value;
+    if (runner.status !== 'failed') {
       return err(
-        new StateTransitionError(
-          `cannot reset step "${id}" from status "${step.status}"`,
+        new RaceStateTransitionError(
+          `cannot reset runner "${id}" from status "${runner.status}"`,
           id,
-          { from: step.status, attempted: 'reset' },
+          { from: runner.status, attempted: 'reset' },
         ),
       );
     }
     // Preserve the attempts counter so maxRetries budgets survive resume.
-    // Drop startedAt/completedAt/errorMessage/artifacts/handoffs — a pending
+    // Drop startedAt/completedAt/errorMessage/artifacts/batons — a pending
     // step should read as never-started to any observer.
-    const next: StepState = {
+    const next: RunnerState = {
       status: 'pending',
-      attempts: step.attempts,
+      attempts: runner.attempts,
     };
     this.#updateStep(id, next);
     // A reset step will run again; any cached result from a prior attempt is
     // stale and must not leak into the next outcome.
-    this.#stepResults.delete(id);
+    this.#runnerResults.delete(id);
     return ok(undefined);
   }
 
@@ -282,17 +282,17 @@ export class StateMachine {
    * them to 'failed' with a descriptive errorMessage so the on-disk snapshot
    * is never left with a dangling running step after a crash or SIGINT.
    */
-  markRun(status: RunStatus): Result<void, StateTransitionError> {
+  markRun(status: RaceStatus): Result<void, RaceStateTransitionError> {
     const timestamp = nowIso();
     const shouldSweep = status === 'failed' || status === 'aborted';
     const sweepMessage = status === 'aborted' ? 'run aborted' : 'run failed';
 
-    const nextSteps: Record<string, StepState> = { ...this.#state.steps };
+    const nextRunners: Record<string, RunnerState> = { ...this.#state.runners };
     if (shouldSweep) {
-      for (const [id, step] of Object.entries(this.#state.steps)) {
-        if (step.status === 'running') {
-          nextSteps[id] = {
-            ...step,
+      for (const [id, runner] of Object.entries(this.#state.runners)) {
+        if (runner.status === 'running') {
+          nextRunners[id] = {
+            ...runner,
             status: 'failed',
             completedAt: timestamp,
             errorMessage: sweepMessage,
@@ -303,7 +303,7 @@ export class StateMachine {
     this.#state = {
       ...this.#state,
       status,
-      steps: nextSteps,
+      runners: nextRunners,
       updatedAt: timestamp,
     };
     return ok(undefined);
@@ -320,7 +320,7 @@ export class StateMachine {
    * call save(); the queue runs them in submission order and each one
    * snapshots the current state at execution time.
    */
-  async save(): Promise<Result<void, StateWriteError>> {
+  async save(): Promise<Result<void, RaceStateWriteError>> {
     return this.#saveSerializer(async () => {
       const writeResult = await atomicWriteJson(
         join(this.#runDir, STATE_FILENAME),
@@ -328,7 +328,7 @@ export class StateMachine {
       );
       if (writeResult.isErr()) {
         return err(
-          new StateWriteError(`failed to write state.json: ${writeResult.error.message}`, {
+          new RaceStateWriteError(`failed to write state.json: ${writeResult.error.message}`, {
             cause: writeResult.error,
             errno: writeResult.error.errno,
             path: writeResult.error.path,
@@ -344,47 +344,47 @@ export class StateMachine {
    */
   static async load(
     runDir: string,
-  ): Promise<Result<RunState, StateNotFoundError | StateCorruptError>> {
+  ): Promise<Result<RaceState, RaceStateNotFoundError | RaceStateCorruptError>> {
     return loadState(runDir);
   }
 
   /**
    * Canonical entry point for resuming a run: reads state.json, validates its
-   * shape, and confirms the flow name/version match before handing the RunState
-   * back. Returns `StateNotFoundError` when the run directory has no state
-   * file, `StateCorruptError` when the file is unreadable/malformed/shape-
-   * invalid, or `StateVersionMismatchError` when the run was written by a
+   * shape, and confirms the race name/version match before handing the RaceState
+   * back. Returns `RaceStateNotFoundError` when the run directory has no state
+   * file, `RaceStateCorruptError` when the file is unreadable/malformed/shape-
+   * invalid, or `RaceStateVersionMismatchError` when the run was written by a
    * different flow or version.
    */
   static async loadAndVerify(opts: {
     runDir: string;
-    flowName: string;
-    flowVersion: string;
+    raceName: string;
+    raceVersion: string;
   }): Promise<
-    Result<RunState, StateNotFoundError | StateCorruptError | StateVersionMismatchError>
+    Result<RaceState, RaceStateNotFoundError | RaceStateCorruptError | RaceStateVersionMismatchError>
   > {
     const loadResult = await loadState(opts.runDir);
     if (loadResult.isErr()) return err(loadResult.error);
     const verifyResult = verifyCompatibility(loadResult.value, {
-      flowName: opts.flowName,
-      flowVersion: opts.flowVersion,
+      raceName: opts.raceName,
+      raceVersion: opts.raceVersion,
     });
     if (verifyResult.isErr()) return err(verifyResult.error);
     return ok(loadResult.value);
   }
 
-  #requireStep(id: string): Result<StepState, StateTransitionError> {
-    const step = this.#state.steps[id];
-    if (step === undefined) {
-      return err(new StateTransitionError(`unknown step: ${id}`, id));
+  #requireStep(id: string): Result<RunnerState, RaceStateTransitionError> {
+    const runner = this.#state.runners[id];
+    if (runner === undefined) {
+      return err(new RaceStateTransitionError(`unknown runner: ${id}`, id));
     }
-    return ok(step);
+    return ok(runner);
   }
 
-  #updateStep(id: string, next: StepState): void {
+  #updateStep(id: string, next: RunnerState): void {
     this.#state = {
       ...this.#state,
-      steps: { ...this.#state.steps, [id]: next },
+      runners: { ...this.#state.runners, [id]: next },
       updatedAt: nowIso(),
     };
   }
@@ -395,30 +395,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Lower-level primitive. Most callers should use `StateMachine.loadAndVerify`
+ * Lower-level primitive. Most callers should use `RaceStateMachine.loadAndVerify`
  * which composes this with `verifyCompatibility` and correct error
  * discrimination. Reads state.json from runDir, parses it, and validates the
- * shape against RunStateSchema. Missing file returns StateNotFoundError so the
+ * shape against RaceStateSchema. Missing file returns RaceStateNotFoundError so the
  * caller can treat ENOENT as "fresh run" without string-matching on error
- * messages. A malformed or shape-invalid file returns StateCorruptError with
+ * messages. A malformed or shape-invalid file returns RaceStateCorruptError with
  * the parse reason in `details` for operator diagnostics.
  */
 export async function loadState(
   runDir: string,
-): Promise<Result<RunState, StateNotFoundError | StateCorruptError>> {
+): Promise<Result<RaceState, RaceStateNotFoundError | RaceStateCorruptError>> {
   const filePath = join(runDir, STATE_FILENAME);
   const readResult = await ResultAsync.fromPromise(
     readFile(filePath, { encoding: 'utf8' }),
     (e) => e,
   );
 
-  return readResult.match<Result<RunState, StateNotFoundError | StateCorruptError>>(
+  return readResult.match<Result<RaceState, RaceStateNotFoundError | RaceStateCorruptError>>(
     (raw) => {
-      const parseResult = parseWithSchema(raw, RunStateSchema);
+      const parseResult = parseWithSchema(raw, RaceStateSchema);
       if (parseResult.isErr()) {
         const cause = parseResult.error.details?.['cause'];
         return err(
-          new StateCorruptError(`state.json is malformed: ${parseResult.error.message}`, {
+          new RaceStateCorruptError(`state.json is malformed: ${parseResult.error.message}`, {
             reason: parseResult.error.message,
             cause,
           }),
@@ -429,35 +429,35 @@ export async function loadState(
     (caught) => {
       const code = isRecord(caught) && typeof caught['code'] === 'string' ? caught['code'] : undefined;
       if (code === 'ENOENT') {
-        return err(new StateNotFoundError('state.json not found', runDir));
+        return err(new RaceStateNotFoundError('state.json not found', runDir));
       }
       const message = caught instanceof Error ? caught.message : String(caught);
       return err(
-        new StateCorruptError(`state.json could not be read: ${message}`, { reason: message }),
+        new RaceStateCorruptError(`state.json could not be read: ${message}`, { reason: message }),
       );
     },
   );
 }
 
 /**
- * Lower-level primitive. Most callers should use `StateMachine.loadAndVerify`
+ * Lower-level primitive. Most callers should use `RaceStateMachine.loadAndVerify`
  * which composes this with `loadState` and correct error discrimination.
- * Compares the on-disk RunState against the currently-loaded flow definition
- * and returns StateVersionMismatchError (carrying both expected and actual
+ * Compares the on-disk RaceState against the currently-loaded race definition
+ * and returns RaceStateVersionMismatchError (carrying both expected and actual
  * name/version pairs) when the run was written by a different flow or a
  * different version. The Runner treats this as an unresumable run and
  * instructs the user to start over.
  */
 export function verifyCompatibility(
-  state: RunState,
-  expected: { flowName: string; flowVersion: string },
-): Result<void, StateVersionMismatchError> {
-  if (state.flowName !== expected.flowName || state.flowVersion !== expected.flowVersion) {
+  state: RaceState,
+  expected: { raceName: string; raceVersion: string },
+): Result<void, RaceStateVersionMismatchError> {
+  if (state.raceName !== expected.raceName || state.raceVersion !== expected.raceVersion) {
     return err(
-      new StateVersionMismatchError(
-        `run state is not compatible with this flow: expected ${expected.flowName}@${expected.flowVersion}, found ${state.flowName}@${state.flowVersion}. Start a new run.`,
+      new RaceStateVersionMismatchError(
+        `run state is not compatible with this race: expected ${expected.raceName}@${expected.raceVersion}, found ${state.raceName}@${state.raceVersion}. Start a new run.`,
         expected,
-        { flowName: state.flowName, flowVersion: state.flowVersion },
+        { raceName: state.raceName, raceVersion: state.raceVersion },
       ),
     );
   }

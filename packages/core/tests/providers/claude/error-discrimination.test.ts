@@ -50,9 +50,9 @@ function makeLogger(): Logger {
 
 function makeCtx(overrides: Partial<InvocationContext> = {}): InvocationContext {
   return {
-    flowName: 'f',
+    raceName: 'f',
     runId: 'r',
-    stepId: 'step-1',
+    runnerId: 'step-1',
     attempt: 2,
     abortSignal: new AbortController().signal,
     logger: makeLogger(),
@@ -134,7 +134,7 @@ describe('ClaudeAgentSdkProvider error discrimination', () => {
     expect(e.code).toBe(ERROR_CODES.PROVIDER_RATE_LIMIT);
     const rle = e as ProviderRateLimitError;
     expect(rle.providerName).toBe('claude-agent-sdk');
-    expect(rle.stepId).toBe('step-1');
+    expect(rle.runnerId).toBe('step-1');
     expect(rle.attempt).toBe(2);
     expect(rle.retryAfterMs).toBe(30_000);
     expect(rle.details?.['cause']).toBe(rateLimited);
@@ -217,7 +217,7 @@ describe('ClaudeAgentSdkProvider error discrimination', () => {
     expect(e).toBeInstanceOf(StepFailureError);
     expect(e.code).toBe(ERROR_CODES.STEP_FAILURE);
     const sfe = e as StepFailureError;
-    expect(sfe.stepId).toBe('step-1');
+    expect(sfe.runnerId).toBe('step-1');
     expect(sfe.attempt).toBe(2);
     expect(sfe.details?.['cause']).toBe(generic);
     expect(sfe.message).toBe('boom');

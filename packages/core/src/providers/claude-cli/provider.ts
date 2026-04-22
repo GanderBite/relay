@@ -29,7 +29,7 @@
  *     what is in process.env. This is mandatory for TOS safety.
  *   - Abort plumbing: the InvocationContext.abortSignal is forwarded straight
  *     to runClaudeProcess; no extra AbortController is constructed.
- *   - No provider-level retries. Step retries are owned by the Runner.
+ *   - No provider-level retries. Runner retries are owned by the Runner.
  *   - On non-zero exit, classifyExit produces a typed PipelineError; stream()
  *     emits a stream.error event instead of throwing; invoke() returns err(...)
  *     — neither path throws to the caller.
@@ -145,7 +145,7 @@ export class ClaudeCliProvider implements Provider {
     const binary = this.#options.binaryPath ?? DEFAULT_BINARY;
 
     ctx.logger.debug(
-      { stepId: ctx.stepId, attempt: ctx.attempt, binary, argCount: cliArgs.length },
+      { runnerId: ctx.runnerId, attempt: ctx.attempt, binary, argCount: cliArgs.length },
       'claude-cli stream opening',
     );
 
@@ -237,7 +237,7 @@ export class ClaudeCliProvider implements Provider {
       exitCode: exitResult.exitCode,
       stderr: exitResult.stderr,
       aborted: ctx.abortSignal.aborted,
-      stepId: ctx.stepId,
+      runnerId: ctx.runnerId,
       attempt: ctx.attempt,
       providerName: this.name,
     });
@@ -254,8 +254,8 @@ export class ClaudeCliProvider implements Provider {
     ctx: InvocationContext,
   ): AsyncIterable<InvocationEvent> {
     try {
-      for await (const step of this.#iterate(req, ctx)) {
-        for (const event of step.events) {
+      for await (const runner of this.#iterate(req, ctx)) {
+        for (const event of runner.events) {
           yield event;
         }
       }
@@ -270,7 +270,7 @@ export class ClaudeCliProvider implements Provider {
           ? cause
           : new StepFailureError(
               cause instanceof Error ? cause.message : String(cause),
-              ctx.stepId,
+              ctx.runnerId,
               ctx.attempt,
               { cause, providerName: this.name },
             );
@@ -297,13 +297,13 @@ export class ClaudeCliProvider implements Provider {
     let lastResultMessage: unknown = undefined;
 
     try {
-      for await (const step of this.#iterate(req, ctx)) {
-        lastRawMessage = step.raw;
-        if (isResultMessage(step.raw)) {
-          lastResultMessage = step.raw;
+      for await (const runner of this.#iterate(req, ctx)) {
+        lastRawMessage = runner.raw;
+        if (isResultMessage(runner.raw)) {
+          lastResultMessage = runner.raw;
         }
 
-        for (const event of step.events) {
+        for (const event of runner.events) {
           switch (event.type) {
             case 'text.delta':
               accumulatedText += event.delta;
@@ -333,7 +333,7 @@ export class ClaudeCliProvider implements Provider {
       return err(
         new StepFailureError(
           cause instanceof Error ? cause.message : String(cause),
-          ctx.stepId,
+          ctx.runnerId,
           ctx.attempt,
           { cause, providerName: this.name },
         ),

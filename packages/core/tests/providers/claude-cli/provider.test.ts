@@ -94,9 +94,9 @@ function makeLogger(): Logger {
 
 function makeCtx(overrides: Partial<InvocationContext> = {}): InvocationContext {
   return {
-    flowName: 'test-flow',
+    raceName: 'test-flow',
     runId: 'run-1',
-    stepId: 'step-1',
+    runnerId: 'step-1',
     attempt: 1,
     abortSignal: new AbortController().signal,
     logger: makeLogger(),

@@ -21,7 +21,7 @@ import type { Logger } from '../logger.js';
 /**
  * Static descriptor each Provider publishes to the Runner.
  * Describes what an LLM provider can and cannot do.
- * Step builders check these at flow-load time before any tokens are spent.
+ * Runner builders check these at flow-load time before any tokens are spent.
  */
 export interface ProviderCapabilities {
   /** True if the provider can stream tokens incrementally. */
@@ -33,7 +33,7 @@ export interface ProviderCapabilities {
   /** True if the provider supports tool/function calling. */
   tools: boolean;
 
-  /** Names of built-in tools advertised to step.prompt({ tools }). Empty if not applicable. */
+  /** Names of built-in tools advertised to runner.prompt({ tools }). Empty if not applicable. */
   builtInTools: readonly string[];
 
   /** True if the provider supports multimodal (image, audio, etc.) input. */
@@ -140,9 +140,9 @@ export interface InvocationRequest {
  * Carries flow/step identity, an abort signal, and a scoped logger.
  */
 export interface InvocationContext {
-  flowName: string;
+  raceName: string;
   runId: string;
-  stepId: string;
+  runnerId: string;
 
   /** 1-based retry counter. First attempt is 1. */
   attempt: number;
@@ -255,7 +255,7 @@ export interface CostEstimate {
  * Implement this interface to add any LLM backend to Relay.
  *
  * "Provider" is distinct from "Runner": the Runner orchestrates the
- * flow; the Provider executes a single LLM invocation.
+ * race; the Provider executes a single LLM invocation.
  */
 export interface Provider {
   /** Stable identifier used in flow definitions and the ProviderRegistry. */

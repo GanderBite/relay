@@ -1,22 +1,22 @@
 import { err, ok, type Result } from 'neverthrow';
-import { FlowDefinitionError, NoProviderConfiguredError } from '../errors.js';
+import { RaceDefinitionError, NoProviderConfiguredError } from '../errors.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
 import type { RelaySettings } from './schema.js';
 
 export interface ResolveProviderArgs {
   flagProvider?: string;
-  flowSettings: RelaySettings | null;
+  raceSettings: RelaySettings | null;
   globalSettings: RelaySettings | null;
   registry: ProviderRegistry;
 }
 
 export function resolveProvider(
   args: ResolveProviderArgs,
-): Result<Provider, NoProviderConfiguredError | FlowDefinitionError> {
-  const { flagProvider, flowSettings, globalSettings, registry } = args;
+): Result<Provider, NoProviderConfiguredError | RaceDefinitionError> {
+  const { flagProvider, raceSettings, globalSettings, registry } = args;
 
-  const name = flagProvider ?? flowSettings?.provider ?? globalSettings?.provider;
+  const name = flagProvider ?? raceSettings?.provider ?? globalSettings?.provider;
 
   if (name === undefined) {
     return err(new NoProviderConfiguredError());

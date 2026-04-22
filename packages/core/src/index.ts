@@ -1,14 +1,14 @@
 // @relay/core -- library entry.
 
 // Context injection
-export { assemblePrompt, loadHandoffValues } from './context-inject.js';
+export { assemblePrompt, loadBatonValues } from './context-inject.js';
 export type { AssemblePromptArgs } from './context-inject.js';
 
 // Cost tracking
 export { CostTracker } from './cost.js';
-export type { CostSummary, StepMetrics } from './cost.js';
+export type { CostSummary, RunnerMetrics } from './cost.js';
 
-// Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
+// Result types — use these to handle errors returned by defineRace, runner.*, atomicWrite*
 export {
   err,
   errAsync,
@@ -28,55 +28,55 @@ export {
   AuthTimeoutError,
   ClaudeAuthError,
   ERROR_CODES,
-  FlowDefinitionError,
-  HandoffIoError,
-  HandoffNotFoundError,
-  HandoffSchemaError,
-  HandoffWriteError,
+  RaceDefinitionError,
+  BatonIoError,
+  BatonNotFoundError,
+  BatonSchemaError,
+  BatonWriteError,
   MetricsWriteError,
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
   ProviderRateLimitError,
-  StateCorruptError,
-  StateNotFoundError,
-  StateTransitionError,
-  StateVersionMismatchError,
-  StateWriteError,
+  RaceStateCorruptError,
+  RaceStateNotFoundError,
+  RaceStateTransitionError,
+  RaceStateVersionMismatchError,
+  RaceStateWriteError,
   StepFailureError,
   SubscriptionTosLeakError,
   TimeoutError,
-  toFlowDefError,
+  toRaceDefError,
 } from './errors.js';
 // Constants
 export { GITHUB_ISSUES_URL, GITHUB_URL } from './constants.js';
-// Flow compiler
-export { defineFlow } from './flow/define.js';
-// Handoff persistence
-export { HandoffStore } from './handoffs.js';
-// Step namespace and step spec types
-export { step } from './flow/step.js';
-// Flow and step core types
+// Race compiler
+export { defineRace } from './race/define.js';
+// Baton persistence
+export { BatonStore } from './batons.js';
+// Runner namespace and runner spec types
+export { runner } from './race/runner.js';
+// Race and runner core types
 export type {
-  BranchStepSpec,
-  Flow,
-  FlowGraph,
-  FlowSpec,
-  ParallelStepSpec,
-  PromptStepOutput,
-  PromptStepSpec,
-  RunState,
-  RunStatus,
-  ScriptStepSpec,
-  Step,
-  StepBase,
-  StepKind,
-  StepState,
-  StepStatus,
-  TerminalStepSpec,
-} from './flow/types.js';
-// Logger — factory that returns a scoped pino instance with flowName/runId bindings.
+  BranchRunnerSpec,
+  Race,
+  RaceGraph,
+  RaceSpec,
+  ParallelRunnerSpec,
+  PromptRunnerOutput,
+  PromptRunnerSpec,
+  RaceState,
+  RaceStatus,
+  ScriptRunnerSpec,
+  Runner,
+  RunnerBase,
+  RunnerKind,
+  RunnerState,
+  RunnerStatus,
+  TerminalRunnerSpec,
+} from './race/types.js';
+// Logger — factory that returns a scoped pino instance with raceName/runId bindings.
 export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
 // Provider registry
@@ -94,7 +94,7 @@ export type {
   ProviderCapabilities,
 } from './providers/types.js';
 // Run state persistence
-export { StateMachine, loadState, verifyCompatibility } from './state.js';
+export { RaceStateMachine, loadState, verifyCompatibility } from './state.js';
 // Atomic write helpers
 export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 // Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly
@@ -111,21 +111,21 @@ export { registerDefaultProviders } from './providers/index.js';
 export { ClaudeCliProvider } from './providers/claude-cli/index.js';
 export type { ClaudeCliProviderOptions } from './providers/claude-cli/index.js';
 
-// Runner — orchestrates flow execution
-export { createRunner, Runner } from './runner/index.js';
+// Orchestrator — orchestrates race execution
+export { createOrchestrator, Orchestrator } from './orchestrator/index.js';
 export type {
-  RunnerOptions,
+  OrchestratorOptions,
   RunOptions,
   RunResult,
-  StepExecutionContext,
-  StepResult,
-} from './runner/index.js';
+  RunnerExecutionContext,
+  RunnerResult,
+} from './orchestrator/index.js';
 
 // Settings — provider selection and path resolution
 export {
-  loadFlowSettings,
+  loadRaceSettings,
   loadGlobalSettings,
-  flowSettingsPath,
+  raceSettingsPath,
   globalSettingsPath,
   resolveProvider,
   RelaySettings,

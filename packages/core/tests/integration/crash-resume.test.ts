@@ -2,14 +2,14 @@
  * End-to-end crash-recovery integration test.
  *
  * Spawns Runner.run() in a child process (via child_process.fork). After step
- * "a" completes and step "b" starts streaming (signalled via IPC), the parent
+ * "a" completes and runner "b" starts streaming (signalled via IPC), the parent
  * sends SIGKILL to the child. The parent then calls Runner.resume(runDir) and
  * asserts:
  *
  *   (a) No step remains stuck in "running" status after resume — the zombie
  *       sweep (FLAG-12) converts orphaned "running" entries to "failed" before
  *       the failed→pending reset pass re-queues them.
- *   (b) Step "a" is not re-executed — succeeded steps are never re-invoked.
+ *   (b) Runner "a" is not re-executed — succeeded steps are never re-invoked.
  *   (c) The final RunResult.status is "succeeded".
  *
  * The child process is a real OS process (fork + SIGKILL). No mocking of the
@@ -23,7 +23,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ok, type Result } from 'neverthrow';
 
-import { createRunner } from '../../src/runner/runner.js';
+import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type {
   AuthState,
@@ -34,7 +34,7 @@ import type {
   ProviderCapabilities,
 } from '../../src/providers/types.js';
 import type { PipelineError } from '../../src/errors.js';
-import type { RunState } from '../../src/flow/types.js';
+import type { RaceState } from '../../src/race/types.js';
 
 // Per-test timeouts are set via the options object passed as second argument
 // to it(). The global testTimeout is 10s by default; the fork-based test
@@ -75,7 +75,7 @@ const DEFAULT_CAPS: ProviderCapabilities = {
 
 /**
  * Provider used during resume. Tracks which steps it was asked to invoke so
- * the test can assert that step "a" was not re-invoked. Step "a" should never
+ * the test can assert that runner "a" was not re-invoked. Runner "a" should never
  * be called because it already succeeded before the crash.
  */
 class TrackingProvider implements Provider {
@@ -91,7 +91,7 @@ class TrackingProvider implements Provider {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
-    this.invokedSteps.push(ctx.stepId);
+    this.invokedSteps.push(ctx.runnerId);
     return ok(STEP_RESPONSE);
   }
 
@@ -99,7 +99,7 @@ class TrackingProvider implements Provider {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): AsyncIterable<import('../../src/providers/types.js').InvocationEvent> {
-    this.invokedSteps.push(ctx.stepId);
+    this.invokedSteps.push(ctx.runnerId);
     yield { type: 'turn.start', turn: 1 };
     yield { type: 'text.delta', delta: '{"ok":true}' };
     yield { type: 'usage', usage: ZERO_USAGE };
@@ -142,7 +142,7 @@ function spawnAndKillAfterLiveState(runDir: string): Promise<void> {
       ) {
         signalReceived = true;
         // Real SIGKILL — bypasses markRun() so state.json is left with
-        // status='running' and step "b" stuck in status='running'.
+        // status='running' and runner "b" stuck in status='running'.
         child.kill('SIGKILL');
       }
     });
@@ -197,40 +197,40 @@ describe('crash-resume integration (real SIGKILL)', () => {
     'zombie sweep fires, succeeded step is not re-invoked, final status is succeeded',
     { timeout: 30_000 },
     async () => {
-      // ── Phase 1: run child, SIGKILL after step "b" starts ─────────────────
+      // ── Phase 1: run child, SIGKILL after runner "b" starts ─────────────────
       await spawnAndKillAfterLiveState(runDir);
 
       // ── Verify pre-resume state ────────────────────────────────────────────
       const rawState = await readFile(join(runDir, 'state.json'), 'utf8');
-      const preResumeState = JSON.parse(rawState) as RunState;
+      const preResumeState = JSON.parse(rawState) as RaceState;
 
       // After SIGKILL, state.json must still be present (written before step b
       // was invoked). The run-level status should be 'running' because markRun()
       // was never called — the SIGKILL bypassed the cleanup path.
       expect(preResumeState.status).toBe('running');
-      // Step "a" succeeded before the kill.
-      expect(preResumeState.steps['a']?.status).toBe('succeeded');
-      // Step "b" was started (running) when the process was killed.
-      expect(preResumeState.steps['b']?.status).toBe('running');
+      // Runner "a" succeeded before the kill.
+      expect(preResumeState.runners['a']?.status).toBe('succeeded');
+      // Runner "b" was started (running) when the process was killed.
+      expect(preResumeState.runners['b']?.status).toBe('running');
 
       // ── Phase 2: resume with a fresh TrackingProvider ──────────────────────
       const trackingProvider = new TrackingProvider();
       const registry = new ProviderRegistry();
       registry.register(trackingProvider);
 
-      // The prompt executor reads promptFile from flowDir. The child wrote p.md
-      // next to the fixture; pass flowDir so resume can find it.
+      // The prompt executor reads promptFile from raceDir. The child wrote p.md
+      // next to the fixture; pass raceDir so resume can find it.
       const fixtureDir = join(HERE, 'fixtures');
       await writeFile(join(fixtureDir, 'p.md'), 'ping', 'utf8');
 
-      const runner = createRunner({
+      const orchestrator = createOrchestrator({
         providers: registry,
         runDir,
       });
 
-      const result = await runner.resume(runDir, {
+      const result = await orchestrator.resume(runDir, {
         authTimeoutMs: 5_000,
-        flowDir: fixtureDir,
+        raceDir: fixtureDir,
         flagProvider: 'mock',
       });
 
@@ -238,23 +238,23 @@ describe('crash-resume integration (real SIGKILL)', () => {
 
       // (a) No zombie "running" step remains after resume.
       const finalStateRaw = await readFile(join(runDir, 'state.json'), 'utf8');
-      const finalState = JSON.parse(finalStateRaw) as RunState;
-      for (const [stepId, stepState] of Object.entries(finalState.steps)) {
-        expect(stepState.status, `step "${stepId}" must not be stuck in "running"`).not.toBe(
+      const finalState = JSON.parse(finalStateRaw) as RaceState;
+      for (const [runnerId, runnerState] of Object.entries(finalState.runners)) {
+        expect(runnerState.status, `runner "${runnerId}" must not be stuck in "running"`).not.toBe(
           'running',
         );
       }
 
-      // (b) Step "a" succeeded before the crash and must not be re-executed.
+      // (b) Runner "a" succeeded before the crash and must not be re-executed.
       expect(
         trackingProvider.invokedSteps,
-        'step "a" must not be re-invoked — it already succeeded before the crash',
+        'runner "a" must not be re-invoked — it already succeeded before the crash',
       ).not.toContain('a');
 
-      // Step "b" must have been re-executed by resume.
+      // Runner "b" must have been re-executed by resume.
       expect(
         trackingProvider.invokedSteps,
-        'step "b" must be re-invoked by resume — it was running when the crash happened',
+        'runner "b" must be re-invoked by resume — it was running when the crash happened',
       ).toContain('b');
 
       // (c) The resumed run completes successfully.
@@ -262,8 +262,8 @@ describe('crash-resume integration (real SIGKILL)', () => {
 
       // Sanity-check the final persisted state is also succeeded.
       expect(finalState.status).toBe('succeeded');
-      expect(finalState.steps['a']?.status).toBe('succeeded');
-      expect(finalState.steps['b']?.status).toBe('succeeded');
+      expect(finalState.runners['a']?.status).toBe('succeeded');
+      expect(finalState.runners['b']?.status).toBe('succeeded');
     },
   );
 });

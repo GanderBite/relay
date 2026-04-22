@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PipelineError } from '../../src/errors.js';
-import { loadFlowSettings, loadGlobalSettings } from '../../src/settings/load.js';
-import { flowSettingsPath, globalSettingsPath } from '../../src/settings/paths.js';
+import { loadRaceSettings, loadGlobalSettings } from '../../src/settings/load.js';
+import { raceSettingsPath, globalSettingsPath } from '../../src/settings/paths.js';
 
-describe('loadFlowSettings', () => {
+describe('loadRaceSettings', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -19,53 +19,53 @@ describe('loadFlowSettings', () => {
   });
 
   it('[SETTINGS-LOAD-001] absent file returns ok(null)', async () => {
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap()).toBeNull();
   });
 
   it('[SETTINGS-LOAD-002] valid JSON with provider returns ok(parsed)', async () => {
-    const settingsPath = flowSettingsPath(dir);
+    const settingsPath = raceSettingsPath(dir);
     await writeFile(settingsPath, JSON.stringify({ provider: 'claude-cli' }));
 
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap()).toEqual({ provider: 'claude-cli' });
   });
 
   it('[SETTINGS-LOAD-003] valid JSON without provider returns ok with null provider', async () => {
-    const settingsPath = flowSettingsPath(dir);
+    const settingsPath = raceSettingsPath(dir);
     await writeFile(settingsPath, JSON.stringify({}));
 
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap()).toEqual({});
   });
 
   it('[SETTINGS-LOAD-004] extra keys are preserved via passthrough', async () => {
-    const settingsPath = flowSettingsPath(dir);
+    const settingsPath = raceSettingsPath(dir);
     await writeFile(settingsPath, JSON.stringify({ provider: 'claude-cli', extra: 42 }));
 
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap()).toEqual({ provider: 'claude-cli', extra: 42 });
   });
 
   it('[SETTINGS-LOAD-005] invalid JSON returns err(PipelineError)', async () => {
-    const settingsPath = flowSettingsPath(dir);
+    const settingsPath = raceSettingsPath(dir);
     await writeFile(settingsPath, 'this is not json {{{');
 
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isErr()).toBe(true);
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(PipelineError);
     expect(result._unsafeUnwrapErr().message).toContain('invalid JSON');
   });
 
   it('[SETTINGS-LOAD-006] schema failure (empty provider string) returns err(PipelineError)', async () => {
-    const settingsPath = flowSettingsPath(dir);
+    const settingsPath = raceSettingsPath(dir);
     await writeFile(settingsPath, JSON.stringify({ provider: '' }));
 
-    const result = await loadFlowSettings(dir);
+    const result = await loadRaceSettings(dir);
     expect(result.isErr()).toBe(true);
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(PipelineError);
   });
@@ -77,7 +77,7 @@ describe('loadGlobalSettings', () => {
     // globalSettingsPath() points to real ~/.relay/settings.json — only test
     // the no-file case when it does not actually exist on this machine.
     // The load function ENOENT-handles it to ok(null).
-    const result = await loadFlowSettings('/tmp/relay-nonexistent-dir-for-test');
+    const result = await loadRaceSettings('/tmp/relay-nonexistent-dir-for-test');
     expect(result.isOk()).toBe(true);
     expect(result._unsafeUnwrap()).toBeNull();
     void originalPath;

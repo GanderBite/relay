@@ -126,7 +126,7 @@ function buildSdkOptions(
     options.systemPrompt = req.systemPrompt;
   }
   if (req.tools !== undefined) {
-    // Restrict the available built-in tools to those requested by the step.
+    // Restrict the available built-in tools to those requested by the runner.
     options.tools = req.tools;
     // Auto-allow the requested tools so the subprocess does not prompt.
     options.allowedTools = req.tools;
@@ -211,7 +211,7 @@ export class ClaudeAgentSdkProvider implements Provider {
     let turnCounter = 0;
 
     const options = buildSdkOptions(req, this.#options, controller);
-    ctx.logger.debug({ stepId: ctx.stepId, attempt: ctx.attempt }, 'claude stream opening');
+    ctx.logger.debug({ runnerId: ctx.runnerId, attempt: ctx.attempt }, 'claude stream opening');
 
     try {
       const iterator = query({ prompt: req.prompt, options });
@@ -274,8 +274,8 @@ export class ClaudeAgentSdkProvider implements Provider {
     ctx: InvocationContext,
   ): AsyncIterable<InvocationEvent> {
     try {
-      for await (const step of this.#iterate(req, ctx)) {
-        for (const event of step.events) {
+      for await (const runner of this.#iterate(req, ctx)) {
+        for (const event of runner.events) {
           yield event;
         }
       }
@@ -285,7 +285,7 @@ export class ClaudeAgentSdkProvider implements Provider {
       // PipelineError shape via a terminal stream.error event, never a raw
       // exception. Abort-shaped causes still propagate so the Runner's abort
       // plumbing handles them unchanged.
-      const translated = translateSdkError(cause, ctx.stepId, ctx.attempt, this.name);
+      const translated = translateSdkError(cause, ctx.runnerId, ctx.attempt, this.name);
       if (translated === 'rethrow') {
         throw cause;
       }
@@ -312,13 +312,13 @@ export class ClaudeAgentSdkProvider implements Provider {
     let lastResultMessage: unknown = undefined;
 
     try {
-      for await (const step of this.#iterate(req, ctx)) {
-        lastRawMessage = step.raw;
-        if (isResultMessage(step.raw)) {
-          lastResultMessage = step.raw;
+      for await (const runner of this.#iterate(req, ctx)) {
+        lastRawMessage = runner.raw;
+        if (isResultMessage(runner.raw)) {
+          lastResultMessage = runner.raw;
         }
 
-        for (const event of step.events) {
+        for (const event of runner.events) {
           switch (event.type) {
             case 'text.delta':
               accumulatedText += event.delta;
@@ -335,7 +335,7 @@ export class ClaudeAgentSdkProvider implements Provider {
         }
       }
     } catch (cause) {
-      const translated = translateSdkError(cause, ctx.stepId, ctx.attempt, this.name);
+      const translated = translateSdkError(cause, ctx.runnerId, ctx.attempt, this.name);
       if (translated === 'rethrow') {
         throw cause;
       }
@@ -457,7 +457,7 @@ function isTimeoutError(cause: unknown): boolean {
  */
 function translateSdkError(
   cause: unknown,
-  stepId: string,
+  runnerId: string,
   attempt: number,
   providerName: string,
 ): PipelineError | 'rethrow' {
@@ -472,7 +472,7 @@ function translateSdkError(
     return new ProviderRateLimitError(
       description,
       providerName,
-      stepId,
+      runnerId,
       attempt,
       retryAfterMs,
       { cause },
@@ -480,10 +480,10 @@ function translateSdkError(
   }
 
   if (isTimeoutError(cause)) {
-    return new TimeoutError(description, stepId, 0, { cause });
+    return new TimeoutError(description, runnerId, 0, { cause });
   }
 
-  return new StepFailureError(description, stepId, attempt, { cause });
+  return new StepFailureError(description, runnerId, attempt, { cause });
 }
 
 function isResultMessage(msg: unknown): boolean {

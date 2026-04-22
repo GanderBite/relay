@@ -5,11 +5,11 @@ export const ERROR_CODES = {
   ATOMIC_WRITE: 'relay_ATOMIC_WRITE',
   AUTH_TIMEOUT: 'relay_AUTH_TIMEOUT',
   CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
-  FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
-  HANDOFF_IO: 'relay_HANDOFF_IO',
-  HANDOFF_NOT_FOUND: 'relay_HANDOFF_NOT_FOUND',
-  HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
-  HANDOFF_WRITE: 'relay_HANDOFF_WRITE',
+  RACE_DEFINITION: 'relay_RACE_DEFINITION',
+  BATON_IO: 'relay_BATON_IO',
+  BATON_NOT_FOUND: 'relay_BATON_NOT_FOUND',
+  BATON_SCHEMA: 'relay_BATON_SCHEMA',
+  BATON_WRITE: 'relay_BATON_WRITE',
   METRICS_WRITE: 'relay_METRICS_WRITE',
   NO_PROVIDER: 'E_NO_PROVIDER',
   PROVIDER_AUTH: 'relay_PROVIDER_AUTH',
@@ -47,21 +47,21 @@ export class PipelineError extends Error {
 }
 
 /**
- * Thrown when the flow DSL is invalid — bad step references, cycles, unknown
+ * Thrown when the race DSL is invalid — bad step references, cycles, unknown
  * providers, or unsatisfied capabilities. Always thrown at load time, before
  * any tokens are spent.
  *
  * CLI exit code: 2
  */
-export class FlowDefinitionError extends PipelineError {
+export class RaceDefinitionError extends PipelineError {
   constructor(
     message: string,
     details?: Record<string, unknown>,
-    /** Override the code for subclasses that extend FlowDefinitionError. */
-    code: ErrorCode = ERROR_CODES.FLOW_DEFINITION,
+    /** Override the code for subclasses that extend RaceDefinitionError. */
+    code: ErrorCode = ERROR_CODES.RACE_DEFINITION,
   ) {
     super(message, code, details);
-    this.name = 'FlowDefinitionError';
+    this.name = 'RaceDefinitionError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -75,13 +75,13 @@ export class FlowDefinitionError extends PipelineError {
  * CLI exit code: 1
  */
 export class StepFailureError extends PipelineError {
-  readonly stepId: string;
+  readonly runnerId: string;
   readonly attempt: number;
 
-  constructor(message: string, stepId: string, attempt: number, details?: Record<string, unknown>) {
+  constructor(message: string, runnerId: string, attempt: number, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STEP_FAILURE, details);
     this.name = 'StepFailureError';
-    this.stepId = stepId;
+    this.runnerId = runnerId;
     this.attempt = attempt;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
@@ -142,19 +142,19 @@ export class SubscriptionTosLeakError extends ClaudeAuthError {
  *
  * CLI exit code: 4
  */
-export class HandoffSchemaError extends PipelineError {
-  readonly handoffId: string;
+export class BatonSchemaError extends PipelineError {
+  readonly batonId: string;
   readonly issues: z.core.$ZodIssue[];
 
   constructor(
     message: string,
-    handoffId: string,
+    batonId: string,
     issues: z.core.$ZodIssue[],
     details?: Record<string, unknown>,
   ) {
-    super(message, ERROR_CODES.HANDOFF_SCHEMA, details);
-    this.name = 'HandoffSchemaError';
-    this.handoffId = handoffId;
+    super(message, ERROR_CODES.BATON_SCHEMA, details);
+    this.name = 'BatonSchemaError';
+    this.batonId = batonId;
     this.issues = issues;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
@@ -166,13 +166,13 @@ export class HandoffSchemaError extends PipelineError {
  * Raised during handoff read or list operations when the underlying filesystem
  * call fails for a reason other than ENOENT or a schema validation failure.
  */
-export class HandoffIoError extends PipelineError {
-  readonly handoffId: string | undefined;
+export class BatonIoError extends PipelineError {
+  readonly batonId: string | undefined;
 
-  constructor(message: string, handoffId: string | undefined, details?: Record<string, unknown>) {
-    super(message, ERROR_CODES.HANDOFF_IO, details);
-    this.name = 'HandoffIoError';
-    this.handoffId = handoffId;
+  constructor(message: string, batonId: string | undefined, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.BATON_IO, details);
+    this.name = 'BatonIoError';
+    this.batonId = batonId;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -182,13 +182,13 @@ export class HandoffIoError extends PipelineError {
 /**
  * Raised when a handoff file is expected to exist but is absent on disk.
  */
-export class HandoffNotFoundError extends PipelineError {
-  readonly handoffId: string;
+export class BatonNotFoundError extends PipelineError {
+  readonly batonId: string;
 
-  constructor(message: string, handoffId: string, details?: Record<string, unknown>) {
-    super(message, ERROR_CODES.HANDOFF_NOT_FOUND, details);
-    this.name = 'HandoffNotFoundError';
-    this.handoffId = handoffId;
+  constructor(message: string, batonId: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.BATON_NOT_FOUND, details);
+    this.name = 'BatonNotFoundError';
+    this.batonId = batonId;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -198,13 +198,13 @@ export class HandoffNotFoundError extends PipelineError {
 /**
  * Raised when a handoff write (atomic or otherwise) fails with a filesystem error.
  */
-export class HandoffWriteError extends PipelineError {
-  readonly handoffId: string;
+export class BatonWriteError extends PipelineError {
+  readonly batonId: string;
 
-  constructor(message: string, handoffId: string, details?: Record<string, unknown>) {
-    super(message, ERROR_CODES.HANDOFF_WRITE, details);
-    this.name = 'HandoffWriteError';
-    this.handoffId = handoffId;
+  constructor(message: string, batonId: string, details?: Record<string, unknown>) {
+    super(message, ERROR_CODES.BATON_WRITE, details);
+    this.name = 'BatonWriteError';
+    this.batonId = batonId;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -228,10 +228,10 @@ export class MetricsWriteError extends PipelineError {
  * Raised when state.json exists but cannot be parsed or does not match the
  * expected shape. Indicates a corrupt or manually-edited state file.
  */
-export class StateCorruptError extends PipelineError {
+export class RaceStateCorruptError extends PipelineError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STATE_CORRUPT, details);
-    this.name = 'StateCorruptError';
+    this.name = 'RaceStateCorruptError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -242,12 +242,12 @@ export class StateCorruptError extends PipelineError {
  * Raised when state.json is absent in the run directory, indicating a fresh run
  * rather than a resumable one.
  */
-export class StateNotFoundError extends PipelineError {
+export class RaceStateNotFoundError extends PipelineError {
   readonly runDir: string;
 
   constructor(message: string, runDir: string, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STATE_NOT_FOUND, details);
-    this.name = 'StateNotFoundError';
+    this.name = 'RaceStateNotFoundError';
     this.runDir = runDir;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
@@ -256,16 +256,16 @@ export class StateNotFoundError extends PipelineError {
 }
 
 /**
- * Raised when the StateMachine is asked to apply an illegal transition or
- * references a step id that does not exist in the loaded flow.
+ * Raised when the RaceStateMachine is asked to apply an illegal transition or
+ * references a runner id that does not exist in the loaded race.
  */
-export class StateTransitionError extends PipelineError {
-  readonly stepId: string | undefined;
+export class RaceStateTransitionError extends PipelineError {
+  readonly runnerId: string | undefined;
 
-  constructor(message: string, stepId: string | undefined, details?: Record<string, unknown>) {
+  constructor(message: string, runnerId: string | undefined, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STATE_TRANSITION, details);
-    this.name = 'StateTransitionError';
-    this.stepId = stepId;
+    this.name = 'RaceStateTransitionError';
+    this.runnerId = runnerId;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -273,21 +273,21 @@ export class StateTransitionError extends PipelineError {
 }
 
 /**
- * Raised when persisted state was written by a different flow name or version
+ * Raised when persisted state was written by a different race name or version
  * than the one currently loaded, making safe resumption impossible.
  */
-export class StateVersionMismatchError extends PipelineError {
-  readonly expected: { flowName: string; flowVersion: string };
-  readonly actual: { flowName: string; flowVersion: string };
+export class RaceStateVersionMismatchError extends PipelineError {
+  readonly expected: { raceName: string; raceVersion: string };
+  readonly actual: { raceName: string; raceVersion: string };
 
   constructor(
     message: string,
-    expected: { flowName: string; flowVersion: string },
-    actual: { flowName: string; flowVersion: string },
+    expected: { raceName: string; raceVersion: string },
+    actual: { raceName: string; raceVersion: string },
     details?: Record<string, unknown>,
   ) {
     super(message, ERROR_CODES.STATE_VERSION_MISMATCH, details);
-    this.name = 'StateVersionMismatchError';
+    this.name = 'RaceStateVersionMismatchError';
     this.expected = expected;
     this.actual = actual;
     if (Error.captureStackTrace) {
@@ -297,12 +297,12 @@ export class StateVersionMismatchError extends PipelineError {
 }
 
 /**
- * Raised when StateMachine fails to persist state.json via an atomic write.
+ * Raised when RaceStateMachine fails to persist state.json via an atomic write.
  */
-export class StateWriteError extends PipelineError {
+export class RaceStateWriteError extends PipelineError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, ERROR_CODES.STATE_WRITE, details);
-    this.name = 'StateWriteError';
+    this.name = 'RaceStateWriteError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
@@ -315,12 +315,12 @@ export class StateWriteError extends PipelineError {
  * CLI exit code: 5
  */
 export class TimeoutError extends PipelineError {
-  readonly stepId: string;
+  readonly runnerId: string;
   readonly timeoutMs: number;
 
   constructor(
     message: string,
-    stepId: string,
+    runnerId: string,
     timeoutMs: number,
     details?: Record<string, unknown>,
     /** Override the code for subclasses that extend TimeoutError. */
@@ -328,7 +328,7 @@ export class TimeoutError extends PipelineError {
   ) {
     super(message, code, details);
     this.name = 'TimeoutError';
-    this.stepId = stepId;
+    this.runnerId = runnerId;
     this.timeoutMs = timeoutMs;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
@@ -342,7 +342,7 @@ export class TimeoutError extends PipelineError {
  * executes so a misconfigured CLI probe or a buggy custom provider cannot hang
  * the run indefinitely with no observable progress.
  *
- * Carries `providerName` rather than a step id — auth runs before the DAG
+ * Carries `providerName` rather than a runner id — auth runs before the DAG
  * walker, so no step is in flight when this fires.
  *
  * CLI exit code: 5 (shares the timeout exit code with `TimeoutError`).
@@ -413,16 +413,16 @@ export class AtomicWriteError extends PipelineError {
   }
 }
 
-/** Wrap a Zod parse error into a FlowDefinitionError with a prettified message. */
-export function toFlowDefError(err: z.core.$ZodError, prefix: string): FlowDefinitionError {
-  return new FlowDefinitionError(`${prefix}: ${z.prettifyError(err)}`);
+/** Wrap a Zod parse error into a RaceDefinitionError with a prettified message. */
+export function toRaceDefError(err: z.core.$ZodError, prefix: string): RaceDefinitionError {
+  return new RaceDefinitionError(`${prefix}: ${z.prettifyError(err)}`);
 }
 
 /**
- * Raised when no provider is configured — neither a CLI flag, nor a flow-level
+ * Raised when no provider is configured — neither a CLI flag, nor a race-level
  * settings.json, nor a global settings.json carries a `provider` value.
  *
- * CLI exit code: 2 (shares FlowDefinitionError's exit code — the run cannot
+ * CLI exit code: 2 (shares RaceDefinitionError's exit code — the run cannot
  * proceed before any tokens are spent).
  */
 export class NoProviderConfiguredError extends PipelineError {
@@ -441,10 +441,10 @@ export class NoProviderConfiguredError extends PipelineError {
 
 /**
  * Thrown at flow-load time when a step requests a capability the configured
- * provider does not support. Extends `FlowDefinitionError` so the CLI maps it
+ * provider does not support. Extends `RaceDefinitionError` so the CLI maps it
  * to exit code 2.
  */
-export class ProviderCapabilityError extends FlowDefinitionError {
+export class ProviderCapabilityError extends RaceDefinitionError {
   readonly providerName: string;
   readonly capability: string;
 
@@ -476,14 +476,14 @@ export class ProviderCapabilityError extends FlowDefinitionError {
  */
 export class ProviderRateLimitError extends PipelineError {
   readonly providerName: string;
-  readonly stepId: string;
+  readonly runnerId: string;
   readonly attempt: number;
   readonly retryAfterMs: number | undefined;
 
   constructor(
     message: string,
     providerName: string,
-    stepId: string,
+    runnerId: string,
     attempt: number,
     retryAfterMs: number | undefined,
     details?: Record<string, unknown>,
@@ -491,7 +491,7 @@ export class ProviderRateLimitError extends PipelineError {
     super(message, ERROR_CODES.PROVIDER_RATE_LIMIT, details);
     this.name = 'ProviderRateLimitError';
     this.providerName = providerName;
-    this.stepId = stepId;
+    this.runnerId = runnerId;
     this.attempt = attempt;
     this.retryAfterMs = retryAfterMs;
     if (Error.captureStackTrace) {
