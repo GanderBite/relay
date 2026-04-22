@@ -13,10 +13,10 @@
  *   9. process.exit(0) on success, exitCodeFor(err) on failure.
  *
  * Flags:
- *   --resume <runId>   delegates to the resume command
- *   --cost             print per-step cost table after success banner
- *   --fresh            placeholder for sprint-13 task_88 (stale-runDir purge)
- *   --api-key          opt in to ANTHROPIC_API_KEY billing
+ *   --resume <runId>      delegates to the resume command
+ *   --cost               print per-step cost table after success banner
+ *   --fresh              placeholder for sprint-13 task_88 (stale-runDir purge)
+ *   --provider <name>    override provider selection (flag > flow-settings > global-settings)
  */
 
 import { randomBytes } from 'node:crypto';
@@ -49,7 +49,6 @@ import { maybeSendRunEvent } from '../telemetry.js';
 // ---------------------------------------------------------------------------
 
 export interface RunCommandOptions {
-  apiKey?: boolean;
   cost?: boolean;
   resume?: string;
   fresh?: boolean;
@@ -280,9 +279,6 @@ export default async function runCommand(
   const startMs = Date.now();
 
   const runner = new Runner({ runDir });
-  if (options.apiKey === true) {
-    runner.allowApiKey();
-  }
 
   let result: RunResult;
   try {

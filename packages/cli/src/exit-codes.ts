@@ -170,9 +170,9 @@ export function formatError(err: unknown): string {
       `${INDENT}bill your API account instead of your Max subscription — a surprise we`,
       `${INDENT}prevent by default.`,
       BLANK,
-      remediation('unset ANTHROPIC_API_KEY                 use subscription (recommended)'),
-      remediation('relay run codebase-discovery . --api-key  explicitly use API billing'),
-      remediation('relay doctor                             full environment check'),
+      remediation('unset ANTHROPIC_API_KEY                                    use subscription (recommended)'),
+      remediation('relay run codebase-discovery --provider claude-agent-sdk   use API billing'),
+      remediation('relay doctor                                               full environment check'),
     ].join('\n');
   }
 
@@ -300,6 +300,21 @@ export function formatError(err: unknown): string {
       BLANK,
       remediation(`relay logs ${runId} --step ${err.stepId}        see what went wrong`),
       remediation(`relay resume ${runId}                            retry the step`),
+    ].join('\n');
+  }
+
+  // ----------------------------------------------------------------
+  // NoProviderConfiguredError — must come before generic PipelineError
+  // ----------------------------------------------------------------
+  if (err instanceof NoProviderConfiguredError) {
+    return [
+      red('✕ no provider configured'),
+      BLANK,
+      `${INDENT}Relay does not know which backend to run your flow on.`,
+      BLANK,
+      remediation('relay init                                          pick a provider interactively'),
+      remediation('relay run <flow> --provider claude-cli              use the subscription-safe provider'),
+      remediation('relay run <flow> --provider claude-agent-sdk        use the API-account provider'),
     ].join('\n');
   }
 

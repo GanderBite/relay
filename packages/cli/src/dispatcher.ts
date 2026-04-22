@@ -156,9 +156,10 @@ export function buildProgram(): Command {
   program
     .command('doctor')
     .description('check your environment before running')
-    .action(async () => {
+    .option('--provider <name>', 'pre-flight a specific provider (overrides settings)')
+    .action(async (cmdOpts: { provider?: string }) => {
       const handler = await loadCommand('doctor');
-      await handler([], program.opts());
+      await handler([], { ...program.opts(), ...cmdOpts });
     });
 
   // ------------------------------------------------------------------ new --

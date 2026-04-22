@@ -4,16 +4,14 @@
  * Sections:
  *   1. node version  (≥ 20.10.0 required)
  *   2. claude binary (version + path)
- *   3. env           (ANTHROPIC_API_KEY safety guard)
- *   4. dir           (.relay directory writable)
- *   5. providers     (one row per registered provider with billing descriptor)
- *   6. auth          (per-provider authenticate() probe)
- *   7. resolver      (resolveProvider against current settings + env)
+ *   3. dir           (.relay directory writable)
+ *   4. providers     (one row per registered provider with billing descriptor)
+ *   5. auth          (per-provider authenticate() probe)
+ *   6. resolver      (resolveProvider against current settings + env)
  *
  * Exit codes:
  *   0 — all checks passed
- *   1 — non-billing-safety blockers present
- *   3 — ANTHROPIC_API_KEY billing-safety guard triggered (ClaudeAuthError code)
+ *   1 — blockers present
  */
 
 import { execFile } from 'node:child_process';
@@ -42,18 +40,6 @@ const execFileAsync = promisify(execFile);
 
 /** Width of the label column (padEnd to this value before the value column). */
 const LABEL_WIDTH = 13;
-
-/** Prefix for every check row: space + symbol + space. */
-const PREFIX_WIDTH = 3; // ' ✓ ' or ' ✕ '
-
-/** Total width to value column start = PREFIX_WIDTH + LABEL_WIDTH. */
-const VALUE_INDENT = PREFIX_WIDTH + LABEL_WIDTH; // 16
-
-/** Extra indent for continuation lines within a row's value block. */
-const CONTINUATION_EXTRA = 2;
-
-/** Full indent for continuation and remediation lines. */
-const CONTINUATION_INDENT = ' '.repeat(VALUE_INDENT + CONTINUATION_EXTRA); // 18 spaces
 
 /** Provider-name column width inside the providers/auth blocks. */
 const PROVIDER_NAME_WIDTH = 20;
@@ -100,7 +86,6 @@ function semverGte(versionA: string, versionB: string): boolean {
 interface CheckResult {
   line: string;
   blocked: boolean;
-  isApiKeyBlocker: boolean;
 }
 
 /** 1. node version */
@@ -113,7 +98,6 @@ function checkNode(): CheckResult {
       ? okRow('node', `${version}  (≥ ${required} required)`)
       : failRow('node', `${version}  (≥ ${required} required)`),
     blocked: !ok,
-    isApiKeyBlocker: false,
   };
 }
 
@@ -145,50 +129,16 @@ async function checkClaude(): Promise<CheckResult> {
     return {
       line: okRow('claude', `${version} at ${binaryPath}`),
       blocked: false,
-      isApiKeyBlocker: false,
     };
   } catch {
     return {
       line: failRow('claude', "not found — install from https://claude.com/code/install"),
       blocked: true,
-      isApiKeyBlocker: false,
     };
   }
 }
 
-/** 3. env check — ANTHROPIC_API_KEY billing-safety guard */
-function checkEnv(): CheckResult {
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
-  const isSet = typeof apiKey === 'string' && apiKey.length > 0;
-
-  if (!isSet) {
-    return {
-      line: okRow('env', 'no conflicting ANTHROPIC_API_KEY'),
-      blocked: false,
-      isApiKeyBlocker: false,
-    };
-  }
-
-  // Blocking case — verbatim remediation block from product spec §6.2
-  const labelPad = 'env'.padEnd(LABEL_WIDTH);
-  const lines = [
-    red(` ${SYMBOLS.fail} ${labelPad}ANTHROPIC_API_KEY is set in your environment`),
-    `${CONTINUATION_INDENT}running a flow now would bill your API account,`,
-    `${CONTINUATION_INDENT}not your Max subscription.`,
-    '',
-    `${CONTINUATION_INDENT}fix:      unset ANTHROPIC_API_KEY`,
-    `${CONTINUATION_INDENT}permanent: remove the line from ~/.zshrc`,
-    `${CONTINUATION_INDENT}override: relay run --api-key (opts into API billing)`,
-  ];
-
-  return {
-    line: lines.join('\n'),
-    blocked: true,
-    isApiKeyBlocker: true,
-  };
-}
-
-/** 4. dir check — .relay directory writable */
+/** 3. dir check — .relay directory writable */
 async function checkDir(): Promise<CheckResult> {
   const relayDir = path.resolve('.relay');
 
@@ -200,13 +150,11 @@ async function checkDir(): Promise<CheckResult> {
     return {
       line: okRow('dir', './.relay writable'),
       blocked: false,
-      isApiKeyBlocker: false,
     };
   } catch {
     return {
       line: failRow('dir', './.relay not writable'),
       blocked: true,
-      isApiKeyBlocker: false,
     };
   }
 }
@@ -258,7 +206,6 @@ async function authProbeRow(provider: Provider): Promise<CheckResult> {
     return {
       line: red(`  ${SYMBOLS.fail} ${name}${DOT} ${result.error.message}`),
       blocked: true,
-      isApiKeyBlocker: false,
     };
   }
 
@@ -278,7 +225,6 @@ async function authProbeRow(provider: Provider): Promise<CheckResult> {
   return {
     line: `  ${green(SYMBOLS.ok)} ${name}${DOT} ${colorize(summary, color)}`,
     blocked: false,
-    isApiKeyBlocker: false,
   };
 }
 
@@ -303,7 +249,10 @@ interface ResolverOutcome {
   blocked: boolean;
 }
 
-async function checkResolver(registry: ProviderRegistry): Promise<ResolverOutcome> {
+async function checkResolver(
+  registry: ProviderRegistry,
+  flagProvider?: string,
+): Promise<ResolverOutcome> {
   const flowDir = process.cwd();
   const globalResult = await loadGlobalSettings();
   const flowResult = await loadFlowSettings(flowDir);
@@ -322,6 +271,7 @@ async function checkResolver(registry: ProviderRegistry): Promise<ResolverOutcom
   }
 
   const resolved = resolveProvider({
+    flagProvider,
     flowSettings: flowResult.value,
     globalSettings: globalResult.value,
     registry,
@@ -343,7 +293,7 @@ async function checkResolver(registry: ProviderRegistry): Promise<ResolverOutcom
   const provider = resolved.value;
   const source =
     resolverSource({
-      flagProvider: undefined,
+      flagProvider,
       flowSettings: flowResult.value,
       globalSettings: globalResult.value,
     }) ?? 'global-settings';
@@ -360,39 +310,35 @@ async function checkResolver(registry: ProviderRegistry): Promise<ResolverOutcom
 // doctorCommand
 // ---------------------------------------------------------------------------
 
+interface DoctorCommandOptions {
+  provider?: string;
+}
+
 /**
  * Entry point for `relay doctor`.
  *
  * Runs each section, prints results, then exits with:
  *   0 — no blockers
- *   3 — ANTHROPIC_API_KEY billing-safety blocker (only/primary blocker)
- *   1 — other blockers present
+ *   1 — blockers present
  */
 export default async function doctorCommand(
   _args: unknown[],
-  _opts: unknown,
+  opts: unknown,
 ): Promise<void> {
+  const options = (opts ?? {}) as DoctorCommandOptions;
+
   // Header
   process.stdout.write(`${MARK}  relay doctor\n\n`);
 
-  // Run the host-environment checks first.
+  // Run the host-environment checks.
   const nodeResult = checkNode();
   const claudeResult = await checkClaude();
-  const envResult = checkEnv();
   const dirResult = await checkDir();
 
-  const envChecks: CheckResult[] = [nodeResult, claudeResult, envResult, dirResult];
+  const hostChecks: CheckResult[] = [nodeResult, claudeResult, dirResult];
 
-  // Emit check rows. The env row has a multi-line value with a trailing blank
-  // line; all other rows are single lines. A blank line separates the env fail
-  // block from the dir row — insert it after the env row only when env fails.
-  for (let i = 0; i < envChecks.length; i++) {
-    const r = envChecks[i];
-    if (r === undefined) continue;
+  for (const r of hostChecks) {
     process.stdout.write(r.line + '\n');
-    if (i === 2 && r.blocked) {
-      process.stdout.write('\n');
-    }
   }
 
   // Register both Claude providers idempotently so the providers/auth/resolver
@@ -427,7 +373,7 @@ export default async function doctorCommand(
   // resolver block — what a real run would pick right now
   // -------------------------------------------------------------------------
   process.stdout.write('\nresolver\n\n');
-  const resolverOutcome = await checkResolver(defaultRegistry);
+  const resolverOutcome = await checkResolver(defaultRegistry, options.provider);
   for (const line of resolverOutcome.lines) {
     process.stdout.write(line + '\n');
   }
@@ -435,19 +381,11 @@ export default async function doctorCommand(
   // Blank line before summary
   process.stdout.write('\n');
 
-  // Aggregate blocker state. The auth block's per-provider rows do NOT block
-  // — a user with only one provider configured will fail authenticate() on
-  // the other, which is expected. The resolver block IS a blocker because a
-  // run cannot start without a resolved provider.
-  const summaryBlockers = envChecks.filter((r) => r.blocked);
-  if (resolverOutcome.blocked) {
-    summaryBlockers.push({
-      line: '',
-      blocked: true,
-      isApiKeyBlocker: false,
-    });
-  }
-  const blockerCount = summaryBlockers.length;
+  // Aggregate blocker state. Host checks + resolver. The auth block's
+  // per-provider rows do NOT block — a user with only one provider configured
+  // will fail authenticate() on the other, which is expected.
+  const hostBlockers = hostChecks.filter((r) => r.blocked);
+  const blockerCount = hostBlockers.length + (resolverOutcome.blocked ? 1 : 0);
 
   if (blockerCount === 0) {
     process.stdout.write(green('ready to run.') + '\n');
@@ -460,9 +398,5 @@ export default async function doctorCommand(
       : red(`${blockerCount} blockers before you can run.`);
   process.stdout.write(summary + '\n');
 
-  // Exit code 3 when the ANTHROPIC_API_KEY guard is the sole blocker.
-  // Exit code 1 for any other combination of blockers.
-  const onlyApiKeyBlocker =
-    blockerCount === 1 && (summaryBlockers[0]?.isApiKeyBlocker === true);
-  process.exit(onlyApiKeyBlocker ? 3 : 1);
+  process.exit(1);
 }
