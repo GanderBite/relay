@@ -36,11 +36,11 @@ const CLAUDE_MISSING_MESSAGE =
 
 /** Remediation when the CLI provider has no detectable subscription credentials. */
 const CLI_REQUIRES_SUBSCRIPTION =
-  'claude-cli requires subscription auth. Run `claude /login`, or run `relay init` and choose claude-agent-sdk.';
+  'claude-cli requires subscription auth. Run `claude /login`, then re-run `relay init`.';
 
 /** Remediation when the CLI provider has no subscription credentials but ANTHROPIC_API_KEY is set — steer the user away from assuming the key will be used. */
 const CLI_API_KEY_NOT_USABLE =
-  'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first. Alternatively, run `relay init` and choose claude-agent-sdk.';
+  'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first.';
 
 /** Provider identifiers accepted by `inspectClaudeAuth`. */
 export type ClaudeProviderKind = 'claude-cli';

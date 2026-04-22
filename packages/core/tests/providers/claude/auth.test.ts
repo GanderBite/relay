@@ -93,7 +93,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       const err = result._unsafeUnwrapErr();
       expect(err).toBeInstanceOf(ClaudeAuthError);
       expect(err.message).toBe(
-        'claude-cli requires subscription auth. Run `claude /login`, or run `relay init` and choose claude-agent-sdk.',
+        'claude-cli requires subscription auth. Run `claude /login`, then re-run `relay init`.',
       );
       expect(err.code).toBe(ERROR_CODES.CLAUDE_AUTH);
       expect(mockExecFile).not.toHaveBeenCalled();

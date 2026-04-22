@@ -6,7 +6,7 @@
  * interface itself. Pure TypeScript interfaces and type aliases — no runtime
  * logic, no classes. The only imports are type-only.
  *
- * Consumers: Runner, ClaudeAgentSdkProvider, MockProvider, race authors.
+ * Consumers: Runner, ClaudeCliProvider, MockProvider, race authors.
  */
 
 import type { Result } from 'neverthrow';

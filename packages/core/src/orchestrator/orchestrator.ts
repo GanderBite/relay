@@ -1,22 +1,21 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-
+import { BatonStore } from '../batons.js';
 import { CostTracker } from '../cost.js';
 import {
   AuthTimeoutError,
   ERROR_CODES,
-  RaceDefinitionError,
   PipelineError,
+  RaceDefinitionError,
   RaceStateWriteError,
   toRaceDefError,
 } from '../errors.js';
-import type { Race, RaceState, Runner, RunnerState } from '../race/types.js';
-import { BatonStore } from '../batons.js';
 import { createLogger, type Logger } from '../logger.js';
-import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
+import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
-import { loadRaceSettings, loadGlobalSettings } from '../settings/load.js';
+import type { Race, RaceState, Runner, RunnerState } from '../race/types.js';
+import { loadGlobalSettings, loadRaceSettings } from '../settings/load.js';
 import { resolveProvider } from '../settings/resolve.js';
 import { loadState, RaceStateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
@@ -101,10 +100,8 @@ export interface RunResult {
  * subset of this shape; the Runner builds each per-runner ctx from this central
  * bag plus the resolved provider binding.
  *
- * Auth opt-in lives entirely in provider selection: selecting `claude-agent-sdk`
- * (via --provider, race settings, or global settings) IS the API-key opt-in,
- * and that provider's authenticate() enforces the required ANTHROPIC_API_KEY.
- * No escape hatch is threaded through this context.
+ * Auth is enforced at provider selection: the configured provider's authenticate()
+ * runs before the race starts. No auth escape hatch is threaded through this context.
  */
 export interface RunnerExecutionContext {
   race: Race<unknown>;
@@ -179,11 +176,7 @@ export class Orchestrator {
     this.#runDirOverride = opts.runDir;
   }
 
-  async run<TInput>(
-    race: Race<TInput>,
-    input: unknown,
-    opts: RunOptions = {},
-  ): Promise<RunResult> {
+  async run<TInput>(race: Race<TInput>, input: unknown, opts: RunOptions = {}): Promise<RunResult> {
     const runId = shortRunId();
     const runDir = this.#runDirOverride ?? defaultRunDir(runId);
     const parallelism = opts.parallelism ?? DEFAULT_PARALLELISM;
@@ -244,11 +237,7 @@ export class Orchestrator {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      await this.#authenticateAll(
-        uniqueProviders,
-        opts.authTimeoutMs,
-        abortController.signal,
-      );
+      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -290,10 +279,7 @@ export class Orchestrator {
     raceStateMachine.clearRunnerResults();
 
     if (runStatus === 'aborted') {
-      logger.warn(
-        { event: 'run.aborted', runId, source: abortSource ?? 'unknown' },
-        'run aborted',
-      );
+      logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
     }
 
     const summary = costTracker.summary();
@@ -467,11 +453,7 @@ export class Orchestrator {
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
 
     try {
-      await this.#authenticateAll(
-        uniqueProviders,
-        opts.authTimeoutMs,
-        abortController.signal,
-      );
+      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -514,10 +496,7 @@ export class Orchestrator {
     raceStateMachine.clearRunnerResults();
 
     if (runStatus === 'aborted') {
-      logger.warn(
-        { event: 'run.aborted', runId, source: abortSource ?? 'unknown' },
-        'run aborted',
-      );
+      logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
     }
 
     const summary = costTracker.summary();
@@ -545,10 +524,7 @@ export class Orchestrator {
    * succeeded runner, and derives durationMs from the recorded startedAt /
    * updatedAt span so the returned shape matches a first-run RunResult.
    */
-  async #rebuildSucceededResult(
-    runDir: string,
-    persistedState: RaceState,
-  ): Promise<RunResult> {
+  async #rebuildSucceededResult(runDir: string, persistedState: RaceState): Promise<RunResult> {
     const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
     const loadResult = await costTracker.load();
     if (loadResult.isErr()) throw loadResult.error;
@@ -658,11 +634,7 @@ export class Orchestrator {
       });
 
       try {
-        const auth = await Promise.race([
-          provider.authenticate(),
-          timeoutPromise,
-          abortPromise,
-        ]);
+        const auth = await Promise.race([provider.authenticate(), timeoutPromise, abortPromise]);
         if (auth.isErr()) throw auth.error;
       } finally {
         if (timerId !== undefined) clearTimeout(timerId);
@@ -673,10 +645,7 @@ export class Orchestrator {
     }
   }
 
-  async #closeProviders(
-    providers: Iterable<Provider>,
-    logger: Logger,
-  ): Promise<void> {
+  async #closeProviders(providers: Iterable<Provider>, logger: Logger): Promise<void> {
     for (const provider of providers) {
       if (provider.close === undefined) continue;
       try {
@@ -764,353 +733,359 @@ export class Orchestrator {
     // leak onto the shared AbortController and node eventually warns with
     // MaxListenersExceededWarning on long or frequently-failing runs.
     try {
-    // Named handler + finally cleanup so each raceAbort call removes its own
-    // listener on the happy path. Without removal, listeners accumulate on the
-    // shared AbortController for the lifetime of the run — node prints a
-    // MaxListenersExceededWarning at 11+ on any reasonably sized race.
-    const raceAbort = async <T>(work: Promise<T>): Promise<T> => {
-      if (abortController.signal.aborted) {
-        throw new RunAbortedError();
-      }
-      let abortHandler: (() => void) | undefined;
-      const abortPromise = new Promise<never>((_resolve, reject) => {
-        abortHandler = (): void => {
-          reject(new RunAbortedError());
-        };
-        abortController.signal.addEventListener('abort', abortHandler, { once: true });
-      });
-      try {
-        return await Promise.race([work, abortPromise]);
-      } finally {
-        if (abortHandler !== undefined) {
-          abortController.signal.removeEventListener('abort', abortHandler);
+      // Named handler + finally cleanup so each raceAbort call removes its own
+      // listener on the happy path. Without removal, listeners accumulate on the
+      // shared AbortController for the lifetime of the run — node prints a
+      // MaxListenersExceededWarning at 11+ on any reasonably sized race.
+      const raceAbort = async <T>(work: Promise<T>): Promise<T> => {
+        if (abortController.signal.aborted) {
+          throw new RunAbortedError();
         }
-      }
-    };
-
-    const runExecutor = async (runner: Runner, attempt: number): Promise<RunnerResult> => {
-      const runnerLogger = logger.child({ runnerId: runner.id });
-      const baseCtx: RunnerExecutionContext = {
-        race,
-        runDir,
-        runId,
-        raceName: race.name,
-        raceDir,
-        runnerId: runner.id,
-        attempt,
-        abortSignal: abortController.signal,
-        batonStore,
-        costTracker,
-        raceStateMachine,
-        logger: runnerLogger,
-        providers,
-        provider,
+        let abortHandler: (() => void) | undefined;
+        const abortPromise = new Promise<never>((_resolve, reject) => {
+          abortHandler = (): void => {
+            reject(new RunAbortedError());
+          };
+          abortController.signal.addEventListener('abort', abortHandler, { once: true });
+        });
+        try {
+          return await Promise.race([work, abortPromise]);
+        } finally {
+          if (abortHandler !== undefined) {
+            abortController.signal.removeEventListener('abort', abortHandler);
+          }
+        }
       };
 
-      switch (runner.kind) {
-        case 'prompt': {
-          const runnerProvider = providerByRunner.get(runner.id);
-          if (runnerProvider === undefined) {
-            throw new RaceDefinitionError(
-              `no provider resolved for prompt runner "${runner.id}"`,
-              { runnerId: runner.id },
-            );
-          }
-          return executePrompt(runner, {
-            runDir,
-            raceDir,
-            raceName: race.name,
-            runId,
-            runnerId: runner.id,
-            attempt,
-            abortSignal: abortController.signal,
-            batonStore,
-            costTracker,
-            logger: runnerLogger,
-            provider: runnerProvider,
-            inputVars,
-          });
-        }
-        case 'script':
-          return executeScript(runner, {
-            runDir,
-            runnerId: runner.id,
-            attempt,
-            abortSignal: abortController.signal,
-            logger: runnerLogger,
-          });
-        case 'branch':
-          return executeBranch(runner, {
-            runDir,
-            runnerId: runner.id,
-            attempt,
-            abortSignal: abortController.signal,
-            logger: runnerLogger,
-          });
-        case 'parallel':
-          return executeParallel(runner, {
-            runnerId: runner.id,
-            runner,
-            attempt,
-            abortSignal: abortController.signal,
-            logger: runnerLogger,
-            // Branches share the same dispatch path as top-level steps so each
-            // branch honors its own maxRetries/timeoutMs/abort policy. Without
-            // this, a branch with maxRetries: 3 dispatched via parallel would
-            // fail on the first attempt regardless of its own retry budget.
-            dispatch: (branchRunnerId: string): Promise<RunnerResult> =>
-              dispatchRunner(branchRunnerId),
-            // On retry (the Runner re-dispatched the parent parallel runner
-            // after a mixed-outcome first attempt) or on a resumed run, some
-            // branches may already be in 'succeeded' status. Re-dispatching
-            // those trips startRunner's pending-only guard with a confusing
-            // RaceStateTransitionError. Expose both the current branch status and
-            // any cached result so the parallel executor can short-circuit.
-            getBranchStatus: (branchRunnerId: string) => {
-              const branchState = raceStateMachine.getState().runners[branchRunnerId];
-              return branchState?.status ?? 'unknown';
-            },
-            getBranchResult: (branchRunnerId: string) =>
-              raceStateMachine.getRunnerResult(branchRunnerId),
-          });
-        case 'terminal':
-          return executeTerminal(runner, baseCtx);
-      }
-    };
-
-    const runnerRetryBudget = (
-      runner: Runner,
-    ): { maxRetries: number; timeoutMs: number | undefined } => {
-      if (runner.kind === 'prompt') {
-        // Backstop for the default prompt timeout. The schema applies the same value
-        // when authors run their race through runner.prompt(...), but the Runner
-        // also accepts hand-built PromptRunnerSpec literals; without this fallback
-        // a runaway invocation could stream tokens indefinitely.
-        return {
-          maxRetries: runner.maxRetries ?? 0,
-          timeoutMs: runner.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
+      const runExecutor = async (runner: Runner, attempt: number): Promise<RunnerResult> => {
+        const runnerLogger = logger.child({ runnerId: runner.id });
+        const baseCtx: RunnerExecutionContext = {
+          race,
+          runDir,
+          runId,
+          raceName: race.name,
+          raceDir,
+          runnerId: runner.id,
+          attempt,
+          abortSignal: abortController.signal,
+          batonStore,
+          costTracker,
+          raceStateMachine,
+          logger: runnerLogger,
+          providers,
+          provider,
         };
-      }
-      if (runner.kind === 'script' || runner.kind === 'branch') {
-        return { maxRetries: runner.maxRetries ?? 0, timeoutMs: runner.timeoutMs };
-      }
-      return { maxRetries: 0, timeoutMs: undefined };
-    };
 
-    const promptRunnerOutput = (
-      result: RunnerResult,
-    ): { batons?: readonly string[]; artifacts?: readonly string[] } => {
-      if (
-        typeof result !== 'object' ||
-        result === null ||
-        !('kind' in result) ||
-        result.kind !== 'prompt'
-      ) {
-        return {};
-      }
-      // PromptRunnerResult tracks batons (keys produced via output.baton)
-      // and artifacts (file paths produced via output.artifact) as independent
-      // arrays. completeRunner persists both projections on RunnerState verbatim
-      // so RunResult.artifacts surfaces every file the runner produced and
-      // resume can introspect which batons landed without re-reading them.
-      return { batons: result.batons, artifacts: result.artifacts };
-    };
-
-    /**
-     * Run one step end-to-end: state transitions, retry, abort race, and
-     * either completeRunner (with the executor's result) or failRunner on error.
-     * Returns the executor's RunnerResult so callers like the parallel executor
-     * can use the value; throws on failure (including abort) so awaiters get
-     * the same error class withRetry+raceAbort produce.
-     *
-     * The DAG walker calls this and pushes the outcome into the completions
-     * queue; the parallel executor's branch dispatch awaits it directly.
-     * Either path performs the same state mutations exactly once per runner.
-     */
-    const dispatchRunner = async (runnerId: string): Promise<RunnerResult> => {
-      const runner = race.runners[runnerId];
-      if (runner === undefined) {
-        throw new RaceDefinitionError(`unknown runner id "${runnerId}"`);
-      }
-
-      // inflight lifecycle is fully contained in this try/finally so the slot
-      // is released regardless of which step of the dispatch pipeline throws
-      // (startRunner transition, startSave, executor, or completeRunner). Without
-      // the outer try/finally, a throw before entering an inner try would leak
-      // the slot and the walker's queue would hang on a phantom in-flight
-      // count. inflight is managed here (not by the walker) so steps
-      // dispatched as parallel branches remove themselves on completion; the
-      // walker's drain loop only observes the slot count to gate parallelism.
-      inflight.add(runnerId);
-      try {
-        const startResult = raceStateMachine.startRunner(runnerId);
-        if (startResult.isErr()) throw startResult.error;
-
-        const { maxRetries, timeoutMs } = runnerRetryBudget(runner);
-
-        const startSave = await raceStateMachine.save();
-        if (startSave.isErr()) {
-          logger.error(
-            { event: 'state.save_failed', error: startSave.error.message },
-            'state.json atomic write failed',
-          );
-          throw startSave.error;
-        }
-
-        try {
-          const value = await raceAbort(
-            withRetry((attempt) => runExecutor(runner, attempt), {
-              maxRetries,
-              ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-              logger,
-              runnerId,
-            }),
-          );
-          const completeResult = raceStateMachine.completeRunner(runnerId, promptRunnerOutput(value));
-          if (completeResult.isErr()) throw completeResult.error;
-          raceStateMachine.recordRunnerResult(runnerId, value);
-          return value;
-        } catch (caught) {
-          if (!isAbortLike(caught)) {
-            const failResult = raceStateMachine.failRunner(runnerId, errorMessageOf(caught));
-            if (failResult.isErr()) {
-              logger.error(
-                {
-                  event: 'state.transition_failed',
-                  runnerId,
-                  error: failResult.error.message,
-                },
-                'state transition failed after step failure',
+        switch (runner.kind) {
+          case 'prompt': {
+            const runnerProvider = providerByRunner.get(runner.id);
+            if (runnerProvider === undefined) {
+              throw new RaceDefinitionError(
+                `no provider resolved for prompt runner "${runner.id}"`,
+                { runnerId: runner.id },
               );
             }
+            return executePrompt(runner, {
+              runDir,
+              raceDir,
+              raceName: race.name,
+              runId,
+              runnerId: runner.id,
+              attempt,
+              abortSignal: abortController.signal,
+              batonStore,
+              costTracker,
+              logger: runnerLogger,
+              provider: runnerProvider,
+              inputVars,
+            });
           }
-          // Abort leaves the step in running state; markRun('aborted') sweeps
-          // it to failed with a descriptive errorMessage so on-disk state is
-          // never stuck in running after SIGINT.
-          throw caught;
-        }
-      } finally {
-        inflight.delete(runnerId);
-      }
-    };
-
-    const enqueueWalker = (runnerId: string): void => {
-      void dispatchRunner(runnerId)
-        .then(
-          (result) => {
-            completions.push({ runnerId, result });
-          },
-          (error: unknown) => {
-            completions.push({ runnerId, error });
-          },
-        )
-        .finally(() => {
-          const cb = notify;
-          notify = null;
-          if (cb !== null) cb();
-        });
-    };
-
-    const enqueueReady = (): void => {
-      const state = raceStateMachine.getState().runners;
-      for (const candidate of race.graph.topoOrder) {
-        const candState = state[candidate];
-        if (candState === undefined || candState.status !== 'pending') continue;
-        if (queued.has(candidate) || inflight.has(candidate)) continue;
-        const preds = race.graph.predecessors.get(candidate);
-        if (preds === undefined) continue;
-        let ready = true;
-        for (const p of preds) {
-          const predState = state[p];
-          const predStatus = predState?.status;
-          // `continue` onFail lets dependents run even after a failure.
-          const pred = race.runners[p];
-          const predAllowsContinue =
-            pred !== undefined &&
-            pred.kind !== 'terminal' &&
-            pred.kind !== 'parallel' &&
-            pred.onFail === 'continue';
-          const ok =
-            predStatus === 'succeeded' ||
-            predStatus === 'skipped' ||
-            (predStatus === 'failed' && predAllowsContinue);
-          if (!ok) {
-            ready = false;
-            break;
-          }
-        }
-        if (ready) { queue.push(candidate); queued.add(candidate); }
-      }
-    };
-
-    const runnerOnFail = (runner: Runner): 'abort' | 'continue' | string => {
-      if (runner.kind === 'terminal') return 'abort';
-      return runner.onFail ?? 'abort';
-    };
-
-    while (queue.length > 0 || inflight.size > 0) {
-      if (abortController.signal.aborted) break;
-
-      while (!runFailed && queue.length > 0 && inflight.size < parallelism) {
-        const next = queue.shift();
-        if (next === undefined) break;
-        queued.delete(next);
-        enqueueWalker(next);
-      }
-
-      if (inflight.size === 0 && completions.length === 0) break;
-
-      if (completions.length === 0) {
-        await waitForCompletion();
-      }
-
-      while (completions.length > 0) {
-        const completed = completions.shift();
-        if (completed === undefined) break;
-        // dispatchRunner's finally already released the inflight slot before
-        // pushing this completion; nothing left to clean up here.
-
-        if (completed.error !== undefined && !isAbortLike(completed.error)) {
-          // A state.json write failure inside dispatchRunner is not a step
-          // failure — it is an I/O failure the caller needs to observe and
-          // react to (retry the run, widen disk quota, etc.). Propagate it
-          // verbatim so the CLI's exit-code map surfaces the STATE_WRITE
-          // code instead of swallowing the error as an onFail=abort runner.
-          if (completed.error instanceof RaceStateWriteError) {
-            throw completed.error;
-          }
-          const message = errorMessageOf(completed.error);
-          const runner = race.runners[completed.runnerId];
-          const policy = runner !== undefined ? runnerOnFail(runner) : 'abort';
-          if (policy === 'continue') {
-            logger.warn(
-              {
-                event: 'runner.continue_after_fail',
-                runnerId: completed.runnerId,
-                error: message,
+          case 'script':
+            return executeScript(runner, {
+              runDir,
+              runnerId: runner.id,
+              attempt,
+              abortSignal: abortController.signal,
+              logger: runnerLogger,
+            });
+          case 'branch':
+            return executeBranch(runner, {
+              runDir,
+              runnerId: runner.id,
+              attempt,
+              abortSignal: abortController.signal,
+              logger: runnerLogger,
+            });
+          case 'parallel':
+            return executeParallel(runner, {
+              runnerId: runner.id,
+              runner,
+              attempt,
+              abortSignal: abortController.signal,
+              logger: runnerLogger,
+              // Branches share the same dispatch path as top-level steps so each
+              // branch honors its own maxRetries/timeoutMs/abort policy. Without
+              // this, a branch with maxRetries: 3 dispatched via parallel would
+              // fail on the first attempt regardless of its own retry budget.
+              dispatch: (branchRunnerId: string): Promise<RunnerResult> =>
+                dispatchRunner(branchRunnerId),
+              // On retry (the Runner re-dispatched the parent parallel runner
+              // after a mixed-outcome first attempt) or on a resumed run, some
+              // branches may already be in 'succeeded' status. Re-dispatching
+              // those trips startRunner's pending-only guard with a confusing
+              // RaceStateTransitionError. Expose both the current branch status and
+              // any cached result so the parallel executor can short-circuit.
+              getBranchStatus: (branchRunnerId: string) => {
+                const branchState = raceStateMachine.getState().runners[branchRunnerId];
+                return branchState?.status ?? 'unknown';
               },
-              'step failed; onFail=continue keeps downstream steps going',
+              getBranchResult: (branchRunnerId: string) =>
+                raceStateMachine.getRunnerResult(branchRunnerId),
+            });
+          case 'terminal':
+            return executeTerminal(runner, baseCtx);
+        }
+      };
+
+      const runnerRetryBudget = (
+        runner: Runner,
+      ): { maxRetries: number; timeoutMs: number | undefined } => {
+        if (runner.kind === 'prompt') {
+          // Backstop for the default prompt timeout. The schema applies the same value
+          // when authors run their race through runner.prompt(...), but the Runner
+          // also accepts hand-built PromptRunnerSpec literals; without this fallback
+          // a runaway invocation could stream tokens indefinitely.
+          return {
+            maxRetries: runner.maxRetries ?? 0,
+            timeoutMs: runner.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
+          };
+        }
+        if (runner.kind === 'script' || runner.kind === 'branch') {
+          return { maxRetries: runner.maxRetries ?? 0, timeoutMs: runner.timeoutMs };
+        }
+        return { maxRetries: 0, timeoutMs: undefined };
+      };
+
+      const promptRunnerOutput = (
+        result: RunnerResult,
+      ): { batons?: readonly string[]; artifacts?: readonly string[] } => {
+        if (
+          typeof result !== 'object' ||
+          result === null ||
+          !('kind' in result) ||
+          result.kind !== 'prompt'
+        ) {
+          return {};
+        }
+        // PromptRunnerResult tracks batons (keys produced via output.baton)
+        // and artifacts (file paths produced via output.artifact) as independent
+        // arrays. completeRunner persists both projections on RunnerState verbatim
+        // so RunResult.artifacts surfaces every file the runner produced and
+        // resume can introspect which batons landed without re-reading them.
+        return { batons: result.batons, artifacts: result.artifacts };
+      };
+
+      /**
+       * Run one step end-to-end: state transitions, retry, abort race, and
+       * either completeRunner (with the executor's result) or failRunner on error.
+       * Returns the executor's RunnerResult so callers like the parallel executor
+       * can use the value; throws on failure (including abort) so awaiters get
+       * the same error class withRetry+raceAbort produce.
+       *
+       * The DAG walker calls this and pushes the outcome into the completions
+       * queue; the parallel executor's branch dispatch awaits it directly.
+       * Either path performs the same state mutations exactly once per runner.
+       */
+      const dispatchRunner = async (runnerId: string): Promise<RunnerResult> => {
+        const runner = race.runners[runnerId];
+        if (runner === undefined) {
+          throw new RaceDefinitionError(`unknown runner id "${runnerId}"`);
+        }
+
+        // inflight lifecycle is fully contained in this try/finally so the slot
+        // is released regardless of which step of the dispatch pipeline throws
+        // (startRunner transition, startSave, executor, or completeRunner). Without
+        // the outer try/finally, a throw before entering an inner try would leak
+        // the slot and the walker's queue would hang on a phantom in-flight
+        // count. inflight is managed here (not by the walker) so steps
+        // dispatched as parallel branches remove themselves on completion; the
+        // walker's drain loop only observes the slot count to gate parallelism.
+        inflight.add(runnerId);
+        try {
+          const startResult = raceStateMachine.startRunner(runnerId);
+          if (startResult.isErr()) throw startResult.error;
+
+          const { maxRetries, timeoutMs } = runnerRetryBudget(runner);
+
+          const startSave = await raceStateMachine.save();
+          if (startSave.isErr()) {
+            logger.error(
+              { event: 'state.save_failed', error: startSave.error.message },
+              'state.json atomic write failed',
             );
-          } else {
-            runFailed = true;
+            throw startSave.error;
+          }
+
+          try {
+            const value = await raceAbort(
+              withRetry((attempt) => runExecutor(runner, attempt), {
+                maxRetries,
+                ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+                logger,
+                runnerId,
+              }),
+            );
+            const completeResult = raceStateMachine.completeRunner(
+              runnerId,
+              promptRunnerOutput(value),
+            );
+            if (completeResult.isErr()) throw completeResult.error;
+            raceStateMachine.recordRunnerResult(runnerId, value);
+            return value;
+          } catch (caught) {
+            if (!isAbortLike(caught)) {
+              const failResult = raceStateMachine.failRunner(runnerId, errorMessageOf(caught));
+              if (failResult.isErr()) {
+                logger.error(
+                  {
+                    event: 'state.transition_failed',
+                    runnerId,
+                    error: failResult.error.message,
+                  },
+                  'state transition failed after step failure',
+                );
+              }
+            }
+            // Abort leaves the step in running state; markRun('aborted') sweeps
+            // it to failed with a descriptive errorMessage so on-disk state is
+            // never stuck in running after SIGINT.
+            throw caught;
+          }
+        } finally {
+          inflight.delete(runnerId);
+        }
+      };
+
+      const enqueueWalker = (runnerId: string): void => {
+        void dispatchRunner(runnerId)
+          .then(
+            (result) => {
+              completions.push({ runnerId, result });
+            },
+            (error: unknown) => {
+              completions.push({ runnerId, error });
+            },
+          )
+          .finally(() => {
+            const cb = notify;
+            notify = null;
+            if (cb !== null) cb();
+          });
+      };
+
+      const enqueueReady = (): void => {
+        const state = raceStateMachine.getState().runners;
+        for (const candidate of race.graph.topoOrder) {
+          const candState = state[candidate];
+          if (candState === undefined || candState.status !== 'pending') continue;
+          if (queued.has(candidate) || inflight.has(candidate)) continue;
+          const preds = race.graph.predecessors.get(candidate);
+          if (preds === undefined) continue;
+          let ready = true;
+          for (const p of preds) {
+            const predState = state[p];
+            const predStatus = predState?.status;
+            // `continue` onFail lets dependents run even after a failure.
+            const pred = race.runners[p];
+            const predAllowsContinue =
+              pred !== undefined &&
+              pred.kind !== 'terminal' &&
+              pred.kind !== 'parallel' &&
+              pred.onFail === 'continue';
+            const ok =
+              predStatus === 'succeeded' ||
+              predStatus === 'skipped' ||
+              (predStatus === 'failed' && predAllowsContinue);
+            if (!ok) {
+              ready = false;
+              break;
+            }
+          }
+          if (ready) {
+            queue.push(candidate);
+            queued.add(candidate);
+          }
+        }
+      };
+
+      const runnerOnFail = (runner: Runner): 'abort' | 'continue' | string => {
+        if (runner.kind === 'terminal') return 'abort';
+        return runner.onFail ?? 'abort';
+      };
+
+      while (queue.length > 0 || inflight.size > 0) {
+        if (abortController.signal.aborted) break;
+
+        while (!runFailed && queue.length > 0 && inflight.size < parallelism) {
+          const next = queue.shift();
+          if (next === undefined) break;
+          queued.delete(next);
+          enqueueWalker(next);
+        }
+
+        if (inflight.size === 0 && completions.length === 0) break;
+
+        if (completions.length === 0) {
+          await waitForCompletion();
+        }
+
+        while (completions.length > 0) {
+          const completed = completions.shift();
+          if (completed === undefined) break;
+          // dispatchRunner's finally already released the inflight slot before
+          // pushing this completion; nothing left to clean up here.
+
+          if (completed.error !== undefined && !isAbortLike(completed.error)) {
+            // A state.json write failure inside dispatchRunner is not a step
+            // failure — it is an I/O failure the caller needs to observe and
+            // react to (retry the run, widen disk quota, etc.). Propagate it
+            // verbatim so the CLI's exit-code map surfaces the STATE_WRITE
+            // code instead of swallowing the error as an onFail=abort runner.
+            if (completed.error instanceof RaceStateWriteError) {
+              throw completed.error;
+            }
+            const message = errorMessageOf(completed.error);
+            const runner = race.runners[completed.runnerId];
+            const policy = runner !== undefined ? runnerOnFail(runner) : 'abort';
+            if (policy === 'continue') {
+              logger.warn(
+                {
+                  event: 'runner.continue_after_fail',
+                  runnerId: completed.runnerId,
+                  error: message,
+                },
+                'step failed; onFail=continue keeps downstream steps going',
+              );
+            } else {
+              runFailed = true;
+            }
+          }
+
+          const saveResult = await raceStateMachine.save();
+          if (saveResult.isErr()) {
+            logger.error(
+              { event: 'state.save_failed', error: saveResult.error.message },
+              'state.json atomic write failed',
+            );
+            throw saveResult.error;
           }
         }
 
-        const saveResult = await raceStateMachine.save();
-        if (saveResult.isErr()) {
-          logger.error(
-            { event: 'state.save_failed', error: saveResult.error.message },
-            'state.json atomic write failed',
-          );
-          throw saveResult.error;
-        }
+        if (!runFailed && !abortController.signal.aborted) enqueueReady();
       }
 
-      if (!runFailed && !abortController.signal.aborted) enqueueReady();
-    }
-
-    if (abortController.signal.aborted) return 'aborted';
-    return runFailed ? 'failed' : 'succeeded';
+      if (abortController.signal.aborted) return 'aborted';
+      return runFailed ? 'failed' : 'succeeded';
     } finally {
       abortController.signal.removeEventListener('abort', onAbort);
     }
