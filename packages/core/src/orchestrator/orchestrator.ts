@@ -33,7 +33,7 @@ import { withRetry } from './retry.js';
 import type { RunnerResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
-// Mirrors the default in flow/schemas.ts. Duplicated here so the Runner
+// Mirrors the default in race/schemas.ts. Duplicated here so the Runner
 // can backstop hand-built PromptRunnerSpec values that bypassed the schema parse
 // (e.g. spec literals authored without going through promptStep(...)).
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
@@ -58,7 +58,7 @@ export interface RunOptions {
   parallelism?: number;
   /**
    * Directory the race package lives in — used to resolve prompt template
-   * paths (runner.promptFile) relative to the race AND to locate the per-flow
+   * paths (runner.promptFile) relative to the race AND to locate the per-race
    * `settings.json` for provider resolution. Defaults to process.cwd().
    * Set explicitly when the Runner is embedded in a host process whose cwd
    * is not the race's directory.
@@ -80,7 +80,7 @@ export interface RunOptions {
   authTimeoutMs?: number;
   /**
    * Provider name supplied via the CLI `--provider` flag. When set it wins
-   * over per-flow and per-user settings during resolution. Leave undefined to
+   * over per-race and per-user settings during resolution. Leave undefined to
    * fall back to the race's `settings.json`, then `~/.relay/settings.json`,
    * and finally `NoProviderConfiguredError` if neither carries a name.
    */
@@ -97,12 +97,12 @@ export interface RunResult {
 }
 
 /**
- * Context threaded into every per-step executor. Executors receive a tailored
- * subset of this shape; the Runner builds each per-step ctx from this central
+ * Context threaded into every per-runner executor. Executors receive a tailored
+ * subset of this shape; the Runner builds each per-runner ctx from this central
  * bag plus the resolved provider binding.
  *
  * Auth opt-in lives entirely in provider selection: selecting `claude-agent-sdk`
- * (via --provider, flow settings, or global settings) IS the API-key opt-in,
+ * (via --provider, race settings, or global settings) IS the API-key opt-in,
  * and that provider's authenticate() enforces the required ANTHROPIC_API_KEY.
  * No escape hatch is threaded through this context.
  */
@@ -199,7 +199,7 @@ export class Orchestrator {
     await clearLiveDir(runDir);
     await mkdir(join(runDir, 'live'), { recursive: true });
 
-    await this.#writeFlowRef(runDir, race, opts.racePath);
+    await this.#writeRaceRef(runDir, race, opts.racePath);
 
     const logger =
       this.#logger ??
@@ -541,7 +541,7 @@ export class Orchestrator {
    * provider authentication, the DAG walker, and every side effect of a fresh
    * resume — by contract a succeeded run is idempotent. Pulls cost totals
    * from metrics.json via CostTracker.load() (the state.json snapshot does
-   * not carry per-step token counts), aggregates artifacts across every
+   * not carry per-runner token counts), aggregates artifacts across every
    * succeeded runner, and derives durationMs from the recorded startedAt /
    * updatedAt span so the returned shape matches a first-run RunResult.
    */
@@ -574,7 +574,7 @@ export class Orchestrator {
   }
 
   /**
-   * Run the per-run provider resolution chain — flag → flow settings → global
+   * Run the per-run provider resolution chain — flag → race settings → global
    * settings → registry. Surfaces typed errors verbatim so the CLI exit-code
    * mapper can branch on `NoProviderConfiguredError` (E_NO_PROVIDER) and on a
    * `RaceDefinitionError` for an unknown provider name. Settings file IO
@@ -605,7 +605,7 @@ export class Orchestrator {
     return resolved.value;
   }
 
-  async #writeFlowRef<TInput>(
+  async #writeRaceRef<TInput>(
     runDir: string,
     race: Race<TInput>,
     racePath: string | undefined,
@@ -882,8 +882,8 @@ export class Orchestrator {
       runner: Runner,
     ): { maxRetries: number; timeoutMs: number | undefined } => {
       if (runner.kind === 'prompt') {
-        // Backstop for the §4.4.1 default. The schema applies the same value
-        // when authors run their flow through promptStep(...), but the Runner
+        // Backstop for the default prompt timeout. The schema applies the same value
+        // when authors run their race through runner.prompt(...), but the Runner
         // also accepts hand-built PromptRunnerSpec literals; without this fallback
         // a runaway invocation could stream tokens indefinitely.
         return {

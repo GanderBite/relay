@@ -89,7 +89,7 @@ export async function withRetry<T>(
 
     const code = error instanceof Error && 'code' in error
       ? (error as { code: unknown }).code
-      : ERROR_CODES.STEP_FAILURE;
+      : ERROR_CODES.RUNNER_FAILURE;
     const message = error instanceof Error ? error.message : String(error);
 
     logger.warn(

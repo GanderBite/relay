@@ -53,7 +53,7 @@ function synthesizeStep(raw: RunnerBuilderOutput, id: string): Runner {
 /**
  * Compile a race definition. Throws `RaceDefinitionError` synchronously when
  * the spec fails schema validation, contains a cycle, or references unknown
- * step ids. This is load-time programmer-error validation — flows that fail
+ * runner ids. This is load-time programmer-error validation — races that fail
  * to compile should abort module loading, not produce a runtime Result.
  */
 export function defineRace<TInput>(spec: RaceInput<TInput>): Race<TInput> {
@@ -67,14 +67,14 @@ export function defineRace<TInput>(spec: RaceInput<TInput>): Race<TInput> {
     const raw = specRunners[key];
     if (raw === undefined) {
       throw new RaceDefinitionError(
-        `runner "${key}" is undefined. Remove or replace it in defineRace({ runners: { "${key}": <step>, ... } }).`,
+        `runner "${key}" is undefined. Remove or replace it in defineRace({ runners: { "${key}": <runner>, ... } }).`,
       );
     }
     runners[key] = synthesizeStep(raw, key);
   }
 
   // Provider capability negotiation runs at Runner.run() time, not here —
-  // the step builders do not have a ProviderRegistry in scope, and the
+  // the runner builders do not have a ProviderRegistry in scope, and the
   // runner can resolve the binding once per run.
   const graphResult = buildGraph(runners, spec.start);
   if (graphResult.isErr()) throw graphResult.error;

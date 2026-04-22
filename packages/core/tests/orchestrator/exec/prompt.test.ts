@@ -11,7 +11,7 @@ import { executePrompt } from '../../../src/orchestrator/exec/prompt.js';
 import { MockProvider } from '../../../src/testing/mock-provider.js';
 import { BatonStore } from '../../../src/batons.js';
 import { CostTracker } from '../../../src/cost.js';
-import { BatonSchemaError, StepFailureError } from '../../../src/errors.js';
+import { BatonSchemaError, RunnerFailureError } from '../../../src/errors.js';
 import { runner } from '../../../src/race/runner.js';
 import { z } from '../../../src/zod.js';
 import { createLogger } from '../../../src/logger.js';
@@ -165,7 +165,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
     expect(metric.costUsd).toBe(0.01);
   });
 
-  it('[EXEC-PROMPT-006] wraps provider errors in StepFailureError with runnerId + attempt', async () => {
+  it('[EXEC-PROMPT-006] wraps provider errors in RunnerFailureError with runnerId + attempt', async () => {
     const s = runner.prompt({ promptFile: 'prompts/p.md', output: { baton: 'x' } });
     const provider = new MockProvider({
       responses: {
@@ -178,14 +178,14 @@ describe('executePrompt (sprint 5 task_33)', () => {
     await expect(
       executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]),
     ).rejects.toMatchObject({
-      name: 'StepFailureError',
+      name: 'RunnerFailureError',
       attempt: 2,
     });
     // Also verify class
     try {
       await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     } catch (e) {
-      expect(e).toBeInstanceOf(StepFailureError);
+      expect(e).toBeInstanceOf(RunnerFailureError);
     }
   });
 

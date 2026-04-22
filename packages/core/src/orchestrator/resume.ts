@@ -14,6 +14,8 @@ import type { Race, RaceState } from '../race/types.js';
 import { parseWithSchema } from '../util/json.js';
 import { z } from '../zod.js';
 
+// On-disk name changed from flow-ref.json (pre-sprint-15) to race-ref.json.
+// Runs started before this rename cannot be resumed — re-run from scratch.
 const RACE_REF_FILENAME = 'race-ref.json';
 
 export interface RaceRef {

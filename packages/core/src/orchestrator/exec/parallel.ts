@@ -1,4 +1,4 @@
-import { StepFailureError } from '../../errors.js';
+import { RunnerFailureError } from '../../errors.js';
 import type { ParallelRunnerSpec } from '../../race/types.js';
 import type { Logger } from '../../logger.js';
 
@@ -55,7 +55,7 @@ interface BranchOutcome {
  * Fans out to all branches concurrently via `dispatch`, then fans in.
  *
  * On all-success: returns { kind: 'parallel', branches: Record<branchId, result> }.
- * On any failure: throws StepFailureError with aggregated branch failure details.
+ * On any failure: throws RunnerFailureError with aggregated branch failure details.
  *
  * Abort propagation is passive — individual dispatch calls observe the abort
  * signal through their own execution context and reject accordingly. Those
@@ -99,7 +99,7 @@ export async function executeParallel(
       return { branch: branchId, message, cause: reason };
     });
 
-    throw new StepFailureError(
+    throw new RunnerFailureError(
       `parallel runner "${runner.id}" failed: ${failures.length} of ${runner.branches.length} branch(es) failed`,
       ctx.runnerId,
       ctx.attempt,

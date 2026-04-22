@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from '../../logger.js';
-import { StepFailureError } from '../../errors.js';
+import { RunnerFailureError } from '../../errors.js';
 import type { ScriptRunnerSpec } from '../../race/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { runProcess } from './process.js';
@@ -13,7 +13,6 @@ export interface ScriptExecContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
-  step?: unknown;
 }
 
 export interface ScriptRunnerResult {
@@ -32,7 +31,7 @@ export async function executeScript(
   const rawArgs = Array.isArray(runner.run) ? runner.run : splitShell(runner.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new StepFailureError(
+    throw new RunnerFailureError(
       `runner "${runnerId}" has an empty run command`,
       runnerId,
       attempt,
@@ -90,7 +89,7 @@ export async function executeScript(
   }
 
   if (result.exitCode !== 0) {
-    throw new StepFailureError(
+    throw new RunnerFailureError(
       `runner "${runnerId}" exited with code ${result.exitCode}`,
       runnerId,
       attempt,

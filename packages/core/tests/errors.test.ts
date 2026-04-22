@@ -18,7 +18,7 @@ import {
   RaceStateTransitionError,
   RaceStateVersionMismatchError,
   RaceStateWriteError,
-  StepFailureError,
+  RunnerFailureError,
   TimeoutError,
 } from '../src/errors.js';
 import { safeParse, safeStringify, parseWithSchema } from '../src/util/json.js';
@@ -29,7 +29,7 @@ describe('Error hierarchy', () => {
   it('[ERROR-001] every concrete error class has a stable code from ERROR_CODES', () => {
     const instances: PipelineError[] = [
       new RaceDefinitionError('msg'),
-      new StepFailureError('msg', 'step-1', 1),
+      new RunnerFailureError('msg', 'step-1', 1),
       new ClaudeAuthError('msg'),
       new BatonSchemaError('msg', 'h', []),
       new BatonIoError('msg', 'h'),
@@ -63,11 +63,11 @@ describe('Error hierarchy', () => {
     expect(seen.size).toBe(instances.length);
   });
 
-  it('[ERROR-002] StepFailureError preserves runnerId + attempt as own properties', () => {
-    const e = new StepFailureError('nope', 'inventory', 3);
+  it('[ERROR-002] RunnerFailureError preserves runnerId + attempt as own properties', () => {
+    const e = new RunnerFailureError('nope', 'inventory', 3);
     expect(e.runnerId).toBe('inventory');
     expect(e.attempt).toBe(3);
-    expect(e.code).toBe(ERROR_CODES.STEP_FAILURE);
+    expect(e.code).toBe(ERROR_CODES.RUNNER_FAILURE);
   });
 });
 

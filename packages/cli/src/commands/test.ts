@@ -339,5 +339,5 @@ export default async function testCommand(args: unknown[], _opts: unknown): Prom
   const total = results.length;
   printSummary(passCount, total);
 
-  process.exit(passCount === total ? EXIT_CODES.success : EXIT_CODES.step_failure);
+  process.exit(passCount === total ? EXIT_CODES.success : EXIT_CODES.runner_failure);
 }

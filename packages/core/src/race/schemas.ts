@@ -22,11 +22,11 @@ const zodSchemaValue = z.custom<z.ZodType>((v) => v instanceof z.ZodType, {
 // onExit key: either the literal "default" or a numeric exit-code string.
 const onExitKey = z.union([z.literal('default'), z.string().regex(/^\d+$/)]);
 
-// onExit/onFail values shared by prompt, script, and branch steps.
+// onExit/onFail values shared by prompt, script, and branch runners.
 const onExitValue = z.union([z.literal('abort'), z.literal('continue'), runnerId]);
 const onFailValue = z.union([z.literal('abort'), z.literal('continue'), runnerId]);
 
-// Output variant for prompt steps. Modelled as an explicit union of the three
+// Output variant for prompt runners. Modelled as an explicit union of the three
 // shapes the spec enumerates — no single-object-with-refine shortcut that
 // could admit a fourth combination.
 export const promptOutputSchema: z.ZodType<PromptRunnerOutput> = z.union([
@@ -44,12 +44,12 @@ export const promptOutputSchema: z.ZodType<PromptRunnerOutput> = z.union([
   }),
 ]);
 
-// Bounds the worst-case billing for a runaway prompt. Per spec §4.4.1, every
-// prompt runner gets this default unless the author overrides it. The Runner
-// also applies the same fallback at dispatch time so flows that bypass this
-// schema (e.g. spec literals) still inherit the bound, but persisting it on
-// the parsed PromptRunnerSpec keeps the value visible to downstream tooling
-// (catalog linter, doctor command) that reads steps without re-running them.
+// Bounds the worst-case billing for a runaway prompt. Every prompt runner
+// gets this default unless the author overrides it. The Runner also applies
+// the same fallback at dispatch time so races that bypass this schema
+// (e.g. spec literals) still inherit the bound, but persisting it on the
+// parsed PromptRunnerSpec keeps the value visible to downstream tooling
+// (catalog linter, doctor command) that reads runners without re-running them.
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
 
 export const promptRunnerSpecSchema: z.ZodType<PromptRunnerSpec> = z.strictObject({
@@ -98,7 +98,7 @@ export const branchRunnerSpecSchema: z.ZodType<BranchRunnerSpec> = z.strictObjec
   onFail: onFailValue.optional(),
 });
 
-// Parallel steps do not support retry, timeout, context injection, or
+// Parallel runners do not support retry, timeout, context injection, or
 // `onFail: 'continue'`. The onFail union matches the spec exactly.
 export const parallelRunnerSpecSchema: z.ZodType<ParallelRunnerSpec> = z
   .strictObject({
@@ -114,7 +114,7 @@ export const parallelRunnerSpecSchema: z.ZodType<ParallelRunnerSpec> = z
     { message: 'parallel branches must be unique', path: ['branches'] },
   );
 
-// Terminal steps end the race — no retry, timeout, output, or onFail.
+// Terminal runners end the race — no retry, timeout, output, or onFail.
 export const terminalRunnerSpecSchema: z.ZodType<TerminalRunnerSpec> = z.strictObject({
   id: z.string(),
   kind: z.literal('terminal'),

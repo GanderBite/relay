@@ -18,7 +18,7 @@ import { safeParse } from '../../util/json.js';
 import {
   BatonSchemaError,
   PipelineError,
-  StepFailureError,
+  RunnerFailureError,
 } from '../../errors.js';
 import { writeLiveState } from '../live-state.js';
 import { z } from '../../zod.js';
@@ -76,7 +76,7 @@ function codeOf(cause: unknown): string | undefined {
  * Resolves the prompt template path relative to the race directory, refusing
  * absolute paths and any traversal that escapes the race root. Returning the
  * error as a value (vs. throwing) keeps the caller's single catch-site as the
- * only place that wraps into StepFailureError.
+ * only place that wraps into RunnerFailureError.
  */
 function resolvePromptPath(raceDir: string, promptFile: string): string {
   if (isAbsolute(promptFile)) {
@@ -220,7 +220,7 @@ async function runProviderInvocation(args: {
 /**
  * Schema-validation failures keep their class so the Orchestrator (and tests) can
  * discriminate a baton-shape bug from a provider/network failure. Every
- * other non-StepFailureError cause is wrapped so the retry loop only has one
+ * other non-RunnerFailureError cause is wrapped so the retry loop only has one
  * error type to dispatch on.
  */
 function wrapFailure(
@@ -228,10 +228,10 @@ function wrapFailure(
   runnerId: string,
   attempt: number,
 ): PipelineError {
-  if (cause instanceof StepFailureError) return cause;
+  if (cause instanceof RunnerFailureError) return cause;
   if (cause instanceof BatonSchemaError) return cause;
   const message = messageOf(cause);
-  return new StepFailureError(
+  return new RunnerFailureError(
     `runner "${runnerId}" failed: ${message}`,
     runnerId,
     attempt,
@@ -243,7 +243,7 @@ function wrapFailure(
  * Executes one prompt runner. Loads the template, injects declared batons,
  * invokes the provider, then routes the response to a baton (validated via
  * Zod when a schema is configured) and/or an artifact file. Cost metrics are
- * recorded on success; any upstream failure is wrapped in StepFailureError so
+ * recorded on success; any upstream failure is wrapped in RunnerFailureError so
  * the Orchestrator's retry loop sees a single error class.
  */
 export async function executePrompt(

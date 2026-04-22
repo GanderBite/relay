@@ -11,7 +11,7 @@ import {
   type PipelineError,
   ProviderRateLimitError,
   ProviderAuthError,
-  StepFailureError,
+  RunnerFailureError,
 } from '../../errors.js';
 
 const RATE_LIMIT_RE = /rate[\s-]?limit|HTTP 429|status 429|429 Too Many/i;
@@ -34,9 +34,9 @@ export interface ClassifyExitArgs {
  *
  * Priority order for stderr matching:
  *   1. Rate limit  → ProviderRateLimitError
- *   2. Timeout     → StepFailureError (errorCode: E_CLAUDE_CLI_TIMEOUT)
+ *   2. Timeout     → RunnerFailureError (errorCode: E_CLAUDE_CLI_TIMEOUT)
  *   3. Auth        → ProviderAuthError
- *   4. Other       → StepFailureError
+ *   4. Other       → RunnerFailureError
  */
 export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
   const { exitCode, stderr, aborted, runnerId, attempt, providerName } = args;
@@ -60,7 +60,7 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
   }
 
   if (TIMEOUT_RE.test(stderr)) {
-    return new StepFailureError(
+    return new RunnerFailureError(
       `claude -p timeout: ${stderr.slice(0, 400)}`,
       runnerId,
       attempt,
@@ -77,7 +77,7 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
   }
 
   const code = exitCode === null ? 'null' : String(exitCode);
-  return new StepFailureError(
+  return new RunnerFailureError(
     `claude -p exit ${code}: ${stderr.slice(0, 400)}`,
     runnerId,
     attempt,

@@ -17,7 +17,7 @@ export type ParallelRunnerBuilderInput = Omit<ParallelRunnerSpec, 'id' | 'kind'>
 
 /**
  * Build a parallel runner spec. Throws `RaceDefinitionError` synchronously when the
- * config fails schema validation — step builders are load-time programmer-error
+ * config fails schema validation — runner builders are load-time programmer-error
  * validators, not runtime fallible operations, so an invalid definition should
  * surface at import time and abort module loading.
  */

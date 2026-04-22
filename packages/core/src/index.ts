@@ -44,7 +44,7 @@ export {
   RaceStateTransitionError,
   RaceStateVersionMismatchError,
   RaceStateWriteError,
-  StepFailureError,
+  RunnerFailureError,
   SubscriptionTosLeakError,
   TimeoutError,
   toRaceDefError,

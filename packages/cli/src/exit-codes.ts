@@ -3,7 +3,7 @@
  *
  * Exit codes:
  *   0 — success
- *   1 — runner failure (StepFailureError, generic Error, unknown)
+ *   1 — runner failure (RunnerFailureError, generic Error, unknown)
  *   2 — race definition error (RaceDefinitionError, ProviderCapabilityError)
  *   3 — auth error (ClaudeAuthError, ProviderAuthError)
  *   4 — baton / schema error (BatonSchemaError)
@@ -27,7 +27,7 @@ import {
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
-  StepFailureError,
+  RunnerFailureError,
   SubscriptionTosLeakError,
   TimeoutError,
 } from '@relay/core';
@@ -39,7 +39,7 @@ import { red, gray } from './visual.js';
 
 export const EXIT_CODES = {
   success: 0,
-  step_failure: 1,
+  runner_failure: 1,
   definition_error: 2,
   auth_error: 3,
   baton_error: 4,
@@ -58,17 +58,17 @@ export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
  */
 export function exitCodeFor(err: unknown): number {
   if (err instanceof NoProviderConfiguredError) return EXIT_CODES.no_provider;
-  if (err instanceof StepFailureError)    return EXIT_CODES.step_failure;
+  if (err instanceof RunnerFailureError)   return EXIT_CODES.runner_failure;
   if (err instanceof RaceDefinitionError) return EXIT_CODES.definition_error;
   if (err instanceof ClaudeAuthError)     return EXIT_CODES.auth_error;
   if (err instanceof AuthTimeoutError)    return EXIT_CODES.timeout;
   if (err instanceof TimeoutError)        return EXIT_CODES.timeout;
   if (err instanceof BatonSchemaError)    return EXIT_CODES.baton_error;
   if (err instanceof ProviderAuthError)   return EXIT_CODES.auth_error;
-  if (err instanceof PipelineError)       return EXIT_CODES.step_failure;
+  if (err instanceof PipelineError)       return EXIT_CODES.runner_failure;
   if (err instanceof CommanderError)      return err.exitCode;
-  if (err instanceof Error)               return EXIT_CODES.step_failure;
-  return EXIT_CODES.step_failure;
+  if (err instanceof Error)               return EXIT_CODES.runner_failure;
+  return EXIT_CODES.runner_failure;
 }
 
 // ---------------------------------------------------------------------------
@@ -288,9 +288,9 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // StepFailureError — runner exited non-zero
+  // RunnerFailureError — runner exited non-zero
   // ----------------------------------------------------------------
-  if (err instanceof StepFailureError) {
+  if (err instanceof RunnerFailureError) {
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
 
     return [

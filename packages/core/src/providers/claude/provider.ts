@@ -28,7 +28,7 @@ import { err, ok, type Result } from 'neverthrow';
 import {
   PipelineError,
   ProviderRateLimitError,
-  StepFailureError,
+  RunnerFailureError,
   TimeoutError,
 } from '../../errors.js';
 import type {
@@ -62,7 +62,7 @@ export interface ClaudeAgentSdkProviderOptions {
 
 // ---------------------------------------------------------------------------
 // Capabilities — published to the Runner so static capability checks can
-// run at flow-load time, before any tokens are spent.
+// run at race-load time, before any tokens are spent.
 // ---------------------------------------------------------------------------
 
 const CAPABILITIES: ProviderCapabilities = {
@@ -483,7 +483,7 @@ function translateSdkError(
     return new TimeoutError(description, runnerId, 0, { cause });
   }
 
-  return new StepFailureError(description, runnerId, attempt, { cause });
+  return new RunnerFailureError(description, runnerId, attempt, { cause });
 }
 
 function isResultMessage(msg: unknown): boolean {

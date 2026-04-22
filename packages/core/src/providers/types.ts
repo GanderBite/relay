@@ -6,7 +6,7 @@
  * interface itself. Pure TypeScript interfaces and type aliases — no runtime
  * logic, no classes. The only imports are type-only.
  *
- * Consumers: Runner, ClaudeAgentSdkProvider, MockProvider, flow authors.
+ * Consumers: Runner, ClaudeAgentSdkProvider, MockProvider, race authors.
  */
 
 import type { Result } from 'neverthrow';
@@ -21,7 +21,7 @@ import type { Logger } from '../logger.js';
 /**
  * Static descriptor each Provider publishes to the Runner.
  * Describes what an LLM provider can and cannot do.
- * Runner builders check these at flow-load time before any tokens are spent.
+ * Runner builders check these at race-load time before any tokens are spent.
  */
 export interface ProviderCapabilities {
   /** True if the provider can stream tokens incrementally. */
@@ -137,7 +137,7 @@ export interface InvocationRequest {
 
 /**
  * Runtime context injected by the Runner into every provider call.
- * Carries flow/step identity, an abort signal, and a scoped logger.
+ * Carries race/runner identity, an abort signal, and a scoped logger.
  */
 export interface InvocationContext {
   raceName: string;
@@ -258,7 +258,7 @@ export interface CostEstimate {
  * race; the Provider executes a single LLM invocation.
  */
 export interface Provider {
-  /** Stable identifier used in flow definitions and the ProviderRegistry. */
+  /** Stable identifier used in race definitions and the ProviderRegistry. */
   readonly name: string;
 
   /** Self-described capabilities. The Runner uses these for static checks. */

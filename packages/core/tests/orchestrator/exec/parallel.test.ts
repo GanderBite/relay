@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { executeParallel } from '../../../src/orchestrator/exec/parallel.js';
 import { runner } from '../../../src/race/runner.js';
-import { StepFailureError } from '../../../src/errors.js';
+import { RunnerFailureError } from '../../../src/errors.js';
 import { createLogger } from '../../../src/logger.js';
 
 function baseCtx() {
@@ -39,7 +39,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
     expect(spread).toBeLessThan(50);
   });
 
-  it('[EXEC-PARALLEL-002] any branch rejection surfaces as StepFailureError with aggregate details', async () => {
+  it('[EXEC-PARALLEL-002] any branch rejection surfaces as RunnerFailureError with aggregate details', async () => {
     const dispatch = vi.fn(async (id: string) => {
       if (id === 'y') throw new Error('boom');
       return { ok: true } as const;
@@ -47,7 +47,7 @@ describe('executeParallel (sprint 5 task_36)', () => {
     const s = runner.parallel({ branches: ['x', 'y'] });
     await expect(
       executeParallel(s, { ...baseCtx(), runnerId: s.id || 's', runner: s, dispatch }),
-    ).rejects.toBeInstanceOf(StepFailureError);
+    ).rejects.toBeInstanceOf(RunnerFailureError);
   });
 
   it('[EXEC-PARALLEL-003] on all-succeed, result.branches collects per-branch outcomes', async () => {

@@ -37,7 +37,7 @@
 
 import { err, ok, type Result } from 'neverthrow';
 
-import { PipelineError, StepFailureError } from '../../errors.js';
+import { PipelineError, RunnerFailureError } from '../../errors.js';
 import { extractSdkResultSummary, mergeUsage } from '../claude/translate.js';
 import { inspectClaudeAuth } from '../claude/auth.js';
 import { buildEnvAllowlist } from '../claude/env.js';
@@ -58,7 +58,7 @@ import { translateCliMessage } from './translate.js';
 
 // ---------------------------------------------------------------------------
 // Capabilities — published to the Runner so static capability checks can
-// run at flow-load time, before any tokens are spent. Mirrors the SDK
+// run at race-load time, before any tokens are spent. Mirrors the SDK
 // provider exactly: both backends ultimately drive the same `claude` binary.
 // ---------------------------------------------------------------------------
 
@@ -268,7 +268,7 @@ export class ClaudeCliProvider implements Provider {
       const error =
         cause instanceof PipelineError
           ? cause
-          : new StepFailureError(
+          : new RunnerFailureError(
               cause instanceof Error ? cause.message : String(cause),
               ctx.runnerId,
               ctx.attempt,
@@ -325,13 +325,13 @@ export class ClaudeCliProvider implements Provider {
       // failure) is captured as a terminal-value envelope inside the
       // subprocess runner. A non-PipelineError here would mean a contract
       // violation upstream. invoke() must never throw per the Provider
-      // contract, so wrap any non-PipelineError in a StepFailureError and
+      // contract, so wrap any non-PipelineError in a RunnerFailureError and
       // return it via err(...) instead of rethrowing.
       if (isPipelineError(cause)) {
         return err(cause);
       }
       return err(
-        new StepFailureError(
+        new RunnerFailureError(
           cause instanceof Error ? cause.message : String(cause),
           ctx.runnerId,
           ctx.attempt,

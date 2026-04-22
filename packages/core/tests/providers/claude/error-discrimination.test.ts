@@ -22,7 +22,7 @@ import { ClaudeAgentSdkProvider } from '../../../src/providers/claude/provider.j
 import {
   ERROR_CODES,
   ProviderRateLimitError,
-  StepFailureError,
+  RunnerFailureError,
   TimeoutError,
 } from '../../../src/errors.js';
 import type {
@@ -206,7 +206,7 @@ describe('ClaudeAgentSdkProvider error discrimination', () => {
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(TimeoutError);
   });
 
-  it('[ERR-DISC-009] falls through to StepFailureError with original on details.cause', async () => {
+  it('[ERR-DISC-009] falls through to RunnerFailureError with original on details.cause', async () => {
     const generic = new Error('boom');
     sdkQuery.mockReturnValue(makeThrowingIterable(generic));
 
@@ -214,22 +214,22 @@ describe('ClaudeAgentSdkProvider error discrimination', () => {
     const r = await p.invoke(makeReq(), makeCtx());
     expect(r.isErr()).toBe(true);
     const e = r._unsafeUnwrapErr();
-    expect(e).toBeInstanceOf(StepFailureError);
-    expect(e.code).toBe(ERROR_CODES.STEP_FAILURE);
-    const sfe = e as StepFailureError;
+    expect(e).toBeInstanceOf(RunnerFailureError);
+    expect(e.code).toBe(ERROR_CODES.RUNNER_FAILURE);
+    const sfe = e as RunnerFailureError;
     expect(sfe.runnerId).toBe('step-1');
     expect(sfe.attempt).toBe(2);
     expect(sfe.details?.['cause']).toBe(generic);
     expect(sfe.message).toBe('boom');
   });
 
-  it('[ERR-DISC-010] non-Error thrown values still flow through StepFailureError', async () => {
+  it('[ERR-DISC-010] non-Error thrown values still flow through RunnerFailureError', async () => {
     sdkQuery.mockReturnValue(makeThrowingIterable('string rejection'));
 
     const p = new ClaudeAgentSdkProvider();
     const r = await p.invoke(makeReq(), makeCtx());
     const e = r._unsafeUnwrapErr();
-    expect(e).toBeInstanceOf(StepFailureError);
+    expect(e).toBeInstanceOf(RunnerFailureError);
     expect(e.details?.['cause']).toBe('string rejection');
     expect(e.message).toBe('string rejection');
   });

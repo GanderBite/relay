@@ -21,8 +21,8 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-// Schema mirrors RunnerState from flow/types.ts. The explicit z.ZodType<RunnerState>
-// annotation forces a compile-time equivalence check — if flow/types.ts adds a
+// Schema mirrors RunnerState from race/types.ts. The explicit z.ZodType<RunnerState>
+// annotation forces a compile-time equivalence check — if race/types.ts adds a
 // required field, this line fails typecheck.
 const stepStateSchema: z.ZodType<RunnerState> = z.object({
   status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
@@ -34,7 +34,7 @@ const stepStateSchema: z.ZodType<RunnerState> = z.object({
   batons: z.array(z.string()).optional(),
 });
 
-// Schema mirrors RaceState from flow/types.ts. `input: z.unknown()` matches the
+// Schema mirrors RaceState from race/types.ts. `input: z.unknown()` matches the
 // `unknown` typing in the type declaration — the race input shape is validated
 // by the race's own Zod schema elsewhere, not by this state-file schema.
 const RaceStateSchema: z.ZodType<RaceState> = z.object({
@@ -340,7 +340,7 @@ export class RaceStateMachine {
   }
 
   /**
-   * Thin wrapper over loadState. Use loadAndVerify when flow-compat is required.
+   * Thin wrapper over loadState. Use loadAndVerify when race-compat is required.
    */
   static async load(
     runDir: string,
@@ -354,7 +354,7 @@ export class RaceStateMachine {
    * back. Returns `RaceStateNotFoundError` when the run directory has no state
    * file, `RaceStateCorruptError` when the file is unreadable/malformed/shape-
    * invalid, or `RaceStateVersionMismatchError` when the run was written by a
-   * different flow or version.
+   * different race or version.
    */
   static async loadAndVerify(opts: {
     runDir: string;
@@ -444,7 +444,7 @@ export async function loadState(
  * which composes this with `loadState` and correct error discrimination.
  * Compares the on-disk RaceState against the currently-loaded race definition
  * and returns RaceStateVersionMismatchError (carrying both expected and actual
- * name/version pairs) when the run was written by a different flow or a
+ * name/version pairs) when the run was written by a different race or a
  * different version. The Runner treats this as an unresumable run and
  * instructs the user to start over.
  */

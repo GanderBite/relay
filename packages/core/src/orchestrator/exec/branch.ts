@@ -1,5 +1,5 @@
 import type { Logger } from '../../logger.js';
-import { StepFailureError } from '../../errors.js';
+import { RunnerFailureError } from '../../errors.js';
 import type { BranchRunnerSpec } from '../../race/types.js';
 import { runProcess } from './process.js';
 import { splitShell } from './shlex.js';
@@ -10,7 +10,6 @@ export interface BranchExecContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
-  step?: unknown;
 }
 
 export interface BranchRunnerResult {
@@ -27,7 +26,7 @@ export async function executeBranch(
   const rawArgs = Array.isArray(runner.run) ? runner.run : splitShell(runner.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new StepFailureError(
+    throw new RunnerFailureError(
       `runner "${runnerId}" has an empty run command`,
       runnerId,
       attempt,
@@ -63,7 +62,7 @@ export async function executeBranch(
   }
 
   if (result.exitCode !== 0) {
-    throw new StepFailureError(
+    throw new RunnerFailureError(
       `runner "${runnerId}" exited with code ${result.exitCode}`,
       runnerId,
       attempt,

@@ -20,7 +20,7 @@ export const ERROR_CODES = {
   STATE_TRANSITION: 'relay_STATE_TRANSITION',
   STATE_VERSION_MISMATCH: 'relay_STATE_VERSION_MISMATCH',
   STATE_WRITE: 'relay_STATE_WRITE',
-  STEP_FAILURE: 'relay_STEP_FAILURE',
+  RUNNER_FAILURE: 'relay_RUNNER_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
   TOS_LEAK_BLOCKED: 'E_TOS_LEAK_BLOCKED',
 } as const;
@@ -74,13 +74,13 @@ export class RaceDefinitionError extends PipelineError {
  *
  * CLI exit code: 1
  */
-export class StepFailureError extends PipelineError {
+export class RunnerFailureError extends PipelineError {
   readonly runnerId: string;
   readonly attempt: number;
 
   constructor(message: string, runnerId: string, attempt: number, details?: Record<string, unknown>) {
-    super(message, ERROR_CODES.STEP_FAILURE, details);
-    this.name = 'StepFailureError';
+    super(message, ERROR_CODES.RUNNER_FAILURE, details);
+    this.name = 'RunnerFailureError';
     this.runnerId = runnerId;
     this.attempt = attempt;
     if (Error.captureStackTrace) {
@@ -440,7 +440,7 @@ export class NoProviderConfiguredError extends PipelineError {
 }
 
 /**
- * Thrown at flow-load time when a step requests a capability the configured
+ * Thrown at race-load time when a runner requests a capability the configured
  * provider does not support. Extends `RaceDefinitionError` so the CLI maps it
  * to exit code 2.
  */
@@ -466,7 +466,7 @@ export class ProviderCapabilityError extends RaceDefinitionError {
 
 /**
  * Thrown when a provider reports a rate-limit response (HTTP 429 or a typed
- * rate-limit error from the underlying SDK). Distinct from `StepFailureError`
+ * rate-limit error from the underlying SDK). Distinct from `RunnerFailureError`
  * so the retry layer can apply a longer backoff base, and from `TimeoutError`
  * so retries are not short-circuited for a recoverable rate-limit condition.
  *

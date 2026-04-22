@@ -134,7 +134,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
         '\n' +
         `  \u2192 relay new ${name} --force\n`,
       );
-      process.exit(EXIT_CODES.step_failure);
+      process.exit(EXIT_CODES.runner_failure);
     } else if (e.kind === 'template-not-found') {
       process.stderr.write(
         `${red(`${SYMBOLS.fail} template not found: "${e.template}"`)}\n` +
@@ -151,7 +151,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
       // e.kind === 'io-error'
       const msg = e.cause instanceof Error ? e.cause.message : String(e.cause);
       process.stderr.write(`${red(`${SYMBOLS.fail} scaffold failed: ${msg}`)}\n`);
-      process.exit(EXIT_CODES.step_failure);
+      process.exit(EXIT_CODES.runner_failure);
     }
   }
 

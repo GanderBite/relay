@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { StepFailureError } from '../../src/errors.js';
+import { RunnerFailureError } from '../../src/errors.js';
 import type {
   InvocationContext,
   InvocationRequest,
@@ -60,19 +60,19 @@ describe('MockProvider', () => {
     expect(r._unsafeUnwrap().usage.inputTokens).toBe(10);
   });
 
-  it('[MOCK-002] invoke with unknown runnerId returns err(StepFailureError)', async () => {
+  it('[MOCK-002] invoke with unknown runnerId returns err(RunnerFailureError)', async () => {
     const p = new MockProvider({ responses: { known: canned } });
     const r = await p.invoke(makeReq(), makeCtx('unknownStep', 2));
     expect(r.isErr()).toBe(true);
     const err = r._unsafeUnwrapErr();
-    expect(err).toBeInstanceOf(StepFailureError);
-    if (err instanceof StepFailureError) {
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    if (err instanceof RunnerFailureError) {
       expect(err.runnerId).toBe('unknownStep');
       expect(err.attempt).toBe(2);
     }
   });
 
-  it('[MOCK-003] stream with unknown runnerId throws StepFailureError', async () => {
+  it('[MOCK-003] stream with unknown runnerId throws RunnerFailureError', async () => {
     const p = new MockProvider({ responses: { known: canned } });
     let thrown: unknown;
     try {
@@ -83,7 +83,7 @@ describe('MockProvider', () => {
     } catch (e) {
       thrown = e;
     }
-    expect(thrown).toBeInstanceOf(StepFailureError);
+    expect(thrown).toBeInstanceOf(RunnerFailureError);
   });
 
   it('[MOCK-004] stream yields turn.start, text.delta, usage, turn.end, stream.end in order', async () => {

@@ -392,7 +392,7 @@ describe('ClaudeCliProvider', () => {
       expect(err.code).toBe('relay_PROVIDER_RATE_LIMIT');
     });
 
-    it('[CLI-INV-005] general non-zero exit returns err with StepFailureError code', async () => {
+    it('[CLI-INV-005] general non-zero exit returns err with RunnerFailureError code', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
@@ -404,7 +404,7 @@ describe('ClaudeCliProvider', () => {
 
       const result = await invokePromise;
       expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr().code).toBe('relay_STEP_FAILURE');
+      expect(result._unsafeUnwrapErr().code).toBe('relay_RUNNER_FAILURE');
     });
   });
 
@@ -550,7 +550,7 @@ describe('ClaudeCliProvider', () => {
       expect(result._unsafeUnwrapErr().code).toBe('relay_PROVIDER_AUTH');
     });
 
-    it('[CLI-ERR-002] timeout error in stderr maps to StepFailureError with E_CLAUDE_CLI_TIMEOUT', async () => {
+    it('[CLI-ERR-002] timeout error in stderr maps to RunnerFailureError with E_CLAUDE_CLI_TIMEOUT', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
@@ -563,7 +563,7 @@ describe('ClaudeCliProvider', () => {
       const result = await invokePromise;
       expect(result.isErr()).toBe(true);
       const pipelineErr = result._unsafeUnwrapErr();
-      expect(pipelineErr.code).toBe('relay_STEP_FAILURE');
+      expect(pipelineErr.code).toBe('relay_RUNNER_FAILURE');
       expect(pipelineErr.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
     });
   });

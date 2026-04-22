@@ -3,15 +3,15 @@ import type { z } from '../zod.js';
 export type RunnerKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal';
 
 /**
- * The minimum fields shared by every step type.
+ * The minimum fields shared by every runner type.
  * Each per-kind spec explicitly opts in to the additional fields (retry,
  * timeout, contextFrom, onFail, etc.) that apply to it — nothing is silently
  * inherited here.
  */
 export interface RunnerBase {
-  /** The step's stable identifier. Set by the race compiler, not the builder. */
+  /** The runner's stable identifier. Set by the race compiler, not the builder. */
   id: string;
-  /** Ids of steps that must succeed before this one runs. */
+  /** Ids of runners that must succeed before this one runs. */
   dependsOn?: string[];
 }
 
@@ -66,8 +66,8 @@ export interface BranchRunnerSpec extends Omit<ScriptRunnerSpec, 'output' | 'kin
 }
 
 /**
- * Specification for a step that fans out to multiple named sub-steps and
- * waits for all of them. Per spec, parallel steps do not support retry,
+ * Specification for a runner that fans out to multiple named sub-runners and
+ * waits for all of them. Per spec, parallel runners do not support retry,
  * timeout, or context injection. `onFail` is limited to `'abort'` or a
  * runner id — `'continue'` is not a valid option for a parallel runner.
  */
@@ -80,7 +80,7 @@ export interface ParallelRunnerSpec extends RunnerBase {
 
 /**
  * Specification for a terminal runner that ends the race with an optional
- * message and exit code. Terminal steps have no retry, timeout, or output.
+ * message and exit code. Terminal runners have no retry, timeout, or output.
  */
 export interface TerminalRunnerSpec extends RunnerBase {
   kind: 'terminal';

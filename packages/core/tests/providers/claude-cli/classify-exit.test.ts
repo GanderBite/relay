@@ -4,7 +4,7 @@ import { classifyExit } from '../../../src/providers/claude-cli/classify-exit.js
 import {
   ProviderRateLimitError,
   ProviderAuthError,
-  StepFailureError,
+  RunnerFailureError,
 } from '../../../src/errors.js';
 import { GITHUB_ISSUES_URL } from '../../../src/constants.js';
 
@@ -71,39 +71,39 @@ describe('classifyExit', () => {
     expect(err).toBeInstanceOf(ProviderRateLimitError);
   });
 
-  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "timeout" in stderr', () => {
+  it('returns RunnerFailureError with E_CLAUDE_CLI_TIMEOUT on "timeout" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'operation timeout after 30s',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    const sfe = err as StepFailureError;
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    const sfe = err as RunnerFailureError;
     expect(sfe.runnerId).toBe(BASE.runnerId);
     expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
-  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "ETIMEDOUT" in stderr', () => {
+  it('returns RunnerFailureError with E_CLAUDE_CLI_TIMEOUT on "ETIMEDOUT" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'connect ETIMEDOUT 10.0.0.1:443',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    expect((err as RunnerFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
-  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "deadline exceeded" in stderr', () => {
+  it('returns RunnerFailureError with E_CLAUDE_CLI_TIMEOUT on "deadline exceeded" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'context deadline exceeded',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    expect((err as RunnerFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
   it('returns ProviderAuthError on "authentication" in stderr', () => {
@@ -148,15 +148,15 @@ describe('classifyExit', () => {
     expect(err).toBeInstanceOf(ProviderAuthError);
   });
 
-  it('returns StepFailureError with E_CLAUDE_CLI_FAIL details for unknown non-zero exit', () => {
+  it('returns RunnerFailureError with E_CLAUDE_CLI_FAIL details for unknown non-zero exit', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'something unexpected happened',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    const sfe = err as StepFailureError;
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    const sfe = err as RunnerFailureError;
     expect(sfe.message).toContain('claude -p exit 1');
     expect(sfe.message).toContain('something unexpected happened');
     expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_FAIL');
@@ -165,20 +165,20 @@ describe('classifyExit', () => {
     expect(sfe.attempt).toBe(BASE.attempt);
   });
 
-  it('returns StepFailureError when exitCode is null (killed without code)', () => {
+  it('returns RunnerFailureError when exitCode is null (killed without code)', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: null,
       stderr: 'process was killed',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    const sfe = err as StepFailureError;
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    const sfe = err as RunnerFailureError;
     expect(sfe.message).toContain('claude -p exit null');
     expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_FAIL');
   });
 
-  it('truncates stderr to 400 chars in the StepFailureError message', () => {
+  it('truncates stderr to 400 chars in the RunnerFailureError message', () => {
     const longStderr = 'x'.repeat(500);
     const err = classifyExit({
       ...BASE,
@@ -186,8 +186,8 @@ describe('classifyExit', () => {
       stderr: longStderr,
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    const sfe = err as StepFailureError;
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    const sfe = err as RunnerFailureError;
     const stderrPart = sfe.message.replace('claude -p exit 2: ', '');
     expect(stderrPart).toHaveLength(400);
   });
@@ -209,7 +209,7 @@ describe('classifyExit', () => {
       stderr: 'timeout authentication failed',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(StepFailureError);
-    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
+    expect(err).toBeInstanceOf(RunnerFailureError);
+    expect((err as RunnerFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 });
