@@ -1,6 +1,6 @@
 ---
 name: claude-agent-sdk
-description: How to use `@anthropic-ai/claude-agent-sdk` correctly inside Relay — the `query()` async iterator, options shape, message envelope translation, environment passthrough, abort signal wiring, and the auth contract that rejects subscription tokens on this path. Trigger this skill whenever code imports the SDK, when implementing the `ClaudeAgentSdkProvider`, the auth inspector for the `claude-agent-sdk` providerKind, the env allowlist, the SDK→InvocationEvent translator, or the doctor command. For subscription-safe flows running on Claude Pro/Max without API billing, use the `claude-cli-provider` skill instead.
+description: How to use `@anthropic-ai/claude-agent-sdk` correctly inside Relay — the `query()` async iterator, options shape, message envelope translation, environment passthrough, abort signal wiring, and the auth contract that rejects subscription tokens on this path. Trigger this skill whenever code imports the SDK, when implementing the `ClaudeAgentSdkProvider`, the auth inspector for the `claude-agent-sdk` providerKind, the env allowlist, the SDK→InvocationEvent translator, or the doctor command. For subscription-safe races running on Claude Pro/Max without API billing, use the `claude-cli-provider` skill instead.
 ---
 
 # Claude Agent SDK — How Relay Uses It
@@ -35,7 +35,7 @@ Per-provider auth precedence for `claude-agent-sdk` (a match short-circuits the 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const stream = query({
-  prompt: '<the rendered prompt with handoff context blocks>',
+  prompt: '<the rendered prompt with baton context blocks>',
   options: {
     model: 'sonnet' | 'haiku' | 'opus' | '<fully-qualified-id>',
     allowedTools: ['Read', 'Glob', 'Grep'],   // names of built-in tools
@@ -66,7 +66,7 @@ Mapping rules:
 | `message.usage` populated | `{ type: 'usage', usage: { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } }` |
 | Turn start | `{ type: 'turn.start', turn }` |
 | Turn end | `{ type: 'turn.end', turn }` |
-| Anything else (purely informational) | return `null`, runner ignores |
+| Anything else (purely informational) | return `null`, orchestrator ignores |
 
 **Translate, don't expose.** The SDK uses snake_case (`input_tokens`, `cache_read_input_tokens`); Relay uses camelCase. The translator is the boundary — nothing downstream sees snake_case.
 

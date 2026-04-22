@@ -181,7 +181,7 @@ export default async function upgradeCommand(
   let flowNames: string[];
 
   if (targetFlow !== undefined) {
-    // Single-flow mode: verify the flow exists before proceeding.
+    // Single-race mode: verify the race exists before proceeding.
     const all = await discoverFlows(flowsDir);
     if (all === null || !all.includes(targetFlow)) {
       process.stdout.write(
@@ -191,17 +191,17 @@ export default async function upgradeCommand(
     }
     flowNames = [targetFlow];
   } else {
-    // All-flows mode: discover installed flows.
+    // All-races mode: discover installed races.
     const discovered = await discoverFlows(flowsDir);
     if (discovered === null || discovered.length === 0) {
-      process.stdout.write(`  no flows installed. try relay install.\n`);
+      process.stdout.write(`  no races installed. try relay install.\n`);
       process.exit(0);
     }
     flowNames = discovered;
   }
 
   // Header — matches the banner shape from product spec §6.8.
-  const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading flows';
+  const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading races';
   process.stdout.write(`${MARK}  ${verb}\n`);
   process.stdout.write('\n');
 

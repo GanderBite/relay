@@ -7,12 +7,12 @@
 ## The default guarantee
 
 Relay defaults to subscription billing. A user with a Pro or Max Claude subscription
-pays nothing to the Anthropic API for any flow run, because Relay refuses to start
+pays nothing to the Anthropic API for any race run, because Relay refuses to start
 if it detects that `ANTHROPIC_API_KEY` is present in the environment without an
 explicit opt-in.
 
 The Claude CLI binary puts `ANTHROPIC_API_KEY` ahead of subscription credentials in
-its own precedence chain. Without intervention a long-running flow can silently bill
+its own precedence chain. Without intervention a long-running race can silently bill
 the API account before anyone notices. Relay blocks that path before any subprocess
 is spawned.
 
@@ -139,7 +139,7 @@ is present in the parent process, it never reaches the subprocess.
 
 **Caller extras merged last** (`env.ts:130–134`):
 
-Per-step or per-run env overrides supplied by the flow author via the `extra`
+Per-runner or per-run env overrides supplied by the race author via the `extra`
 option are merged on top after all allowlist logic runs. These always win and are
 never suppressed.
 
@@ -166,7 +166,7 @@ at construction time.
 ```ts
 const runner = new Runner({ runDir });
 runner.allowApiKey();
-await runner.run(flow, input, { flowDir, flowPath });
+await runner.run(race, input, { raceDir, racePath });
 ```
 
 **`RELAY_ALLOW_API_KEY=1`** (`packages/core/src/providers/claude/auth.ts:66–67`)
@@ -193,17 +193,17 @@ attaches a warning surfaced in the pre-run banner and end-of-run cost row.
 
 ## Containment boundary
 
-The env allowlist described above applies to **prompt steps only**. Other step types
+The env allowlist described above applies to **prompt runners only**. Other runner types
 have different execution models and different containment guarantees.
 
-**Prompt steps — contained**
+**Prompt runners — contained**
 
 `executePrompt` (`packages/core/src/runner/exec/prompt.ts`) invokes the provider's
 `invoke()` method. `ClaudeProvider` builds the subprocess env via `buildEnvAllowlist`
 before every call. `ANTHROPIC_API_KEY` never reaches the `claude` subprocess unless
 the user opted in.
 
-**Script steps — NOT contained**
+**Script runners — NOT contained**
 
 `executeScript` (`packages/core/src/runner/exec/script.ts:44–48`) runs a
 user-controlled shell command with the full parent process env:
@@ -213,27 +213,27 @@ user-controlled shell command with the full parent process env:
 const baseEnv = Object.fromEntries(
   Object.entries(process.env).filter(...),
 );
-const env: Record<string, string> = { ...baseEnv, ...(step.env ?? {}) };
+const env: Record<string, string> = { ...baseEnv, ...(runner.env ?? {}) };
 ```
 
-A script step receives every variable present in `process.env`, including
-`ANTHROPIC_API_KEY`. Flow authors who run `claude` directly from a script step
+A script runner receives every variable present in `process.env`, including
+`ANTHROPIC_API_KEY`. Race authors who run `claude` directly from a script runner
 are responsible for their own billing safety.
 
-**Branch steps — NOT contained**
+**Branch runners — NOT contained**
 
 `executeBranch` (`packages/core/src/runner/exec/branch.ts`) follows the same
-execution path as script steps. Branch commands receive the full parent env.
+execution path as script runners. Branch commands receive the full parent env.
 
-**Parallel and terminal steps** do not spawn subprocesses directly — they delegate
-to contained steps, which follow the rules above.
+**Parallel and terminal runners** do not spawn subprocesses directly — they delegate
+to contained runners, which follow the rules above.
 
 ---
 
 ## Inspecting the state before a run
 
 `relay doctor` (`packages/cli/src/commands/doctor.ts`) runs five checks and exits
-before any flow step executes:
+before any race runner executes:
 
 1. Node version (≥ 20.10.0)
 2. `claude` binary reachable on PATH

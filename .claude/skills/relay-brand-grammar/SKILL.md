@@ -1,6 +1,6 @@
 ---
 name: relay-brand-grammar
-description: The Relay brand grammar — the mark, symbol vocabulary, color rules, voice principles, banned words, naming conventions, and verbatim copy blocks. Trigger this skill whenever you write any user-visible string — CLI command output, banner, error message, README, marketing copy, catalog page, or generator template README. This is the single source of truth for what Relay sounds like; the product spec lives in `_specs/relay-product_spec.md` and this skill distills the rules an agent needs at write time.
+description: The Relay brand grammar — the mark, symbol vocabulary, color rules, voice principles, banned words, naming conventions, and verbatim copy blocks. Trigger this skill whenever you write any user-visible string — CLI command output, banner, error message, README, marketing copy, catalog page, or generator template README. This is the single source of truth for what Relay sounds like; the product spec lives in `_specs/relay-product_spec.md` and this skill distills the rules an agent needs at write time. As of sprint 15, the canonical nouns are Race / Runner / Baton — the old nouns Flow / Step / Handoff are forbidden in user-facing copy.
 ---
 
 # Relay Brand Grammar
@@ -13,7 +13,7 @@ Every byte Relay emits goes through these rules. The product spec at `_specs/rel
 ●─▶●─▶●─▶●
 ```
 
-Four nodes, three arrows. Reads as "steps connected by handoffs." Use sites:
+Four nodes, three arrows. Reads as "runners connected by batons." Use sites:
 
 - Every CLI banner starts with it.
 - `relay --version` prints it next to the version.
@@ -26,8 +26,8 @@ The wordmark is `●─▶●─▶●─▶●  relay` (always two spaces betwe
 
 | Symbol | Meaning |
 |---|---|
-| `✓` | Step or check succeeded |
-| `✕` | Step or check failed |
+| `✓` | Runner or check succeeded |
+| `✕` | Runner or check failed |
 | `⚠` | Warning, user should read |
 | `⠋` (and `⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`) | Spinner — step is running |
 | `○` | Pending |
@@ -58,16 +58,30 @@ These never appear in user-facing copy:
 - Trailing **`!`** on any line
 - **Emojis** (use the symbol vocabulary instead)
 - **"Pro user!"**, **"awesome"**, **"powerful"** without numbers attached
-- **Words to avoid** from product spec §13: `pipeline` (use *flow*), `workflow` (use *flow*), `task` (use *step*), `stage` (use *step*), `context` (use *handoff*), `message`, `session`, `job`, `save` (use *checkpoint*), `state` (use *checkpoint* in copy, *state* is acceptable in code), `template` (use *flow* or *flow package*), `official`, `recommended`
+- **Words to avoid** from product spec §13: `pipeline` (use *race*), `workflow` (use *race*), `task` (use *runner*), `stage` (use *runner*), `context` (use *baton*), `message`, `session`, `job`, `save` (use *checkpoint*), `state` (use *checkpoint* in copy, *state* is acceptable in code), `template` (use *race* or *race package*), `official`, `recommended`
+- **Forbidden old nouns in user-facing copy:** `flow`, `step`, `handoff` — use `race`, `runner`, `baton` respectively. These old nouns are acceptable in code identifiers and internal type names for backward compatibility, but must not appear in CLI output, READMEs, catalog pages, error messages, or any other user-facing string.
 
-## Naming the primitives (product spec §13 — verbatim glossary)
+## Canonical vocabulary table (sprint 15+)
+
+| Old noun (forbidden in copy) | New noun | Code type / export |
+|---|---|---|
+| `flow` / `Flow` | `race` / `Race` | `Race`, `defineRace` |
+| `step` / `Step` | `runner` / `Runner` | `Runner`, `runner.prompt` |
+| `handoff` / `Handoff` | `baton` / `Baton` | `Baton` |
+| `flow.ts` | `race.ts` | entry point filename |
+| `defineFlow` | `defineRace` | exported function |
+| `flowName` | `raceName` | field name |
+| `packages/flows/` | `packages/races/` | directory path |
+| `flow-package-format` skill | `race-package-format` skill | skill name |
+
+## Naming the primitives (product spec §13 — updated glossary)
 
 ```
-flow        a named, versioned pipeline you can run
-step        one node in a flow (prompt, script, branch, parallel)
-handoff     the JSON one step produces and a later step consumes
-run         one execution of a flow; identified by a run id
-checkpoint  the saved state of a run after each step completes
+race        a named, versioned sequence of runners you can run
+runner      one node in a race (prompt, script, branch, parallel)
+baton       the JSON one runner produces and a later runner consumes
+run         one execution of a race; identified by a run id
+checkpoint  the saved state of a run after each runner completes
 ```
 
 When you write a doc that lists these — paste the block above unchanged.
@@ -84,11 +98,11 @@ When you write a doc that lists these — paste the block above unchanged.
 
 ### Banner shape
 ```
-●─▶●─▶●─▶●  <verb-or-flow-name>  [<runId>]  [<status-symbol>]
+●─▶●─▶●─▶●  <verb-or-race-name>  [<runId>]  [<status-symbol>]
 
 <aligned kv rows>
 [blank]
-<step grid>
+<runner grid>
 [blank]
 <summary line>
 [blank]
@@ -98,14 +112,14 @@ next:
 
 ### KV rows (column-aligned)
 ```
-flow     codebase-discovery v0.1.0
+race     codebase-discovery v0.1.0
 input    .  (audience=both)
 run      f9c3a2  ·  2026-04-17 14:32
 bill     subscription (max)  ·  no api charges
-est      $0.40  ·  5 steps  ·  ~12 min
+est      $0.40  ·  5 runners  ·  ~12 min
 ```
 
-### Step rows (column-aligned, status column wins the eye)
+### Runner rows (column-aligned, status column wins the eye)
 ```
  ✓ inventory       sonnet     2.1s    1.4K→0.3K    $0.005
  ⠋ entities        sonnet     turn 3  0.8K→0.4K    ~$0.019
@@ -116,7 +130,7 @@ est      $0.40  ·  5 steps  ·  ~12 min
 
 1. **Never silently bill the API.** Every banner names the billing source. The `bill` row in the pre-run banner is mandatory.
 2. **Every error names the next command.** No dead-ends.
-3. **"State is saved after every step"** — say this in the pre-run banner footer. It's the trust contract.
+3. **"State is saved after every runner"** — say this in the pre-run banner footer. It's the trust contract.
 4. **Verbatim copy blocks** — when the product spec example shows exact text, paste it; don't rewrite.
 
 ## References

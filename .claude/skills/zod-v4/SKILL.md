@@ -1,6 +1,6 @@
 ---
 name: zod-v4
-description: Zod v4 idioms for the Relay codebase — the v3 → v4 symbol table, the `z.ZodType<T>` pattern that replaces `ZodSchema<T>`, the `z.core.$ZodIssue` type used in `HandoffSchemaError`, the unchanged `instanceof z.ZodType` runtime check, and the v4-only error helpers like `z.treeifyError`. Trigger this skill whenever you write or refactor a `.ts` file that imports from `'zod'` or `'../zod.js'`, or that exposes a Zod type in a public signature (e.g. `FlowSpec.input`, a handoff schema, a prompt `output.schema`). Pair with the `typescript` skill.
+description: Zod v4 idioms for the Relay codebase — the v3 → v4 symbol table, the `z.ZodType<T>` pattern that replaces `ZodSchema<T>`, the `z.core.$ZodIssue` type used in `BatonSchemaError`, the unchanged `instanceof z.ZodType` runtime check, and the v4-only error helpers like `z.treeifyError`. Trigger this skill whenever you write or refactor a `.ts` file that imports from `'zod'` or `'../zod.js'`, or that exposes a Zod type in a public signature (e.g. `RaceSpec.input`, a baton schema, a runner `output.schema`). Pair with the `typescript` skill.
 ---
 
 # Zod v4 for Relay
@@ -47,7 +47,7 @@ If you find yourself typing `ZodSchema`, `ZodTypeAny`, `ZodIssue`, or top-level 
 One-arg, for typed schemas:
 
 ```ts
-export interface FlowSpec<TInput> {
+export interface RaceSpec<TInput> {
   input: z.ZodType<TInput>;                // v3: ZodSchema<TInput>
   ...
 }
@@ -56,10 +56,10 @@ export interface FlowSpec<TInput> {
 No-arg, for "any schema" wildcards:
 
 ```ts
-export type PromptStepOutput =
-  | { handoff: string; schema?: z.ZodType }   // any schema accepted
+export type PromptRunnerOutput =
+  | { baton: string; schema?: z.ZodType }   // any schema accepted
   | { artifact: string }
-  | { handoff: string; artifact: string; schema?: z.ZodType };
+  | { baton: string; artifact: string; schema?: z.ZodType };
 ```
 
 Two-arg, only when a `z.transform()` makes input and output diverge:
@@ -96,18 +96,18 @@ export type Inventory = z.infer<typeof InventorySchema>;
 
 ```ts
 import type { z } from '../zod.js';
-import { HandoffSchemaError } from '../errors.js';
+import { BatonSchemaError } from '../errors.js';
 
-function parseHandoff<T>(
+function parseBaton<T>(
   schema: z.ZodType<T>,
-  handoffId: string,
+  batonId: string,
   raw: unknown,
 ): T {
   const result = schema.safeParse(raw);
   if (!result.success) {
-    throw new HandoffSchemaError(
-      `handoff "${handoffId}" failed schema validation`,
-      handoffId,
+    throw new BatonSchemaError(
+      `baton "${batonId}" failed schema validation`,
+      batonId,
       result.error.issues,            // z.core.$ZodIssue[]
     );
   }
@@ -125,7 +125,7 @@ function parseHandoff<T>(
 
 ```ts
 if (!(spec.input instanceof z.ZodType)) {
-  throw new FlowDefinitionError('flow "input" must be a Zod schema');
+  throw new RaceDefinitionError('race "input" must be a Zod schema');
 }
 ```
 

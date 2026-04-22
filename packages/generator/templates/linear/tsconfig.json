@@ -4,6 +4,6 @@
     "outDir": "./dist",
     "rootDir": "./"
   },
-  "include": ["flow.ts", "schemas/**/*.ts"],
+  "include": ["race.ts", "schemas/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

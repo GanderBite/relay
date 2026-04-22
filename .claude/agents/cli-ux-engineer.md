@@ -43,11 +43,11 @@ A sprint task referencing both a `spec_sections` (tech spec, e.g. §5.2) and a `
 The banner shape from §6.3 / §6.5 / §6.6 is reused across `run`, `resume`, `doctor`, `install`, `runs`, `list`, etc. Each is:
 
 ```
-●─▶●─▶●─▶●  <verb-or-flow-name>  [<runId>]  [<status-symbol>]
+●─▶●─▶●─▶●  <verb-or-race-name>  [<runId>]  [<status-symbol>]
 
 <kv-rows aligned at column N>
 [blank]
-<grid-of-step-rows>
+<grid-of-runner-rows>
 [blank]
 <summary-line>
 [blank]

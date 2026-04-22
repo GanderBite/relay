@@ -252,18 +252,18 @@ export function footer(text: string): string {
  * The key is left-padded to KV_KEY_WIDTH (8) characters so that values
  * align vertically across rows:
  *
- *   flow     codebase-discovery v0.1.0
+ *   race     codebase-discovery v0.1.0
  *   input    .  (audience=both)
  *   run      f9c3a2  ·  2026-04-17 14:32
  *   bill     subscription (max)  ·  no api charges
- *   est      $0.40  ·  5 steps  ·  ~12 min
+ *   est      $0.40  ·  5 runners  ·  ~12 min
  */
 export function kvLine(key: string, value: string): string {
   return `${key.padEnd(KV_KEY_WIDTH)}${value}`;
 }
 
 // ---------------------------------------------------------------------------
-// Step-row column widths (product spec §6.5, §6.6, §11.3)
+// Runner-row column widths (product spec §6.5, §6.6, §11.3)
 //
 // These are exported so banner.ts and progress.ts share identical column sizes
 // and never drift apart. The spec shows:
@@ -271,7 +271,7 @@ export function kvLine(key: string, value: string): string {
 //   ✕ designReview    exit 1     0.2s
 // ---------------------------------------------------------------------------
 
-/** Step name column width — padEnd to this value before the model column. */
+/** Runner name column width — padEnd to this value before the model column. */
 export const STEP_NAME_WIDTH = 16;
 
 /** Model column width — padEnd to this value before the duration column. */

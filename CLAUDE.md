@@ -15,10 +15,10 @@ Relay is a TypeScript monorepo (pnpm workspaces) that ships a CLI + library for 
 ```
 relay/
 ├── packages/
-│   ├── core/        # @relay/core — library (defineFlow, Runner, Provider, ...)
+│   ├── core/        # @relay/core — library (defineRace, Runner, Provider, ...)
 │   ├── cli/         # @relay/cli — the `relay` binary
-│   ├── generator/   # @relay/generator — Claude Code skill that scaffolds new flows
-│   └── flows/       # reference flow packages (codebase-discovery)
+│   ├── generator/   # @relay/generator — Claude Code skill that scaffolds new races
+│   └── races/       # reference race packages (codebase-discovery)
 ├── examples/        # hello-world + hello-world-mocked
 ├── catalog/         # static catalog site (M4)
 └── docs/            # copy-kit, naming-conventions, etc.
@@ -35,7 +35,7 @@ One sprint per session. The user invokes the `sprint-workflow` skill (or just sa
 | `task-implementer` | Default workhorse — low/medium-risk implementation tasks |
 | `systems-engineer` | High-risk core: Runner, ClaudeProvider, DAG/cycles, retry, abort |
 | `cli-ux-engineer` | Any CLI command — output must match product spec verbatim |
-| `flow-author` | Prompt files + flow.ts for examples and reference flows |
+| `race-author` | Prompt files + race.ts for examples and reference races |
 | `test-engineer` | Vitest tests using MockProvider |
 | `code-reviewer` | Post-implementation review against spec sections |
 | `doc-writer` | README hero, copy-kit, glossary, naming conventions |
@@ -48,7 +48,7 @@ One sprint per session. The user invokes the `sprint-workflow` skill (or just sa
 | `sprint-workflow` | Dispatching a sprint's tasks across agents |
 | `relay-brand-grammar` | Touching any user-visible string |
 | `relay-monorepo` | Configuring pnpm / tsconfig / tsup / vitest at the workspace level |
-| `flow-package-format` | Building or validating a flow package (§7) |
+| `race-package-format` | Building or validating a race package (§7) |
 | `claude-agent-sdk` | Implementing or wiring `@anthropic-ai/claude-agent-sdk` |
 | `billing-safety` | Anything that touches `ANTHROPIC_API_KEY`, auth, env |
 | `typescript` | Writing or refactoring `.ts` — strict mode, ESM, discriminated unions, Zod inference |
@@ -73,7 +73,7 @@ The harness runs four hook events to keep the loop tight:
 2. **The word "simply" is banned in user-facing copy.** Same with trailing exclamation marks.
 3. **Subscription billing is the default.** `ANTHROPIC_API_KEY` must trigger `ClaudeAuthError` unless explicitly opted in. See `billing-safety` skill. Each provider enforces its own auth contract; see claude-agent-sdk and claude-cli-provider skills for the matrix.
 4. **ESM only, Node ≥20.10, TypeScript 5.4+.** No CJS dual-publish.
-5. **Atomic writes for any file other processes might read** (state.json, handoffs/*, metrics.json, live/*).
+5. **Atomic writes for any file other processes might read** (state.json, batons/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.
 
 ## Spec section references

@@ -9,7 +9,7 @@ Relay's most important non-functional requirement: **the library MUST NOT cause 
 
 ## The threat (tech spec §8.1.1)
 
-A user has a subscription. They install Relay and run a flow. Several environments can silently route their tokens to the API and bill them:
+A user has a subscription. They install Relay and run a race. Several environments can silently route their tokens to the API and bill them:
 
 - `ANTHROPIC_API_KEY` set in their shell rc (a leftover from earlier API experimentation).
 - A parent process exported `ANTHROPIC_API_KEY` for some other tool.
@@ -68,7 +68,7 @@ The CLI's `formatError` (sprint 6 task_46) renders this in the §6.2 doctor bloc
 
 ```
 ✕ env  ANTHROPIC_API_KEY is set in your environment
-       running a flow now would bill your API account,
+       running a race now would bill your API account,
        not your Max subscription.
 
        fix:      unset ANTHROPIC_API_KEY

@@ -1,8 +1,8 @@
 import { z } from '@relay/core';
 
 /**
- * The shape of the `inventory` handoff written by the first step.
- * Downstream steps receive this object as an injected context block and
+ * The shape of the `inventory` baton written by the first runner.
+ * Downstream runners receive this object as an injected context block and
  * should read it as `{{inventory.packages}}` from within a prompt.
  */
 export const InventorySchema = z.object({

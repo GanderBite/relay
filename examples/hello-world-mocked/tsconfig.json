@@ -5,6 +5,6 @@
     "rootDir": "./",
     "noEmit": false
   },
-  "include": ["flow.ts", "run-mocked.ts"],
+  "include": ["race.ts", "run-mocked.ts"],
   "exclude": ["node_modules", "dist"]
 }

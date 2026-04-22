@@ -8,10 +8,10 @@
  *   - Type coercion for ZodNumber (parse float) and ZodBoolean (true/false/1/0)
  *   - Default and optional fields are skipped during positional assignment
  *
- * Returns ok(parsed) on success or err(FlowDefinitionError) on failure.
+ * Returns ok(parsed) on success or err(RaceDefinitionError) on failure.
  */
 
-import { err, FlowDefinitionError, ok, type Result, z } from '@relay/core';
+import { err, RaceDefinitionError, ok, type Result, z } from '@relay/core';
 
 // ---------------------------------------------------------------------------
 // Internal type helpers
@@ -73,7 +73,7 @@ function isBooleanLike(field: z.ZodType): boolean {
 
 /**
  * Coerce a raw argv string to the appropriate JS type for this schema field.
- * Throws FlowDefinitionError on bad input so the caller can bubble it as err().
+ * Throws RaceDefinitionError on bad input so the caller can bubble it as err().
  */
 function coerce(raw: string, field: z.ZodType): unknown {
   const inner = unwrapField(field);
@@ -81,7 +81,7 @@ function coerce(raw: string, field: z.ZodType): unknown {
   if (inner instanceof z.ZodNumber) {
     const n = Number(raw);
     if (Number.isNaN(n)) {
-      throw new FlowDefinitionError(`expected a number but received "${raw}"`);
+      throw new RaceDefinitionError(`expected a number but received "${raw}"`);
     }
     return n;
   }
@@ -89,7 +89,7 @@ function coerce(raw: string, field: z.ZodType): unknown {
   if (inner instanceof z.ZodBoolean) {
     if (raw === 'true' || raw === '1') return true;
     if (raw === 'false' || raw === '0') return false;
-    throw new FlowDefinitionError(
+    throw new RaceDefinitionError(
       `expected true/false/1/0 but received "${raw}"`,
     );
   }
@@ -119,10 +119,10 @@ function coerce(raw: string, field: z.ZodType): unknown {
 export function parseInputFromArgv(
   schema: z.ZodType,
   args: string[],
-): Result<unknown, FlowDefinitionError> {
+): Result<unknown, RaceDefinitionError> {
   if (!(schema instanceof z.ZodObject)) {
     return err(
-      new FlowDefinitionError(
+      new RaceDefinitionError(
         'input schema must be a ZodObject — other Zod types are not supported for argv parsing',
       ),
     );
@@ -158,8 +158,8 @@ export function parseInputFromArgv(
           try {
             raw[key] = coerce(rawValue, fieldRaw);
           } catch (coerceErr) {
-            if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
-            return err(new FlowDefinitionError(String(coerceErr)));
+            if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
+            return err(new RaceDefinitionError(String(coerceErr)));
           }
         } else {
           // Unknown flag — pass through as string so Zod can surface the error.
@@ -188,8 +188,8 @@ export function parseInputFromArgv(
             try {
               raw[key] = coerce(next, field);
             } catch (coerceErr) {
-              if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
-              return err(new FlowDefinitionError(String(coerceErr)));
+              if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
+              return err(new RaceDefinitionError(String(coerceErr)));
             }
           } else {
             // Unknown flag with a following value.
@@ -229,8 +229,8 @@ export function parseInputFromArgv(
     try {
       raw[key] = coerce(pos, fieldRaw);
     } catch (coerceErr) {
-      if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
-      return err(new FlowDefinitionError(String(coerceErr)));
+      if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
+      return err(new RaceDefinitionError(String(coerceErr)));
     }
 
     posIdx++;
@@ -243,7 +243,7 @@ export function parseInputFromArgv(
 
   if (!result.success) {
     const message = buildIssueMessage(result.error);
-    return err(new FlowDefinitionError(message, { issues: result.error.issues }));
+    return err(new RaceDefinitionError(message, { issues: result.error.issues }));
   }
 
   return ok(result.data);

@@ -96,11 +96,11 @@ export interface FailureStepRow {
    */
   exitCode?: number;
   /**
-   * Only present on the failed step. The first line names the error class
-   * and branch; the second names the specific field or handoff.
+   * Only present on the failed runner. The first line names the error class
+   * and branch; the second names the specific field or baton.
    * Example:
-   *   "branch 'entities' raised HandoffSchemaError"
-   *   "handoff 'entities' missing required field: entities[3].language"
+   *   "branch 'entities' raised BatonSchemaError"
+   *   "baton 'entities' missing required field: entities[3].language"
    */
   errorLines?: [string, string];
 }
@@ -150,13 +150,13 @@ export interface StartBannerOptions {
  *
  *   ●─▶●─▶●─▶●  relay
  *
- *   flow     codebase-discovery v0.1.0
+ *   race     codebase-discovery v0.1.0
  *   input    .  (audience=both)
  *   run      f9c3a2  ·  2026-04-17 14:32Z
  *   bill     subscription (max)  ·  no api charges
- *   est      $0.40  ·  5 steps  ·  ~12 min
+ *   est      $0.40  ·  5 runners  ·  ~12 min
  *
- *   press ctrl-c any time — state is saved after every step.
+ *   press ctrl-c any time — state is saved after every runner.
  *   ───────────────────────────────────────────────────────
  */
 export function renderStartBanner(opts: StartBannerOptions): string {
@@ -173,7 +173,7 @@ export function renderStartBanner(opts: StartBannerOptions): string {
     etaMin,
   } = opts;
 
-  // flow row
+  // race row
   const flowValue = `${flowName} v${flowVersion}`;
 
   // input row — "primary  (key=val, key=val)" or just "primary"
@@ -194,26 +194,26 @@ export function renderStartBanner(opts: StartBannerOptions): string {
       ? `subscription (max)  ${SYMBOLS.dot}  no api charges`
       : `api account  ${SYMBOLS.dot}  billing applies`;
 
-  // est row — "$X.XX  ·  N steps  ·  ~M min" (2-decimal total cost)
+  // est row — "$X.XX  ·  N runners  ·  ~M min" (2-decimal total cost)
   // Only rendered when a real CostEstimate is provided — never show a fake placeholder.
   const estLine =
     costEstimate !== undefined
       ? kvLine(
           'est',
-          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`,
+          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} runners  ${SYMBOLS.dot}  ~${etaMin} min`,
         )
       : undefined;
 
   const lines: string[] = [
     WORDMARK,
     '',
-    kvLine('flow', flowValue),
+    kvLine('race', flowValue),
     kvLine('input', inputValue),
     kvLine('run', runValue),
     kvLine('bill', billValue),
     ...(estLine !== undefined ? [estLine] : []),
     '',
-    gray('press ctrl-c any time — state is saved after every step.'),
+    gray('press ctrl-c any time — state is saved after every runner.'),
     rule(55),
   ];
 
@@ -280,8 +280,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
     return green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`);
   });
 
-  // Summary line: "all 5 steps succeeded in 11m 42s"
-  const summary = `all ${steps.length} steps succeeded in ${fmtDuration(totalDurationMs)}`;
+  // Summary line: "all 5 runners succeeded in 11m 42s"
+  const summary = `all ${steps.length} runners succeeded in ${fmtDuration(totalDurationMs)}`;
 
   // cost row label depends on billing source
   const costLabel =
@@ -332,10 +332,10 @@ export interface FailureBannerOptions {
    */
   spentUsd: number;
   /**
-   * If the failing step's error names a handoff, provide the handoff id here
+   * If the failing runner's error names a baton, provide the baton id here
    * so the banner appends a `cat` hint in the "to inspect:" block.
    */
-  handoffId?: string;
+  batonId?: string;
 }
 
 /**
@@ -366,7 +366,7 @@ export interface FailureBannerOptions {
  *       cat ./.relay/runs/f9c3a2/handoffs/entities.json
  */
 export function renderFailureBanner(opts: FailureBannerOptions): string {
-  const { flowName, runId, steps, spentUsd, handoffId } = opts;
+  const { flowName, runId, steps, spentUsd, batonId } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✕"
   const header = red(flowHeader(flowName, runId, SYMBOLS.fail));
@@ -403,8 +403,8 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const succeededCount = steps.filter((s) => s.status === 'succeeded').length;
   const totalCount = steps.length;
 
-  // Summary line: "3 of 5 steps succeeded · $0.049 spent · state saved"
-  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
+  // Summary line: "3 of 5 runners succeeded · $0.049 spent · state saved"
+  const summary = `${succeededCount} of ${totalCount} runners succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
 
   // "to resume after fixing:" block
   const resumeBlock = [
@@ -425,8 +425,8 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
     'to inspect:',
     `${logsLine}${logsAnnotation}`,
   ];
-  if (handoffId !== undefined) {
-    inspectLines.push(`    cat ./.relay/runs/${runId}/handoffs/${handoffId}.json`);
+  if (batonId !== undefined) {
+    inspectLines.push(`    cat ./.relay/runs/${runId}/batons/${batonId}.json`);
   }
   const inspectBlock = inspectLines.join('\n');
 

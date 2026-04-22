@@ -17,6 +17,6 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["flow.ts", "schemas/**/*.ts"],
+  "include": ["race.ts", "schemas/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

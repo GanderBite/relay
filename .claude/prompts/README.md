@@ -28,9 +28,9 @@ Every template dispatches via the `Agent` tool and references agents in prose as
 | `@task-implementer (agent)` | are the default low/medium-risk workhorse work |
 | `@systems-engineer (agent)` | are `risk: high` in `core.runner` / `core.providers.claude` / `core.flow` |
 | `@cli-ux-engineer (agent)` | are in `cli.*` modules — output must match product spec verbatim |
-| `@flow-author (agent)` | touch `prompts/`, `flow.ts`, or generator templates |
+| `@race-author (agent)` | touch `prompts/`, `race.ts`, or generator templates |
 | `@test-engineer (agent)` | write tests under `tests/` |
-| `@doc-writer (agent)` | touch `docs/`, root `README.md`, or per-flow READMEs |
+| `@doc-writer (agent)` | touch `docs/`, root `README.md`, or per-race READMEs |
 | `@catalog-builder (agent)` | touch `catalog/`, `lint.ts`, `registry.ts`, or the deploy workflow |
 | `@code-reviewer (agent)` | do a post-wave review pass (returns findings, does not edit code) |
 
@@ -43,7 +43,7 @@ Templates explicitly name skills so Claude triggers them reliably:
 | `sprint-workflow` | any sprint dispatch — the wave protocol lives here |
 | `relay-brand-grammar` | any user-visible string (CLI output, README, error message) |
 | `billing-safety` | `ANTHROPIC_API_KEY`, auth, env allowlist, doctor command |
-| `flow-package-format` | flow packages in `examples/`, `packages/flows/`, or generator templates |
+| `race-package-format` | race packages in `examples/`, `packages/races/`, or generator templates |
 | `claude-agent-sdk` | anything wiring `@anthropic-ai/claude-agent-sdk` |
 | `typescript` | writing or refactoring any `.ts` file |
 | `vitest` | writing or maintaining any Vitest test |

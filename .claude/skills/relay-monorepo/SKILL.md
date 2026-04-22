@@ -1,11 +1,11 @@
 ---
 name: relay-monorepo
-description: Conventions for the Relay pnpm-workspace monorepo — root config, per-package package.json shape, tsconfig setup, tsup bundling config, vitest test setup, ESM-only Node 20.10 + TypeScript 5.4 stack. Trigger this skill when scaffolding a new package, configuring `tsup.config.ts` or `tsconfig.json`, wiring `vitest.config.ts`, adding workspace dependencies (`workspace:^`), or troubleshooting the build pipeline. Used by the foundational sprint-0 tasks and any later task that touches build infrastructure.
+description: Conventions for the Relay pnpm-workspace monorepo — root config, per-package package.json shape, tsconfig setup, tsup bundling config, vitest test setup, ESM-only Node 20.10 + TypeScript 5.4 stack. Trigger this skill when scaffolding a new package, configuring `tsup.config.ts` or `tsconfig.json`, wiring `vitest.config.ts`, adding workspace dependencies (`workspace:^`), or troubleshooting the build pipeline. Race packages live in `packages/races/` (renamed from `packages/flows/` in sprint 15). Used by the foundational sprint-0 tasks and any later task that touches build infrastructure.
 ---
 
 # Relay Monorepo Conventions
 
-The repo is a pnpm workspace. Four packages plus `examples/` plus `packages/flows/`. ESM-only. Node ≥20.10. TypeScript 5.4+.
+The repo is a pnpm workspace. Four packages plus `examples/` plus `packages/races/`. ESM-only. Node ≥20.10. TypeScript 5.4+.
 
 ## Root layout
 
@@ -24,7 +24,7 @@ relay/
 ```yaml
 packages:
   - 'packages/*'
-  - 'packages/flows/*'
+  - 'packages/races/*'
   - 'examples/*'
 ```
 
@@ -86,7 +86,7 @@ strict-peer-dependencies=false
 auto-install-peers=true
 ```
 
-`strict-peer-dependencies=false` because flow packages declare `@relay/core` as a peer, and we don't want pnpm to refuse install when a user's node_modules predates the publish.
+`strict-peer-dependencies=false` because race packages declare `@relay/core` as a peer, and we don't want pnpm to refuse install when a user's node_modules predates the publish.
 
 ## Per-package package.json (library)
 
@@ -130,7 +130,7 @@ auto-install-peers=true
 }
 ```
 
-The `exports` map gates the public surface. `./testing` is a subpath export so flow authors can `import { MockProvider } from '@relay/core/testing'` without polluting the main entry.
+The `exports` map gates the public surface. `./testing` is a subpath export so race authors can `import { MockProvider } from '@relay/core/testing'` without polluting the main entry.
 
 ## Per-package tsconfig.json
 

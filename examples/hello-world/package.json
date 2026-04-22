@@ -1,10 +1,10 @@
 {
   "name": "hello-world",
   "version": "0.1.0",
-  "description": "The smallest valid Relay flow. Two prompt steps that produce a markdown greeting.",
+  "description": "The smallest valid Relay race. Two prompt runners that produce a markdown greeting.",
   "private": true,
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": ["dist", "prompts", "README.md"],
   "scripts": {
     "build": "tsc",

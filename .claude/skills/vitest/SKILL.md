@@ -1,6 +1,6 @@
 ---
 name: vitest
-description: Vitest testing patterns for the Relay codebase — describe/it structure, async/await tests, the MockProvider pattern (no live Claude calls), env stubbing for the auth guard tests, child_process mocking, snapshot testing for CLI banner output, fake timers for time-dependent code, and the temp-dir fixture for filesystem tests. Trigger this skill when writing or maintaining any `tests/**/*.test.ts` file across `@relay/core`, `@relay/cli`, `@relay/generator`, or any flow package. Pair with the `relay-monorepo` skill for the per-package vitest config.
+description: Vitest testing patterns for the Relay codebase — describe/it structure, async/await tests, the MockProvider pattern (no live Claude calls), env stubbing for the auth guard tests, child_process mocking, snapshot testing for CLI banner output, fake timers for time-dependent code, and the temp-dir fixture for filesystem tests. Trigger this skill when writing or maintaining any `tests/**/*.test.ts` file across `@relay/core`, `@relay/cli`, `@relay/generator`, or any race package. Pair with the `relay-monorepo` skill for the per-package vitest config.
 ---
 
 # Vitest Testing Patterns
@@ -55,7 +55,7 @@ describe('Runner', () => {
 
 ```ts
 import { MockProvider } from '@relay/core/testing';
-import { ProviderRegistry, createRunner, defineFlow, step, z } from '@relay/core';
+import { ProviderRegistry, createOrchestrator, defineRace, runner, z } from '@relay/core';
 
 const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
 
@@ -73,18 +73,18 @@ it('runs end-to-end', async () => {
   const registry = new ProviderRegistry();
   registry.register(provider);
 
-  const flow = defineFlow({
-    name: 'two-step',
+  const race = defineRace({
+    name: 'two-runner',
     version: '0.0.1',
     input: z.object({}),
-    steps: {
-      first: step.prompt({ promptFile: 'p1.md', output: { artifact: 'out.txt' } }),
-      second: step.prompt({ promptFile: 'p2.md', dependsOn: ['first'], output: { handoff: 'h' } }),
+    runners: {
+      first: runner.prompt({ promptFile: 'p1.md', output: { artifact: 'out.txt' } }),
+      second: runner.prompt({ promptFile: 'p2.md', dependsOn: ['first'], output: { baton: 'h' } }),
     },
   });
 
-  const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir });
-  const result = await runner.run(flow, {});
+  const orchestrator = createOrchestrator({ providers: registry, defaultProvider: 'mock', runDir });
+  const result = await orchestrator.run(race, {});
   expect(result.status).toBe('succeeded');
 });
 ```
@@ -177,12 +177,12 @@ import { renderStartBanner } from '../src/banner.js';
 
 it('matches the §6.3 banner format', () => {
   const out = renderStartBanner({
-    flow: { name: 'codebase-discovery', version: '0.1.0' },
+    race: { name: 'codebase-discovery', version: '0.1.0' },
     runId: 'f9c3a2',
     auth: { ok: true, billingSource: 'subscription', detail: 'max via OAuth' },
     input: { repoPath: '.', audience: 'both' },
     costEstimate: { min: 0.30, max: 0.50 },
-    stepCount: 5,
+    runnerCount: 5,
     etaMin: 12,
   });
   expect(out).toMatchInlineSnapshot();   // first run fills it in
@@ -268,8 +268,8 @@ await expect(fn()).rejects.toThrow(expect.objectContaining({
 
 1. **The auth guard.** Every branch of `inspectClaudeAuth`. Highest-stakes test surface in the codebase.
 2. **The DAG cycle detector.** Cycles, missing dependencies, multi-root errors.
-3. **The capability-negotiation matrix.** Every (step requirement × provider capability) combination.
-4. **Resume.** Run, kill, resume — verify succeeded steps don't re-execute.
+3. **The capability-negotiation matrix.** Every (runner requirement × provider capability) combination.
+4. **Resume.** Run, kill, resume — verify succeeded runners don't re-execute.
 5. **The CLI banner snapshots.** Every command's output against the product spec example.
 6. **Atomic writes.** Concurrent writers don't corrupt the file.
 

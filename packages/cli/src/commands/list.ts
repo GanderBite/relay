@@ -315,7 +315,7 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   const cwd = process.cwd();
 
   // Header — verbatim from product spec §6.8
-  process.stdout.write(`${MARK}  installed flows (./.relay/flows/)\n`);
+  process.stdout.write(`${MARK}  installed races (./.relay/flows/)\n`);
   process.stdout.write('\n');
 
   // Scan all sources concurrently; remote may fail
@@ -332,7 +332,7 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   const flows = dedup([local, workspace, remote]);
 
   if (flows.length === 0) {
-    process.stdout.write('  no flows installed. browse the catalog: relay search <query>\n');
+    process.stdout.write('  no races installed. browse the catalog: relay search <query>\n');
     if (remoteCatalogUnavailable) {
       process.stdout.write(gray('  (catalog unavailable — relay search may be out of date)') + '\n');
     }
@@ -349,7 +349,7 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   process.stdout.write('\n');
 
   // Footer — verbatim from product spec §6.8
-  process.stdout.write(`${flows.length} flows installed. search more: relay search <query>\n`);
+  process.stdout.write(`${flows.length} races installed. search more: relay search <query>\n`);
 
   if (remoteCatalogUnavailable) {
     process.stdout.write(gray('  (catalog unavailable — relay search may be out of date)') + '\n');

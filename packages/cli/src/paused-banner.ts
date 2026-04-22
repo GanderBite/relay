@@ -25,7 +25,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { StepState } from '@relay/core';
+import type { RunnerState } from '@relay/core';
 
 import {
   MARK,
@@ -42,7 +42,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-interface RawStepState extends StepState {
+interface RawStepState extends RunnerState {
   model?: string;
 }
 
@@ -54,7 +54,7 @@ interface RawMetrics {
 }
 
 interface RawState {
-  steps?: Record<string, RawStepState>;
+  runners?: Record<string, RawStepState>;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ async function readStateSteps(runDir: string): Promise<Record<string, RawStepSta
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
     const parsed = JSON.parse(raw) as RawState;
-    return parsed.steps ?? {};
+    return parsed.runners ?? {};
   } catch {
     return {};
   }

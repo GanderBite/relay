@@ -17,7 +17,7 @@ const mockLoadFlow = vi.hoisted(() => vi.fn());
 const mockParseInputFromArgv = vi.hoisted(() => vi.fn());
 const mockRegisterDefaultProviders = vi.hoisted(() => vi.fn());
 const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
-const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
+const mockLoadRaceSettings = vi.hoisted(() => vi.fn());
 const mockResolveProvider = vi.hoisted(() => vi.fn());
 const mockRenderStartBanner = vi.hoisted(() => vi.fn());
 const mockRenderSuccessBanner = vi.hoisted(() => vi.fn());
@@ -28,9 +28,9 @@ vi.mock('@relay/core', async (importOriginal) => {
     ...actual,
     registerDefaultProviders: mockRegisterDefaultProviders,
     loadGlobalSettings: () => mockLoadGlobalSettings(),
-    loadFlowSettings: (_dir: string) => mockLoadFlowSettings(_dir),
+    loadRaceSettings: (_dir: string) => mockLoadRaceSettings(_dir),
     resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
-    Runner: class MockRunner {
+    Orchestrator: class MockOrchestrator {
       constructor(_opts: unknown) {}
       run = mockRunnerRun;
     },
@@ -83,14 +83,14 @@ vi.mock('../../src/exit-codes.js', async (importOriginal) => {
 import { ok } from '@relay/core';
 import runCommand from '../../src/commands/run.js';
 
-/** Minimal flow object that satisfies the run command's needs. */
+/** Minimal race object that satisfies the run command's needs. */
 function makeFlow() {
   return {
     name: 'test-flow',
     version: '0.1.0',
     input: { safeParse: (v: unknown) => ({ success: true, data: v }) },
-    stepOrder: ['step1'],
-    steps: {},
+    runnerOrder: ['step1'],
+    runners: {},
     graph: { topoOrder: ['step1'], rootSteps: ['step1'], predecessors: new Map() },
   };
 }
@@ -132,7 +132,7 @@ beforeEach(() => {
   mockParseInputFromArgv.mockReturnValue(ok({ input: '.' }));
   mockRegisterDefaultProviders.mockReturnValue(undefined);
   mockLoadGlobalSettings.mockResolvedValue(ok(null));
-  mockLoadFlowSettings.mockResolvedValue(ok(null));
+  mockLoadRaceSettings.mockResolvedValue(ok(null));
   mockResolveProvider.mockReturnValue(ok(provider));
   mockRenderStartBanner.mockReturnValue('');
   mockRenderSuccessBanner.mockReturnValue('');

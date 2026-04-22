@@ -42,7 +42,7 @@ Use the picker table from `SKILL.md`. When two signals match, prefer the more sp
 
 - A task in `packages/cli/src/commands/` tagged `risk: low` → `cli-ux-engineer` (path beats risk).
 - A task in `packages/core/src/runner/runner.ts` tagged `risk: high` → `systems-engineer`.
-- A task in `packages/generator/templates/blank/flow.ts` → `flow-author` (path is more specific than the generic `task-implementer` default).
+- A task in `packages/generator/templates/blank/race.ts` → `race-author` (path is more specific than the generic `task-implementer` default).
 
 ## Validating a wave
 

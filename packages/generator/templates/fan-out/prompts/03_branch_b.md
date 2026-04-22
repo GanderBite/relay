@@ -1,10 +1,10 @@
 You are the second of two parallel analysts. Your counterpart runs
-simultaneously against the same prep handoff; do not attempt to coordinate
-— your output will be merged in a later step.
+simultaneously against the same prep baton; do not attempt to coordinate
+— your output will be merged in a later runner.
 
-Use the `{{prep}}` handoff as your source of truth. Focus on the second
+Use the `{{prep}}` baton as your source of truth. Focus on the second
 angle of analysis for this template — replace this prompt with your own
-framing when you fork the flow.
+framing when you fork the race.
 
 Produce a JSON object with these fields:
 

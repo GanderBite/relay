@@ -1,9 +1,9 @@
 {
-  "name": "@ganderbite/flow-codebase-discovery",
+  "name": "@relay/races-codebase-discovery",
   "version": "0.1.0",
   "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": ["dist", "prompts", "schemas", "templates", "examples", "README.md"],
   "scripts": {
     "build": "tsc",
@@ -19,6 +19,7 @@
     "typescript": "6.0.3"
   },
   "relay": {
+    "raceName": "codebase-discovery",
     "displayName": "Codebase Discovery",
     "tags": ["analysis", "documentation", "architecture"],
     "estimatedCostUsd": { "min": 0.20, "max": 0.80 },

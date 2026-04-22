@@ -26,7 +26,7 @@ Trigger the `sprint-workflow` skill IMMEDIATELY — it encodes the wave protocol
 Per task, remind the dispatched agent to invoke the relevant sub-skill:
 - User-visible string → `relay-brand-grammar`
 - `ANTHROPIC_API_KEY` / auth / env / doctor → `billing-safety`
-- Flow package → `flow-package-format`
+- Race package → `race-package-format`
 - Claude Agent SDK wiring → `claude-agent-sdk`
 - `.ts` write or refactor → `typescript`
 - Vitest test → `vitest`
@@ -39,7 +39,7 @@ Dispatch every task via the Agent tool with one of these subagent_types:
 
 - `@systems-engineer (agent)` — `risk: high` in `core.runner` / `core.providers.claude` / `core.flow` / `core.state`
 - `@cli-ux-engineer (agent)` — any module starting with `cli.`
-- `@flow-author (agent)` — `prompts/`, `flow.ts`, generator templates
+- `@race-author (agent)` — `prompts/`, `race.ts`, generator templates
 - `@test-engineer (agent)` — `tests/` or task name starting "Test "
 - `@doc-writer (agent)` — `docs/` or root `README.md`
 - `@catalog-builder (agent)` — `catalog/`, `lint.ts`, `registry.ts`, catalog deploy workflow

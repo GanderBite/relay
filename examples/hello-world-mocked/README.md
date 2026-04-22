@@ -2,18 +2,18 @@
 
 `●─▶●─▶●─▶●  hello-world-mocked`
 
-The mocked twin of [`hello-world`](../hello-world). Runs the same two-step flow against a `MockProvider` — no Claude binary, no subscription, no API key. Proves that the `Provider` abstraction holds: the flow definition is identical, only the runner's provider registry changes.
+The mocked twin of [`hello-world`](../hello-world). Runs the same two-runner race against a `MockProvider` — no Claude binary, no subscription, no API key. Proves that the `Provider` abstraction holds: the race definition is identical, only the orchestrator's provider registry changes.
 
 ## What it does
 
-Runs two prompt steps against canned responses wired up in `run-mocked.ts`:
+Runs two prompt runners against canned responses wired up in `run-mocked.ts`:
 
-1. `greet` — pretends to ask Claude for a JSON greeting, returns the canned document `{ "greeting": "..." }`, and writes it as the `greeting` handoff.
+1. `greet` — pretends to ask Claude for a JSON greeting, returns the canned document `{ "greeting": "..." }`, and writes it as the `greeting` baton.
 2. `summarize` — pretends to ask Claude to render the greeting as markdown, returns the canned markdown body, and writes it to `greeting.md` as the run's artifact.
 
-The flow graph, prompt files, input schema, and output artifact match `hello-world` byte for byte. The only difference is the entry point: `run-mocked.ts` constructs a `ProviderRegistry` containing a `MockProvider` and hands it to `createRunner`, rather than relying on the default `ClaudeProvider`.
+The race graph, prompt files, input schema, and output artifact match `hello-world` byte for byte. The only difference is the entry point: `run-mocked.ts` constructs a `ProviderRegistry` containing a `MockProvider` and hands it to `createOrchestrator`, rather than relying on a default Claude provider.
 
-Use this flow when you want to exercise Relay end-to-end without spending a Claude turn — CI, smoke tests, offline demos, or any environment without a subscription.
+Use this race when you want to exercise Relay end-to-end without spending a Claude turn — CI, smoke tests, offline demos, or any environment without a subscription.
 
 ## Sample output
 
@@ -34,7 +34,7 @@ The artifact itself:
 
 > Welcome to Relay, World. Good to have you here.
 
-This flow ran two prompt steps. The first produced a JSON handoff named `greeting`; the second turned that handoff into this markdown artifact. Both steps ran against a MockProvider with canned responses, so no Claude subprocess was spawned.
+This race ran two prompt runners. The first produced a JSON baton named `greeting`; the second turned that baton into this markdown artifact. Both runners ran against a MockProvider with canned responses, so no Claude subprocess was spawned.
 ```
 
 ## Estimated cost and duration
@@ -76,21 +76,21 @@ cat .relay/runs/<runId>/artifacts/greeting.md
 `run-mocked.ts` exposes two knobs, both directly in the source for pedagogy:
 
 - **Input** — `{ name: string }`. Change the CLI argument or edit the `process.argv[2]` fallback.
-- **Canned responses** — edit the `responses` map passed to `new MockProvider(...)`. Keys are step ids (`greet`, `summarize`). Values are full `InvocationResponse` objects; the helper `cannedResponse(text)` handles the usage/model/stopReason boilerplate.
+- **Canned responses** — edit the `responses` map passed to `new MockProvider(...)`. Keys are runner ids (`greet`, `summarize`). Values are full `InvocationResponse` objects; the helper `cannedResponse(text)` handles the usage/model/stopReason boilerplate.
 
-Every `MockProvider` key must match a step id in `flow.ts`. Missing a key surfaces as `StepFailureError: MockProvider: no response configured for stepId "<id>"` on the first attempt, which then consumes the retry budget and fails the run.
+Every `MockProvider` key must match a runner id in `race.ts`. Missing a key surfaces as `StepFailureError: MockProvider: no response configured for runnerId "<id>"` on the first attempt, which then consumes the retry budget and fails the run.
 
 ## Environment
 
-This flow needs no Claude subscription and no API key. It runs against a `MockProvider` wired up in `run-mocked.ts`, so the `ANTHROPIC_API_KEY` guard never fires and no subprocess is spawned. Use it in CI, offline demos, or any environment where you want to exercise Relay end-to-end without spending a Claude turn. See `docs/billing-safety.md` for the full auth precedence and the opt-in paths that apply to flows that do call the model.
+This race needs no Claude subscription and no API key. It runs against a `MockProvider` wired up in `run-mocked.ts`, so the `ANTHROPIC_API_KEY` guard never fires and no subprocess is spawned. Use it in CI, offline demos, or any environment where you want to exercise Relay end-to-end without spending a Claude turn. See `docs/billing-safety.md` for the full auth precedence and the opt-in paths that apply to races that do call the model.
 
 ## Customization
 
 Typical starting points:
 
-- **Add a step.** Add a new entry to `flow.ts`'s `steps` map, add the prompt file under `prompts/`, and add a matching entry to the `MockProvider`'s `responses` map. Keys must match.
+- **Add a runner.** Add a new entry to `race.ts`'s `runners` map, add the prompt file under `prompts/`, and add a matching entry to the `MockProvider`'s `responses` map. Keys must match.
 - **Return different text per attempt.** `MockProvider` accepts a function `(req, ctx) => InvocationResponse` in place of a static response — use `ctx.attempt` to return a different value on retries.
-- **Point at the real provider.** Replace the `MockProvider`/`ProviderRegistry` setup with the default registry (or call `createRunner()` with no `providers` override). `flow.ts` itself stays identical — that is the whole point of the abstraction.
+- **Point at a real provider.** Replace the `MockProvider`/`ProviderRegistry` setup with the default registry (or call `createOrchestrator()` with no `providers` override). `race.ts` itself stays identical — that is the whole point of the abstraction.
 
 ## License
 

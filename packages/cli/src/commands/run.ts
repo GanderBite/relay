@@ -26,14 +26,14 @@ import { join } from 'node:path';
 
 import {
   defaultRegistry,
-  loadFlowSettings,
+  loadRaceSettings,
   loadGlobalSettings,
   registerDefaultProviders,
   resolveProvider,
-  Runner,
+  Orchestrator,
   type AuthState,
   type RunResult,
-  type StepState,
+  type RunnerState,
 } from '@relay/core';
 
 import type { SuccessStepRow, FailureStepRow } from '../banner.js';
@@ -136,17 +136,17 @@ export default async function runCommand(
   registerDefaultProviders();
 
   // Load settings in parallel; failures are non-fatal — treat as null.
-  const [globalSettingsResult, flowSettingsResult] = await Promise.all([
+  const [globalSettingsResult, raceSettingsResult] = await Promise.all([
     loadGlobalSettings(),
-    loadFlowSettings(flowDir),
+    loadRaceSettings(flowDir),
   ]);
 
   const globalSettings = globalSettingsResult.isOk() ? globalSettingsResult.value : null;
-  const flowSettings = flowSettingsResult.isOk() ? flowSettingsResult.value : null;
+  const raceSettings = raceSettingsResult.isOk() ? raceSettingsResult.value : null;
 
   const resolveResult = resolveProvider({
     flagProvider: options.provider,
-    flowSettings: flowSettings ?? null,
+    raceSettings: raceSettings ?? null,
     globalSettings: globalSettings ?? null,
     registry: defaultRegistry,
   });
@@ -173,8 +173,8 @@ export default async function runCommand(
   const runDir = join(process.cwd(), '.relay', 'runs', runId);
   const flowPath = join(flowDir, 'dist', 'flow.js');
 
-  // Derive step count and ETA from flow metadata.
-  const stepCount = flow.stepOrder.length;
+  // Derive runner count and ETA from race metadata.
+  const stepCount = flow.runnerOrder.length;
   const flowMeta = flow as unknown as Record<string, unknown>;
   const etaMin =
     typeof flowMeta['etaMin'] === 'number'
@@ -255,8 +255,8 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
   // SIGINT handler — Ctrl-C paused UX (product spec §11.5)
   //
-  // First ^C: flag the interruption. The Runner registers its own SIGINT
-  // listener and fires its AbortController, which causes runner.run() to
+  // First ^C: flag the interruption. The Orchestrator registers its own SIGINT
+  // listener and fires its AbortController, which causes orchestrator.run() to
   // resolve with status = 'aborted'. We detect that below and render the
   // paused banner instead of the failure banner.
   //
@@ -270,8 +270,8 @@ export default async function runCommand(
     if (!wasInterrupted || now - lastSigintMs > 2000) {
       wasInterrupted = true;
       lastSigintMs = now;
-      // The Runner's own SIGINT handler fires simultaneously and aborts the run.
-      // Nothing more to do here — runner.run() will resolve with 'aborted'.
+      // The Orchestrator's own SIGINT handler fires simultaneously and aborts the run.
+      // Nothing more to do here — orchestrator.run() will resolve with 'aborted'.
     } else {
       // Second ^C within 2 s — hard exit.
       process.exit(130);
@@ -281,7 +281,7 @@ export default async function runCommand(
   process.on('SIGINT', sigintHandler);
 
   // ---------------------------------------------------------------------------
-  // Step 6 — build and run the runner
+  // Step 6 — build and run the orchestrator
   // ---------------------------------------------------------------------------
 
   // Resolve relay version for the telemetry event. Falls back to 'unknown'
@@ -305,16 +305,16 @@ export default async function runCommand(
 
   const startMs = Date.now();
 
-  const runner = new Runner({ runDir });
+  const orchestrator = new Orchestrator({ runDir });
 
   let result: RunResult;
   try {
     // --fresh: always start a new run (default behavior — relay run never implicitly resumes).
-    // The Runner generates a fresh runId on every invocation so this flag is currently a no-op;
+    // The Orchestrator generates a fresh runId on every invocation so this flag is currently a no-op;
     // it is forwarded for future stale-runDir purge behavior and so the banner's next: block is truthful.
-    const runOpts: Parameters<typeof runner.run>[2] & { fresh?: boolean } = {
-      flowDir,
-      flowPath,
+    const runOpts: Parameters<typeof orchestrator.run>[2] & { fresh?: boolean } = {
+      raceDir: flowDir,
+      racePath: flowPath,
     };
     if (options.provider !== undefined) {
       runOpts.flagProvider = options.provider;
@@ -322,7 +322,7 @@ export default async function runCommand(
     if (options.fresh === true) {
       runOpts.fresh = true;
     }
-    result = await runner.run(flow, input, runOpts);
+    result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
     progress.stop();
@@ -331,7 +331,7 @@ export default async function runCommand(
       flowVersion: flow.version,
       status: 'failure',
       durationMs: Date.now() - startMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.runnerOrder.length,
       totalCostUsd: 0,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -352,7 +352,7 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
 
   if (result.status === 'succeeded') {
-    const stepRows = await buildSuccessStepRows(result.runDir, flow.stepOrder);
+    const stepRows = await buildSuccessStepRows(result.runDir, flow.runnerOrder);
     const outputPath = result.artifacts.length > 0
       ? (result.artifacts[0] ?? `./.relay/runs/${result.runId}`)
       : `./.relay/runs/${result.runId}`;
@@ -379,7 +379,7 @@ export default async function runCommand(
       flowVersion: flow.version,
       status: 'success',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.runnerOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -390,14 +390,14 @@ export default async function runCommand(
   } else if (result.status === 'aborted' && wasInterrupted) {
     // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
     // This is not an error: state is saved, the run can be resumed.
-    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.stepOrder);
+    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.runnerOrder);
 
     maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
       status: 'aborted',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.runnerOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -407,7 +407,7 @@ export default async function runCommand(
     process.exit(130);
   } else {
     // failed or aborted (non-interactive)
-    const failureRows = await buildFailureStepRows(result.runDir, flow.stepOrder);
+    const failureRows = await buildFailureStepRows(result.runDir, flow.runnerOrder);
     const failureBanner = renderFailureBanner({
       flowName: flow.name,
       runId: result.runId,
@@ -422,7 +422,7 @@ export default async function runCommand(
       flowVersion: flow.version,
       status: result.status === 'aborted' ? 'aborted' : 'failure',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.runnerOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -436,12 +436,12 @@ export default async function runCommand(
 // ---------------------------------------------------------------------------
 // Per-step data builders
 //
-// After the run, step timing comes from state.json (StepState.startedAt /
-// completedAt) and per-step cost from metrics.json (StepMetrics.costUsd).
+// After the run, runner timing comes from state.json (RunnerState.startedAt /
+// completedAt) and per-runner cost from metrics.json (RunnerMetrics.costUsd).
 // Both are read once here; missing data falls back to safe zero values.
 // ---------------------------------------------------------------------------
 
-interface RawStepState extends StepState {
+interface RawStepState extends RunnerState {
   model?: string;
 }
 
@@ -457,8 +457,8 @@ async function readStateSteps(
 ): Promise<Record<string, RawStepState>> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
-    const parsed = JSON.parse(raw) as { steps?: Record<string, RawStepState> };
-    return parsed.steps ?? {};
+    const parsed = JSON.parse(raw) as { runners?: Record<string, RawStepState> };
+    return parsed.runners ?? {};
   } catch {
     return {};
   }
@@ -561,7 +561,7 @@ function buildCostTable(rows: SuccessStepRow[]): string {
   const COST_W = 10;
 
   const header =
-    'step'.padEnd(NAME_W) +
+    'runner'.padEnd(NAME_W) +
     'model'.padEnd(MODEL_W) +
     'duration'.padEnd(DUR_W) +
     'cost';

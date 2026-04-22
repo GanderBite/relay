@@ -44,7 +44,7 @@ Dotted module path. Drives the agent picker:
 - `core` / `core.*` → systems-engineer for runtime, task-implementer for foundation
 - `cli` / `cli.*` → cli-ux-engineer (always, regardless of risk)
 - `cli.catalog` → catalog-builder
-- `flows.*` / `examples` / `generator.templates` → flow-author
+- `races.*` / `examples` / `generator.templates` → race-author
 - `docs` → doc-writer
 - `catalog` → catalog-builder
 

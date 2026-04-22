@@ -16,7 +16,7 @@ import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
 
-import type { Flow } from '@relay/core';
+import type { Race } from '@relay/core';
 
 import {
   gray,
@@ -136,7 +136,7 @@ function logStructured(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ProgressDisplay<TInput = any> {
   readonly #runDir: string;
-  readonly #flow: Flow<TInput>;
+  readonly #flow: Race<TInput>;
   readonly #auth: AuthInfo;
 
   #runId = '';
@@ -149,7 +149,7 @@ export class ProgressDisplay<TInput = any> {
   readonly #sigintHandlers: Array<() => void> = [];
   readonly #steps: Map<string, StepDisplayState> = new Map();
 
-  constructor(runDir: string, flow: Flow<TInput>, auth: AuthInfo) {
+  constructor(runDir: string, flow: Race<TInput>, auth: AuthInfo) {
     this.#runDir = runDir;
     this.#flow = flow;
     this.#auth = auth;
@@ -172,8 +172,8 @@ export class ProgressDisplay<TInput = any> {
     this.#runId = runId;
     this.#runStartedAt = new Date().toISOString();
 
-    for (const stepId of this.#flow.stepOrder) {
-      const step = this.#flow.steps[stepId];
+    for (const stepId of this.#flow.runnerOrder) {
+      const step = this.#flow.runners[stepId];
       this.#steps.set(stepId, {
         id: stepId,
         dependsOn: step?.dependsOn ?? [],

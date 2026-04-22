@@ -14,11 +14,11 @@
 ```yaml
 packages:
   - 'packages/*'
-  - 'packages/flows/*'
+  - 'packages/races/*'
   - 'examples/*'
 ```
 
-The two-deep `packages/flows/*` is the catalog flow location. Examples are separate so they don't pollute the catalog space.
+The two-deep `packages/races/*` is the catalog race location. Examples are separate so they don't pollute the catalog space.
 
 ### `.npmrc`
 

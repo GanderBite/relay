@@ -1,9 +1,9 @@
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "A Relay flow with a fan-out / fan-in topology.",
+  "description": "A Relay race with a fan-out / fan-in topology.",
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": [
     "dist",
     "prompts",

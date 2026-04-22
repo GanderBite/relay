@@ -71,7 +71,7 @@ export default async function initCommand(
     providerName = options.provider as ValidProvider;
   } else {
     // Interactive: show menu.
-    process.stdout.write('select a provider to run your flows:\n');
+    process.stdout.write('select a provider to run your races:\n');
     process.stdout.write('\n');
     process.stdout.write('  1. claude-cli         runs on your Claude Pro/Max subscription (no extra charges)\n');
     process.stdout.write('  2. claude-agent-sdk   runs on the Anthropic API (billed per token to your API account)\n');

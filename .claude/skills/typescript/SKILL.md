@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: TypeScript 5.4+ patterns for the Relay codebase — strict mode discipline, ESM with NodeNext resolution, discriminated unions (used heavily in Step types and InvocationEvent), Zod schema inference, type narrowing, branded types, the ban on `any` and `as` casts, and the import-extension rules ESM enforces. Trigger this skill when writing or refactoring any `.ts` file, when designing types for a new module, when the type system is fighting you, or when an agent is tempted to reach for `any` or `// @ts-ignore`.
+description: TypeScript 5.4+ patterns for the Relay codebase — strict mode discipline, ESM with NodeNext resolution, discriminated unions (used heavily in Runner types and InvocationEvent), Zod schema inference, type narrowing, branded types, the ban on `any` and `as` casts, and the import-extension rules ESM enforces. Trigger this skill when writing or refactoring any `.ts` file, when designing types for a new module, when the type system is fighting you, or when an agent is tempted to reach for `any` or `// @ts-ignore`.
 ---
 
 # TypeScript Patterns for Relay
@@ -20,8 +20,8 @@ The Relay codebase is **strict TypeScript 5.4+, ESM-only, Node ≥20.10**. Stric
 
 ```ts
 // ✅ Correct — .js extension even though source is .ts
-import { Runner } from './runner/runner.js';
-import type { Flow } from './flow/types.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
+import type { Race } from './race/types.js';
 import { z } from 'zod';
 
 // ❌ Wrong — no extension
@@ -42,21 +42,21 @@ const __dirname = dirname(__filename);
 Relay's `Step`, `PromptStepOutput`, `InvocationEvent`, and error class hierarchy all use discriminated unions. The pattern:
 
 ```ts
-type Step =
-  | { kind: 'prompt';   id: string; spec: PromptStepSpec   }
-  | { kind: 'script';   id: string; spec: ScriptStepSpec   }
-  | { kind: 'branch';   id: string; spec: BranchStepSpec   }
-  | { kind: 'parallel'; id: string; spec: ParallelStepSpec }
-  | { kind: 'terminal'; id: string; spec: TerminalStepSpec };
+type Runner =
+  | { kind: 'prompt';   id: string; spec: PromptRunnerSpec   }
+  | { kind: 'script';   id: string; spec: ScriptRunnerSpec   }
+  | { kind: 'branch';   id: string; spec: BranchRunnerSpec   }
+  | { kind: 'parallel'; id: string; spec: ParallelRunnerSpec }
+  | { kind: 'terminal'; id: string; spec: TerminalRunnerSpec };
 
-function execute(step: Step) {
-  switch (step.kind) {
-    case 'prompt':   return executePrompt(step);    // step.spec is PromptStepSpec
-    case 'script':   return executeScript(step);    // step.spec is ScriptStepSpec
-    case 'branch':   return executeBranch(step);
-    case 'parallel': return executeParallel(step);
-    case 'terminal': return executeTerminal(step);
-    default: assertNever(step);                     // exhaustiveness check
+function execute(runner: Runner) {
+  switch (runner.kind) {
+    case 'prompt':   return executePrompt(runner);    // runner.spec is PromptRunnerSpec
+    case 'script':   return executeScript(runner);    // runner.spec is ScriptRunnerSpec
+    case 'branch':   return executeBranch(runner);
+    case 'parallel': return executeParallel(runner);
+    case 'terminal': return executeTerminal(runner);
+    default: assertNever(runner);                     // exhaustiveness check
   }
 }
 
@@ -73,7 +73,7 @@ Prefer the type system's narrowing over `as`:
 
 ```ts
 // ✅ Type guard
-function isPromptStep(s: Step): s is Extract<Step, { kind: 'prompt' }> {
+function isPromptRunner(s: Runner): s is Extract<Runner, { kind: 'prompt' }> {
   return s.kind === 'prompt';
 }
 
@@ -88,7 +88,7 @@ if ('schema' in step.spec.output) {
 }
 
 // ❌ Don't do this
-const promptStep = step as Extract<Step, { kind: 'prompt' }>;
+const promptRunner = runner as Extract<Runner, { kind: 'prompt' }>;
 ```
 
 ## Zod inference
@@ -116,38 +116,38 @@ Now `Inventory` and `InventorySchema` can never drift. If you change one, the co
 Array and record access returns `T | undefined`:
 
 ```ts
-const steps: Record<string, Step> = { ... };
+const runners: Record<string, Runner> = { ... };
 
 // ❌ Won't compile — could be undefined
-const s = steps['inventory'];
-s.spec;
+const r = runners['inventory'];
+r.spec;
 
 // ✅ Narrow first
-const s = steps['inventory'];
-if (s === undefined) throw new Error('missing step');
-s.spec;
+const r = runners['inventory'];
+if (r === undefined) throw new Error('missing runner');
+r.spec;
 
 // ✅ Or use a guarded accessor
-function requireStep(steps: Record<string, Step>, id: string): Step {
-  const s = steps[id];
-  if (!s) throw new FlowDefinitionError(`unknown step: ${id}`);
-  return s;
+function requireRunner(runners: Record<string, Runner>, id: string): Runner {
+  const r = runners[id];
+  if (!r) throw new RaceDefinitionError(`unknown runner: ${id}`);
+  return r;
 }
 ```
 
 ## Branded types for IDs
 
-When you have multiple ID-shaped strings (runId, stepId, handoffId), brand them so they can't be confused:
+When you have multiple ID-shaped strings (runId, runnerId, batonId), brand them so they can't be confused:
 
 ```ts
 export type RunId = string & { readonly __brand: 'RunId' };
-export type StepId = string & { readonly __brand: 'StepId' };
+export type RunnerId = string & { readonly __brand: 'RunnerId' };
 
 export function asRunId(s: string): RunId { return s as RunId; }
-export function asStepId(s: string): StepId { return s as StepId; }
+export function asRunnerId(s: string): RunnerId { return s as RunnerId; }
 ```
 
-Now `function loadRun(id: RunId)` won't accept a `StepId` by mistake. (Use sparingly — only when the confusion has bitten.)
+Now `function loadRun(id: RunId)` won't accept a `RunnerId` by mistake. (Use sparingly — only when the confusion has bitten.)
 
 ## Async patterns
 
@@ -156,7 +156,7 @@ Now `function loadRun(id: RunId)` won't accept a `StepId` by mistake. (Use spari
 const config = await loadConfig();
 
 // ✅ Always await — no fire-and-forget in production code
-await runner.run(flow, input);
+await orchestrator.run(race, input);
 
 // ❌ Promise.then chain when async/await is clearer
 fetch(url).then(r => r.json()).then(processData);

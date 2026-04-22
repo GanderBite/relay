@@ -1,10 +1,10 @@
 {
   "name": "hello-world-mocked",
   "version": "0.1.0",
-  "description": "The mocked twin of hello-world — runs the same two-step flow against a MockProvider with no Claude binary, subscription, or API key.",
+  "description": "The mocked twin of hello-world — runs the same two-runner race against a MockProvider with no Claude binary, subscription, or API key.",
   "private": true,
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": ["dist", "prompts", "README.md"],
   "scripts": {
     "build": "tsc",

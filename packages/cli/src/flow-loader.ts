@@ -18,7 +18,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { ok, err } from '@relay/core';
 import type { Result } from '@relay/core';
-import type { Flow } from '@relay/core';
+import type { Race } from '@relay/core';
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -43,11 +43,11 @@ export class FlowLoadError extends Error {
 // Public return type
 // ---------------------------------------------------------------------------
 
-/** Where the flow was found. Used by callers for optional diagnostic logging. */
+/** Where the race was found. Used by callers for optional diagnostic logging. */
 export type FlowSource = 'path' | 'local' | 'node_modules';
 
 export interface LoadedFlow {
-  flow: Flow<unknown>;
+  flow: Race<unknown>;
   dir: string;
   pkg: Record<string, unknown>;
   /** Indicates which resolution path was used. */
@@ -58,10 +58,10 @@ export interface LoadedFlow {
 // Duck-type guard
 //
 // We can't use instanceof here — the module may come from a different package.
-// Check the three structural fields that every compiled Flow must carry:
-//   name   — string (from FlowSpec)
-//   steps  — object/record (from FlowSpec)
-//   graph  — object with successors/predecessors/topoOrder (from FlowGraph)
+// Check the three structural fields that every compiled Race must carry:
+//   name    — string (from RaceSpec)
+//   runners — object/record (from RaceSpec)
+//   graph   — object with successors/predecessors/topoOrder (from RaceGraph)
 //
 // successors and predecessors are tested structurally (has .get and .has)
 // rather than with instanceof Map, so frozen objects or future refactors
@@ -77,13 +77,13 @@ function isMapLike(value: unknown): boolean {
   );
 }
 
-function isFlow(value: unknown): value is Flow<unknown> {
+function isFlow(value: unknown): value is Race<unknown> {
   if (value === null || typeof value !== 'object') return false;
 
   const candidate = value as Record<string, unknown>;
 
   if (typeof candidate['name'] !== 'string') return false;
-  if (candidate['steps'] === null || typeof candidate['steps'] !== 'object') return false;
+  if (candidate['runners'] === null || typeof candidate['runners'] !== 'object') return false;
 
   const graph = candidate['graph'];
   if (graph === null || typeof graph !== 'object') return false;
@@ -163,8 +163,8 @@ async function importFlow(
   if (!isFlow(defaultExport)) {
     return err(
       new FlowLoadError(
-        `${entryPath} does not export a valid Flow — expected an object with ` +
-          `name (string), steps (object), and graph (FlowGraph)`,
+        `${entryPath} does not export a valid Race — expected an object with ` +
+          `name (string), runners (object), and graph (RaceGraph)`,
         'FLOW_INVALID',
       ),
     );

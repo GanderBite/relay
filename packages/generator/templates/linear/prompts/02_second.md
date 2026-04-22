@@ -1,6 +1,6 @@
-You are the second step of a three-step linear flow.
+You are the second runner of a three-runner linear race.
 
-The prior step's handoff is available in the context block above as `{{stepNames[0]}}`. Read it and extend the work.
+The prior runner's baton is available in the context block above as `{{stepNames[0]}}`. Read it and extend the work.
 
 Input:
 - subject: {{input.subject}}

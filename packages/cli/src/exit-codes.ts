@@ -3,10 +3,10 @@
  *
  * Exit codes:
  *   0 — success
- *   1 — step failure (StepFailureError, generic Error, unknown)
- *   2 — flow definition error (FlowDefinitionError, ProviderCapabilityError)
+ *   1 — runner failure (StepFailureError, generic Error, unknown)
+ *   2 — race definition error (RaceDefinitionError, ProviderCapabilityError)
  *   3 — auth error (ClaudeAuthError, ProviderAuthError)
- *   4 — handoff / schema error (HandoffSchemaError)
+ *   4 — baton / schema error (BatonSchemaError)
  *   5 — timeout (TimeoutError, AuthTimeoutError)
  *   6 — no provider configured (NoProviderConfiguredError)
  *
@@ -21,9 +21,9 @@
 import { CommanderError } from 'commander';
 import {
   AuthTimeoutError,
+  BatonSchemaError,
   ClaudeAuthError,
-  FlowDefinitionError,
-  HandoffSchemaError,
+  RaceDefinitionError,
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
@@ -42,7 +42,7 @@ export const EXIT_CODES = {
   step_failure: 1,
   definition_error: 2,
   auth_error: 3,
-  handoff_error: 4,
+  baton_error: 4,
   timeout: 5,
   no_provider: 6,
 } as const;
@@ -59,11 +59,11 @@ export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
 export function exitCodeFor(err: unknown): number {
   if (err instanceof NoProviderConfiguredError) return EXIT_CODES.no_provider;
   if (err instanceof StepFailureError)    return EXIT_CODES.step_failure;
-  if (err instanceof FlowDefinitionError) return EXIT_CODES.definition_error;
+  if (err instanceof RaceDefinitionError) return EXIT_CODES.definition_error;
   if (err instanceof ClaudeAuthError)     return EXIT_CODES.auth_error;
   if (err instanceof AuthTimeoutError)    return EXIT_CODES.timeout;
   if (err instanceof TimeoutError)        return EXIT_CODES.timeout;
-  if (err instanceof HandoffSchemaError)  return EXIT_CODES.handoff_error;
+  if (err instanceof BatonSchemaError)    return EXIT_CODES.baton_error;
   if (err instanceof ProviderAuthError)   return EXIT_CODES.auth_error;
   if (err instanceof PipelineError)       return EXIT_CODES.step_failure;
   if (err instanceof CommanderError)      return err.exitCode;
@@ -192,10 +192,10 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // TimeoutError — step exceeded its timeoutMs budget
+  // TimeoutError — runner exceeded its timeoutMs budget
   // ----------------------------------------------------------------
   if (err instanceof TimeoutError) {
-    const stepId = err.stepId;
+    const runnerId = err.runnerId;
     const timeoutMs = err.timeoutMs;
     const humanTime = formatMs(timeoutMs);
 
@@ -203,17 +203,17 @@ export function formatError(err: unknown): string {
     const artifactPath =
       typeof err.details?.['artifactPath'] === 'string'
         ? err.details['artifactPath']
-        : `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
+        : `./.relay/runs/${runId}/artifacts/${runnerId}.partial`;
 
     return [
-      red(`✕ Step '${stepId}' timed out after ${humanTime}`),
+      red(`✕ Runner '${runnerId}' timed out after ${humanTime}`),
       BLANK,
       `${INDENT}The prompt ran longer than its configured timeout. This usually means`,
       `${INDENT}the prompt is asking for too much in a single turn, or a tool call is`,
       `${INDENT}hanging.`,
       BLANK,
       remediation(`check the partial output: ${artifactPath}`),
-      remediation(`raise the timeout in flow.ts: step.prompt({ timeoutMs: ${timeoutMs * 2} })`),
+      remediation(`raise the timeout in race.ts: runner.prompt({ timeoutMs: ${timeoutMs * 2} })`),
       remediation(`relay resume ${runId}                      retry with the new config`),
     ].join('\n');
   }
@@ -232,74 +232,74 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // FlowDefinitionError — with special handling for cycle detection
+  // RaceDefinitionError — with special handling for cycle detection
   // ----------------------------------------------------------------
-  if (err instanceof FlowDefinitionError) {
+  if (err instanceof RaceDefinitionError) {
     const msg = err.message;
 
     const cyclePath = extractCyclePath(err);
     if (cyclePath !== null) {
       return [
-        red('✕ Flow has a dependency cycle'),
+        red('✕ Race has a dependency cycle'),
         BLANK,
-        `${INDENT}Steps form a cycle: ${cyclePath}`,
+        `${INDENT}Runners form a cycle: ${cyclePath}`,
         BLANK,
-        remediation(`edit flow.ts to remove the back-edge from ${lastEdge(cyclePath)}`),
+        remediation(`edit race.ts to remove the back-edge from ${lastEdge(cyclePath)}`),
       ].join('\n');
     }
 
     return [
-      red(`✕ Flow definition error`),
+      red(`✕ Race definition error`),
       BLANK,
       `${INDENT}${msg}`,
       BLANK,
-      remediation('edit flow.ts to fix the definition error'),
+      remediation('edit race.ts to fix the definition error'),
       remediation('relay doctor'),
     ].join('\n');
   }
 
   // ----------------------------------------------------------------
-  // HandoffSchemaError
+  // BatonSchemaError
   // ----------------------------------------------------------------
-  if (err instanceof HandoffSchemaError) {
-    const handoffId = err.handoffId;
+  if (err instanceof BatonSchemaError) {
+    const batonId = err.batonId;
     const issueLines = err.issues.map((issue) => {
-      const path = issue.path.length > 0 ? issue.path.join('.') : handoffId;
-      return `${INDENT}  ${handoffId}${path !== handoffId ? `[${path}]` : ''} ${issue.message}`;
+      const pathStr = issue.path.length > 0 ? issue.path.map(String).join('.') : batonId;
+      return `${INDENT}  ${batonId}${pathStr !== batonId ? `[${pathStr}]` : ''} ${issue.message}`;
     });
 
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-    const stepName = typeof err.details?.['stepName'] === 'string' ? err.details['stepName'] : handoffId;
+    const runnerName = typeof err.details?.['runnerName'] === 'string' ? err.details['runnerName'] : batonId;
     const promptFile =
       typeof err.details?.['promptFile'] === 'string'
         ? err.details['promptFile']
-        : `prompts/${stepName}.md`;
+        : `prompts/${runnerName}.md`;
 
     return [
-      red(`✕ Handoff '${handoffId}' failed schema validation`),
+      red(`✕ Baton '${batonId}' failed schema validation`),
       BLANK,
-      `${INDENT}Step '${stepName}' produced JSON that doesn't match its declared schema:`,
+      `${INDENT}Runner '${runnerName}' produced JSON that doesn't match its declared schema:`,
       ...issueLines,
       BLANK,
-      remediation(`relay logs ${runId} --step ${stepName}        see what Claude produced`),
+      remediation(`relay logs ${runId} --runner ${runnerName}        see what Claude produced`),
       remediation(`edit ${promptFile}              tighten the prompt`),
       remediation(`relay resume ${runId}                      retry after fixing`),
     ].join('\n');
   }
 
   // ----------------------------------------------------------------
-  // StepFailureError — step exited non-zero
+  // StepFailureError — runner exited non-zero
   // ----------------------------------------------------------------
   if (err instanceof StepFailureError) {
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
 
     return [
-      red(`✕ Step '${err.stepId}' failed on attempt ${err.attempt}`),
+      red(`✕ Runner '${err.runnerId}' failed on attempt ${err.attempt}`),
       BLANK,
       `${INDENT}${err.message}`,
       BLANK,
-      remediation(`relay logs ${runId} --step ${err.stepId}        see what went wrong`),
-      remediation(`relay resume ${runId}                            retry the step`),
+      remediation(`relay logs ${runId} --runner ${err.runnerId}        see what went wrong`),
+      remediation(`relay resume ${runId}                            retry the runner`),
     ].join('\n');
   }
 
@@ -310,11 +310,11 @@ export function formatError(err: unknown): string {
     return [
       red('✕ no provider configured'),
       BLANK,
-      `${INDENT}Relay does not know which backend to run your flow on.`,
+      `${INDENT}Relay does not know which backend to run your race on.`,
       BLANK,
       remediation('relay init                                          pick a provider interactively'),
-      remediation('relay run <flow> --provider claude-cli              use the subscription-safe provider'),
-      remediation('relay run <flow> --provider claude-agent-sdk        use the API-account provider'),
+      remediation('relay run <race> --provider claude-cli              use the subscription-safe provider'),
+      remediation('relay run <race> --provider claude-agent-sdk        use the API-account provider'),
     ].join('\n');
   }
 
@@ -357,20 +357,20 @@ export function formatError(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers for FlowDefinitionError cycle extraction
+// Internal helpers for RaceDefinitionError cycle extraction
 // ---------------------------------------------------------------------------
 
 /**
- * Try to extract a cycle path string from a FlowDefinitionError.
+ * Try to extract a cycle path string from a RaceDefinitionError.
  *
- * Checks details.cycle (expected shape: string[] of step IDs).
+ * Checks details.cycle (expected shape: string[] of runner IDs).
  * Falls back to a message heuristic for errors that already carry a
  * formatted cycle description containing '→'.
  *
  * Returns a formatted string like "inventory → entities → services → inventory"
  * or null if this error does not describe a cycle.
  */
-function extractCyclePath(err: FlowDefinitionError): string | null {
+function extractCyclePath(err: RaceDefinitionError): string | null {
   if (
     err.details?.['cycle'] !== undefined &&
     Array.isArray(err.details['cycle']) &&

@@ -36,7 +36,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Type picks:
 
-- `feat` — new user-visible capability (commands, flows, CLI output)
+- `feat` — new user-visible capability (commands, races, CLI output)
 - `fix` — bug fix in existing behavior
 - `chore` — scaffolding, build config, workspace plumbing (sprint 0 is mostly this)
 - `docs` — README / docs/ / copy-kit / glossary
@@ -46,7 +46,7 @@ Type picks:
 
 Scope picks (the dominant area the wave touches):
 
-- `root`, `core`, `cli`, `generator`, `examples`, `flows`, `catalog`, `docs`
+- `root`, `core`, `cli`, `generator`, `examples`, `races`, `catalog`, `docs`
 - If a wave genuinely spans multiple areas, use the highest-impact scope or omit the scope (`feat: ...`).
 
 Example:
@@ -72,7 +72,7 @@ While orchestrating, ensure the dispatched agent invokes the right sub-skill for
 
 - Any user-visible string → `relay-brand-grammar`
 - `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, auth, env allowlist, doctor → `billing-safety`
-- A flow package (examples/, packages/flows/, generator templates) → `flow-package-format`
+- A race package (examples/, packages/races/, generator templates) → `race-package-format`
 - `@anthropic-ai/claude-agent-sdk` wiring → `claude-agent-sdk`
 - Any `.ts` file write or refactor → `typescript`
 - Any Vitest test → `vitest`
@@ -85,7 +85,7 @@ Dispatch every task via the Agent tool with the subagent_type matching one of th
 
 - `@systems-engineer (agent)` — `risk: high` in `core.runner` / `core.providers.claude` / `core.flow` / `core.state`
 - `@cli-ux-engineer (agent)` — any module starting with `cli.` (wins over risk level)
-- `@flow-author (agent)` — target path includes `prompts/`, `flow.ts`, or `packages/generator/templates/`
+- `@race-author (agent)` — target path includes `prompts/`, `race.ts`, or `packages/generator/templates/`
 - `@test-engineer (agent)` — target path under `tests/` or task name starts with "Test "
 - `@doc-writer (agent)` — target path under `docs/` or root `README.md`
 - `@catalog-builder (agent)` — target path under `catalog/`, or task touches `lint.ts` / `registry.ts` / `.github/workflows/catalog-deploy.yml`

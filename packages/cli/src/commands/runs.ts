@@ -20,7 +20,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MARK, SYMBOLS, gray, green, red, yellow } from '../visual.js';
-import type { RunState, RunStatus } from '@relay/core';
+import type { RaceState, RaceStatus } from '@relay/core';
 
 // ---------------------------------------------------------------------------
 // Column widths for the table
@@ -64,8 +64,8 @@ export function relativeTime(iso: string): string {
  * Uses the latest completedAt across all steps minus startedAt.
  * Returns "-" when no completed steps exist.
  */
-function computeDuration(state: RunState): string {
-  const stepValues = Object.values(state.steps);
+function computeDuration(state: RaceState): string {
+  const stepValues = Object.values(state.runners);
   if (stepValues.length === 0) return '-';
 
   let maxCompletedMs = -1;
@@ -93,9 +93,9 @@ function computeDuration(state: RunState): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Map a RunStatus (or undefined) to its colored symbol string.
+ * Map a RaceStatus (or undefined) to its colored symbol string.
  */
-function statusSymbol(status: RunStatus | string): string {
+function statusSymbol(status: RaceStatus | string): string {
   switch (status) {
     case 'succeeded': return green(SYMBOLS.ok);
     case 'failed':    return red(SYMBOLS.fail);
@@ -138,11 +138,11 @@ function parseFlags(): { limit: number; status: string | undefined } {
 // ---------------------------------------------------------------------------
 
 /**
- * Load all RunState objects from <cwd>/.relay/runs/.
+ * Load all RaceState objects from <cwd>/.relay/runs/.
  * Subdirectories that have no state.json or an unparseable one are silently
  * skipped — a partially-created run dir should not break the listing.
  */
-async function loadRuns(runsDir: string): Promise<RunState[]> {
+async function loadRuns(runsDir: string): Promise<RaceState[]> {
   let entries: string[];
   try {
     entries = await readdir(runsDir);
@@ -151,7 +151,7 @@ async function loadRuns(runsDir: string): Promise<RunState[]> {
     return [];
   }
 
-  const states: RunState[] = [];
+  const states: RaceState[] = [];
 
   for (const entry of entries) {
     const stateFile = join(runsDir, entry, 'state.json');
@@ -164,12 +164,12 @@ async function loadRuns(runsDir: string): Promise<RunState[]> {
         typeof parsed === 'object' &&
         !Array.isArray(parsed) &&
         typeof (parsed as Record<string, unknown>)['runId'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['flowName'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['flowVersion'] === 'string' &&
+        typeof (parsed as Record<string, unknown>)['raceName'] === 'string' &&
+        typeof (parsed as Record<string, unknown>)['raceVersion'] === 'string' &&
         typeof (parsed as Record<string, unknown>)['startedAt'] === 'string' &&
         typeof (parsed as Record<string, unknown>)['status'] === 'string'
       ) {
-        states.push(parsed as RunState);
+        states.push(parsed as RaceState);
       }
     } catch {
       // Missing, unreadable, or malformed — skip silently.
@@ -187,16 +187,16 @@ async function loadRuns(runsDir: string): Promise<RunState[]> {
  * Render a single table row for one run.
  *
  * Format:
- *   <sym>  <runId8>  <flowName vVer padded>  <relativeTime padded>  <duration>
+ *   <sym>  <runId8>  <raceName vVer padded>  <relativeTime padded>  <duration>
  */
-function renderRow(state: RunState): string {
+function renderRow(state: RaceState): string {
   const sym = statusSymbol(state.status);
   const runId = state.runId.slice(0, 8).padEnd(RUN_ID_WIDTH);
-  const flowRef = `${state.flowName} v${state.flowVersion}`.padEnd(FLOW_WIDTH);
+  const raceRef = `${state.raceName} v${state.raceVersion}`.padEnd(FLOW_WIDTH);
   const timeAgo = relativeTime(state.startedAt).padEnd(TIME_WIDTH);
   const dur = computeDuration(state);
 
-  return ` ${sym}  ${runId}${flowRef}${timeAgo}${dur}`;
+  return ` ${sym}  ${runId}${raceRef}${timeAgo}${dur}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ export default async function runsCommand(_args: unknown[], _opts: unknown): Pro
 
   if (rows.length === 0) {
     process.stdout.write('\n');
-    process.stdout.write('  no runs yet. start one: relay run <flow> .\n');
+    process.stdout.write('  no runs yet. start one: relay run <race> .\n');
     return;
   }
 

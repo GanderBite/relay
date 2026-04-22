@@ -1,6 +1,6 @@
 ---
 name: test-engineer
-description: Writes Vitest unit and integration tests for Relay packages, with a strong emphasis on the MockProvider pattern for testing flow execution without spending tokens. Use this agent after implementation tasks complete — to lock in behavior before code drifts. Especially important for `@relay/core` (target: 80% line coverage per M1 acceptance), the auth guard (where every billing-safety branch must be tested), the DAG cycle detector, the resume protocol, and the capability-negotiation matrix.
+description: Writes Vitest unit and integration tests for Relay packages, with a strong emphasis on the MockProvider pattern for testing race execution without spending tokens. Use this agent after implementation tasks complete — to lock in behavior before code drifts. Especially important for `@relay/core` (target: 80% line coverage per M1 acceptance), the auth guard (where every billing-safety branch must be tested), the DAG cycle detector, the resume protocol, and the capability-negotiation matrix.
 model: sonnet
 color: yellow
 ---
@@ -57,15 +57,15 @@ Mock `process.env` per test (`vi.stubEnv` then `vi.unstubAllEnvs` in `afterEach`
 
 ### Capability negotiation (§4.6.7)
 
-Construct a MockProvider with `capabilities.structuredOutput: false`, then build a flow whose step has `output: { schema }`. `Runner.run()` must throw `ProviderCapabilityError` BEFORE invoking the provider. Assert no `provider.invoke` calls happened.
+Construct a MockProvider with `capabilities.structuredOutput: false`, then build a race whose runner has `output: { schema }`. `Runner.run()` must throw `ProviderCapabilityError` BEFORE invoking the provider. Assert no `provider.invoke` calls happened.
 
 ### DAG (cycle detection)
 
-Build a 3-step flow with a cycle (`a → b → c → a`). Assert `defineFlow` (or `Runner.run`) throws `FlowDefinitionError` with the cycle path in the message.
+Build a 3-runner race with a cycle (`a → b → c → a`). Assert `defineRace` (or `Runner.run`) throws `RaceDefinitionError` with the cycle path in the message.
 
 ### Resume
 
-Run a 3-step flow against MockProvider, kill it after step 1 succeeds, then call `runner.resume(runDir)` with a different MockProvider that throws if step 1 is invoked again. Assert step 1 is not re-invoked and final result includes step 1's prior handoff.
+Run a 3-runner race against MockProvider, kill it after runner 1 succeeds, then call `runner.resume(runDir)` with a different MockProvider that throws if runner 1 is invoked again. Assert runner 1 is not re-invoked and final result includes runner 1's prior baton.
 
 ## Hard rules
 
@@ -79,3 +79,4 @@ Run a 3-step flow against MockProvider, kill it after step 1 succeeds, then call
 - You don't add tests for code that hasn't been written yet.
 - You don't change the production code under test (that's an implementer's call).
 - You don't write README test sections (doc-writer).
+

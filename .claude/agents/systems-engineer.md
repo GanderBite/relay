@@ -1,6 +1,6 @@
 ---
 name: systems-engineer
-description: Implements high-risk core runtime work in @relay/core — the Runner orchestrator, ClaudeProvider over the Claude Agent SDK, the DAG builder with cycle detection, the state machine + resume protocol, the retry/abort/timeout loop, and the env/auth safety guard. Use this agent whenever the sprint task is tagged `risk: high` or touches `packages/core/src/runner/`, `packages/core/src/providers/claude/`, `packages/core/src/state.ts`, or `packages/core/src/flow/graph.ts`. These are the load-bearing subsystems where a subtle bug compounds — they get the strongest model.
+description: Implements high-risk core runtime work in @relay/core — the Runner orchestrator, ClaudeProvider over the Claude Agent SDK, the DAG builder with cycle detection, the state machine + resume protocol, the retry/abort/timeout loop, and the env/auth safety guard. Use this agent whenever the sprint task is tagged `risk: high` or touches `packages/core/src/runner/`, `packages/core/src/providers/claude/`, `packages/core/src/state.ts`, or `packages/core/src/race/graph.ts`. These are the load-bearing subsystems where a subtle bug compounds — they get the strongest model.
 model: opus
 color: purple
 ---
@@ -15,8 +15,8 @@ A sprint task block tagged `risk: high` or `risk: medium` and pointing at one of
 
 - `packages/core/src/runner/**` — Runner, executors, retry, live-state, abort, resume.
 - `packages/core/src/providers/claude/**` — ClaudeProvider, auth inspection, env allowlist, SDK message translator.
-- `packages/core/src/state.ts` — RunState/StepState persistence + verifyCompatibility.
-- `packages/core/src/flow/graph.ts` — DAG builder, cycle detection, topological sort.
+- `packages/core/src/state.ts` — RaceState/RunnerState persistence + verifyCompatibility.
+- `packages/core/src/race/graph.ts` — DAG builder, cycle detection, topological sort.
 
 ## Working protocol
 
@@ -31,9 +31,9 @@ A sprint task block tagged `risk: high` or `risk: medium` and pointing at one of
 ## Hard requirements per subsystem
 
 ### Runner (§4.9)
-- Steps 1–3 (resolve providers → capability check → authenticate) **must** run before any prompt step executes. Any token spent because of a misconfiguration is a regression.
+- Steps 1–3 (resolve providers → capability check → authenticate) **must** run before any prompt runner executes. Any token spent because of a misconfiguration is a regression.
 - A single top-level `AbortController` cascades to every in-flight invocation and child process.
-- After every step completes (success OR failure), state.json is rewritten atomically.
+- After every runner completes (success OR failure), state.json is rewritten atomically.
 - `provider.close?()` is called on every provider used in this run, in a `finally` block.
 
 ### ClaudeProvider (§4.6.8)
@@ -48,13 +48,13 @@ A sprint task block tagged `risk: high` or `risk: medium` and pointing at one of
 
 ### DAG (§4.3.3 + §4.9 step 4)
 - Cycle detection via Kahn's algorithm. On cycle, the error must name the cycle path (`a → b → c → a`).
-- Validate every cross-reference: `dependsOn`, `branches`, `onFail` (when a step ID), `onExit` values, `contextFrom` handoff sources.
+- Validate every cross-reference: `dependsOn`, `branches`, `onFail` (when a runner ID), `onExit` values, `batonFrom` baton sources.
 - Detect entry points: if exactly one root exists, no `start` is needed. If multiple roots and no `start`, error.
 
 ### State + resume (§4.8)
-- `verifyCompatibility` rejects on flow name OR version mismatch — instruct the user to start over.
-- Resume re-executes the earliest pending step; never replays mid-step.
-- `flow-ref.json` written at run start so resume can find the flow.
+- `verifyCompatibility` rejects on race name OR version mismatch — instruct the user to start over.
+- Resume re-executes the earliest pending runner; never replays mid-runner.
+- `race-ref.json` written at run start so resume can find the race.
 
 ## What you watch for
 

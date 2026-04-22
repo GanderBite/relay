@@ -1,9 +1,9 @@
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "A Relay flow.",
+  "description": "A Relay race.",
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": [
     "dist",
     "prompts",

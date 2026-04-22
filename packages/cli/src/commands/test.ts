@@ -24,12 +24,12 @@ import * as path from 'node:path';
 
 import { MockProvider } from '@relay/core/testing';
 import {
-  Runner,
+  Orchestrator,
   ProviderRegistry,
   z,
 } from '@relay/core';
 import type {
-  Flow,
+  Race,
   InvocationContext,
   InvocationRequest,
   InvocationResponse,
@@ -113,7 +113,7 @@ class NamedMockProvider implements Provider {
 // Build a ProviderRegistry covering all providers the flow references
 // ---------------------------------------------------------------------------
 
-function buildRegistry(_flow: Flow<unknown>): ProviderRegistry {
+function buildRegistry(_flow: Race<unknown>): ProviderRegistry {
   const registry = new ProviderRegistry();
   const mock = new NamedMockProvider('mock');
   const regResult = registry.register(mock);
@@ -173,12 +173,12 @@ async function runFixture(
 
   let runResult: { status: string };
   try {
-    const runner = new Runner({
+    const orchestrator = new Orchestrator({
       providers: registry,
       runDir: tempDir,
     });
-    runResult = await runner.run(flow, fixture.input, {
-      flowDir: loadedFlow.dir,
+    runResult = await orchestrator.run(flow, fixture.input, {
+      raceDir: loadedFlow.dir,
       authTimeoutMs: 5000,
       flagProvider: 'mock',
     });

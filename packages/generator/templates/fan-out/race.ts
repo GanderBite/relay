@@ -1,5 +1,5 @@
 /**
- * Fan-out / fan-in flow.
+ * Fan-out / fan-in race.
  *
  * Topology:
  *
@@ -7,43 +7,43 @@
  *        │             ├──▶ merge
  *        └─▶ branch_b ─┘
  *
- * The `prep` step produces a handoff both branches consume. The two branch
- * steps run concurrently; a `step.parallel` acts as the fan-in barrier. The
- * `merge` step waits on the barrier and reads both branch handoffs.
+ * The `prep` runner produces a baton both branches consume. The two branch
+ * runners run concurrently; a `runner.parallel` acts as the fan-in barrier.
+ * The `merge` runner waits on the barrier and reads both branch batons.
  */
 
-import { defineFlow, step, z } from '@relay/core';
+import { defineRace, runner, z } from '@relay/core';
 
-export default defineFlow({
+export default defineRace({
   name: '{{pkgName}}',
   version: '0.1.0',
-  description: 'Fan-out / fan-in flow: prep → two parallel branches → merge.',
+  description: 'Fan-out / fan-in race: prep → two parallel branches → merge.',
   input: z.object({
     topic: z.string().describe('The subject both branches analyze'),
   }),
   start: 'prep',
-  steps: {
-    prep: step.prompt({
+  runners: {
+    prep: runner.prompt({
       promptFile: 'prompts/01_prep.md',
-      output: { handoff: 'prep' },
+      output: { baton: 'prep' },
     }),
-    branch_a: step.prompt({
+    branch_a: runner.prompt({
       promptFile: 'prompts/02_branch_a.md',
       dependsOn: ['prep'],
       contextFrom: ['prep'],
-      output: { handoff: 'branch_a' },
+      output: { baton: 'branch_a' },
     }),
-    branch_b: step.prompt({
+    branch_b: runner.prompt({
       promptFile: 'prompts/03_branch_b.md',
       dependsOn: ['prep'],
       contextFrom: ['prep'],
-      output: { handoff: 'branch_b' },
+      output: { baton: 'branch_b' },
     }),
-    barrier: step.parallel({
+    barrier: runner.parallel({
       branches: ['branch_a', 'branch_b'],
       dependsOn: ['branch_a', 'branch_b'],
     }),
-    merge: step.prompt({
+    merge: runner.prompt({
       promptFile: 'prompts/04_merge.md',
       dependsOn: ['barrier'],
       contextFrom: ['prep', 'branch_a', 'branch_b'],

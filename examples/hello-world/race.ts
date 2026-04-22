@@ -1,18 +1,18 @@
-import { defineFlow, step, z } from '@relay/core';
+import { defineRace, runner, z } from '@relay/core';
 
-export default defineFlow({
+export default defineRace({
   name: 'hello-world',
   version: '0.1.0',
-  description: 'Two-step hello-world flow: greet the user, then write a short markdown greeting.',
+  description: 'Two-runner hello-world race: greet the user, then write a short markdown greeting.',
   input: z.object({
     name: z.string().describe('The name of the person to greet.'),
   }),
-  steps: {
-    greet: step.prompt({
+  runners: {
+    greet: runner.prompt({
       promptFile: 'prompts/01_greet.md',
-      output: { handoff: 'greeting' },
+      output: { baton: 'greeting' },
     }),
-    summarize: step.prompt({
+    summarize: runner.prompt({
       promptFile: 'prompts/02_summarize.md',
       dependsOn: ['greet'],
       contextFrom: ['greeting'],

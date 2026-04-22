@@ -8,12 +8,12 @@
 
 | Term | Definition | Words to avoid |
 |---|---|---|
-| **flow** | A named, versioned sequence of steps you can run | "pipeline" (too generic), "workflow" (too loaded) |
-| **step** | One node in a flow — prompt, script, branch, or parallel | "task" (conflicts with system task primitives), "stage" |
-| **handoff** | The JSON one step produces and a later step consumes | "context", "message" |
-| **run** | One execution of a flow, identified by a run id | "session" (conflicts with Claude session concept), "job" |
-| **checkpoint** | The saved state of a run after each step completes | "save", "state" (the file on disk is `state.json`, but the UX word is *checkpoint*) |
-| **catalog flow** | A flow fetched from the public catalog and installed locally | "template" (implies you customize a blank; catalog flows are complete, runnable artifacts) |
+| **race** | A named, versioned sequence of runners you can run | "pipeline" (too generic), "workflow" (too loaded) |
+| **runner** | One node in a race — prompt, script, branch, or parallel | "task" (conflicts with system task primitives), "stage", "step" |
+| **baton** | The JSON one runner produces and a later runner consumes | "context", "message", "handoff" |
+| **run** | One execution of a race, identified by a run id | "session" (conflicts with Claude session concept), "job" |
+| **checkpoint** | The saved state of a run after each runner completes | "save", "state" (the file on disk is `state.json`, but the UX word is *checkpoint*) |
+| **catalog race** | A race fetched from the public catalog and installed locally | "template" (implies you customize a blank; catalog races are complete, runnable artifacts) |
 | **verified** | The Ganderbite-reviewed tier in the catalog | "official", "recommended" |
 
 ### One-line glossary
@@ -21,11 +21,11 @@
 The block below is reproduced verbatim in `relay --help glossary`. Do not paraphrase.
 
 ```
-flow        a named, versioned pipeline you can run
-step        one node in a flow (prompt, script, branch, parallel)
-handoff     the JSON one step produces and a later step consumes
-run         one execution of a flow; identified by a run id
-checkpoint  the saved state of a run after each step completes
+race        a named, versioned pipeline you can run
+runner      one node in a race (prompt, script, branch, parallel)
+baton       the JSON one runner produces and a later runner consumes
+run         one execution of a race; identified by a run id
+checkpoint  the saved state of a run after each runner completes
 ```
 
 ---
@@ -36,17 +36,20 @@ Any of these appearing in a user-facing string — CLI output, error message, RE
 
 | Avoid | Use instead |
 |---|---|
-| pipeline | flow |
-| workflow | flow |
-| task | step |
-| stage | step |
-| context | handoff |
-| message | handoff |
+| pipeline | race |
+| workflow | race |
+| flow | race |
+| task | runner |
+| stage | runner |
+| step | runner |
+| handoff | baton |
+| context | baton |
+| message | baton |
 | session | run |
 | job | run |
 | save | checkpoint |
 | state | checkpoint (in copy directed at users; `state.json` is acceptable in technical docs and code) |
-| template | flow, flow package, or catalog flow depending on context |
+| template | race, race package, or catalog race depending on context |
 | official | verified |
 | recommended | verified |
 
@@ -58,7 +61,7 @@ Any user-facing copy that introduces a word from the **Words to avoid** column i
 
 - Text written to stdout or stderr by any `relay` command.
 - Error message strings surfaced to the terminal.
-- README bodies in `packages/*/README.md` and flow package READMEs.
+- README bodies in `packages/*/README.md` and race package READMEs.
 - Copy kit strings in `docs/copy-kit.md`.
 - Catalog descriptions, page headers, and badge labels.
 
@@ -76,13 +79,13 @@ The following user-facing strings in the current codebase contain words from the
 ```
 .option('--template <name>', 'template to use (blank|linear|fan-out|discovery)', undefined)
 ```
-The help description `template to use` is user-facing (`relay new --help`). Preferred: `flow layout to use (blank|linear|fan-out|discovery)`.
+The help description `template to use` is user-facing (`relay new --help`). Preferred: `race layout to use (blank|linear|fan-out|discovery)`.
 
 **`packages/cli/src/commands/new.ts:42`**
 ```
 'or, to skip the skill and start from a blank template:\n'
 ```
-User-facing Mode A output. Preferred: `or, to skip the skill and start from a blank flow:`.
+User-facing Mode A output. Preferred: `or, to skip the skill and start from a blank race:`.
 
 **`packages/cli/src/commands/new.ts:61`**
 ```

@@ -5,11 +5,11 @@
  *
  *   ●─▶●─▶●─▶●  glossary
  *
- *   flow        a named, versioned pipeline you can run
- *   step        one node in a flow (prompt, script, branch, parallel)
- *   handoff     the JSON one step produces and a later step consumes
- *   run         one execution of a flow; identified by a run id
- *   checkpoint  the saved state of a run after each step completes
+ *   race        a named, versioned pipeline you can run
+ *   runner      one node in a race (prompt, script, branch, parallel)
+ *   baton       the JSON one runner produces and a later runner consumes
+ *   run         one execution of a race; identified by a run id
+ *   checkpoint  the saved state of a run after each runner completes
  */
 
 import { MARK } from '../visual.js';
@@ -21,11 +21,11 @@ import { MARK } from '../visual.js';
 const TERM_WIDTH = 12;
 
 const ENTRIES: ReadonlyArray<readonly [string, string]> = [
-  ['flow',       'a named, versioned pipeline you can run'],
-  ['step',       'one node in a flow (prompt, script, branch, parallel)'],
-  ['handoff',    'the JSON one step produces and a later step consumes'],
-  ['run',        'one execution of a flow; identified by a run id'],
-  ['checkpoint', 'the saved state of a run after each step completes'],
+  ['race',       'a named, versioned pipeline you can run'],
+  ['runner',     'one node in a race (prompt, script, branch, parallel)'],
+  ['baton',      'the JSON one runner produces and a later runner consumes'],
+  ['run',        'one execution of a race; identified by a run id'],
+  ['checkpoint', 'the saved state of a run after each runner completes'],
 ];
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "Three-step linear flow scaffolded from @relay/generator.",
+  "description": "Three-runner linear race scaffolded from @relay/generator.",
   "type": "module",
-  "main": "./dist/flow.js",
+  "main": "./dist/race.js",
   "files": ["dist", "prompts", "schemas", "templates", "examples", "README.md"],
   "scripts": {
     "build": "tsc",

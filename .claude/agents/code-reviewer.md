@@ -105,12 +105,13 @@ For transparency, one bullet per file summarizing what works. No per-finding sec
 ### Billing/auth safety (highest stakes)
 - Any path that calls the SDK without first running `inspectClaudeAuth`.
 - Any place where `ANTHROPIC_API_KEY` could leak into the env passed to the subprocess.
-- Any error path that swallows a `ClaudeAuthError` instead of propagating it.
+- Any error path that swallows a `SubscriptionAuthError` instead of propagating it.
 
 ### CLI output (when reviewing cli/ tasks)
 - Compare emitted strings byte-for-byte with the product spec example block.
 - Symbol vocabulary must come from `visual.ts`, not inlined.
 - Banned words: "simply", trailing `!`, emojis, "Pro user!", any cuteness.
+- Banned old nouns: "flow", "step", "handoff" — use race, runner, baton.
 
 ### Concurrency
 - `Promise.all` over branches must aggregate errors, not swallow them.
@@ -137,12 +138,13 @@ For transparency, one bullet per file summarizing what works. No per-finding sec
 ### Billing/auth safety (highest stakes)
 - Any path that calls the SDK without first running `inspectClaudeAuth`.
 - Any place where `ANTHROPIC_API_KEY` could leak into the env passed to the subprocess.
-- Any error path that swallows a `ClaudeAuthError` instead of propagating it.
+- Any error path that swallows a `SubscriptionAuthError` instead of propagating it.
 
 ### CLI output (when reviewing cli/ tasks)
 - Compare emitted strings byte-for-byte with the product spec example block.
 - Symbol vocabulary must come from `visual.ts`, not inlined.
 - Banned words: "simply", trailing `!`, emojis, "Pro user!", any cuteness.
+- Banned old nouns: "flow", "step", "handoff" — use race, runner, baton.
 
 ### Concurrency
 - `Promise.all` over branches must aggregate errors, not swallow them.
