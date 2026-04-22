@@ -37,6 +37,7 @@ import type { AuthState, RunState, StepState } from '@relay/core';
 
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
+import { renderPausedBanner } from '../paused-banner.js';
 import {
   ProgressDisplay,
   type AuthInfo,
@@ -402,6 +403,33 @@ export default async function resumeCommand(
   const display = new ProgressDisplay(runDir, flow, authInfo);
   display.start(runId);
 
+  // ---------------------------------------------------------------------------
+  // SIGINT handler — Ctrl-C paused UX (product spec §11.5)
+  //
+  // First ^C: flag the interruption. The Runner registers its own SIGINT
+  // listener and fires its AbortController, which causes runner.resume() to
+  // resolve with status = 'aborted'. We detect that below and render the
+  // paused banner instead of the failure banner.
+  //
+  // Second ^C within 2 s: hard exit 130 (SIGINT convention).
+  // ---------------------------------------------------------------------------
+  let wasInterrupted = false;
+  let lastSigintMs = 0;
+
+  const sigintHandler = (): void => {
+    const now = Date.now();
+    if (!wasInterrupted || now - lastSigintMs > 2000) {
+      wasInterrupted = true;
+      lastSigintMs = now;
+      // The Runner's own SIGINT handler fires simultaneously and aborts the run.
+    } else {
+      // Second ^C within 2 s — hard exit.
+      process.exit(130);
+    }
+  };
+
+  process.on('SIGINT', sigintHandler);
+
   let exitCode = 0;
   try {
     const resumeOpts: Parameters<typeof runner.resume>[1] = {};
@@ -410,6 +438,7 @@ export default async function resumeCommand(
     }
     const result = await runner.resume(runDir, resumeOpts);
 
+    process.removeListener('SIGINT', sigintHandler);
     display.stop();
 
     // ---- (9) Post-resume banner ----
@@ -445,6 +474,11 @@ export default async function resumeCommand(
           outputPath,
         }),
       );
+    } else if (result.status === 'aborted' && wasInterrupted) {
+      // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
+      // This is not an error: state is saved, the run can be resumed.
+      await renderPausedBanner(flowRef.flowName, runId, runDir, flow.graph.topoOrder);
+      process.exit(130);
     } else {
       // Re-read final state for accurate step statuses after the run.
       const finalStateResult = await loadState(runDir);
@@ -483,6 +517,7 @@ export default async function resumeCommand(
       exitCode = 1;
     }
   } catch (caught) {
+    process.removeListener('SIGINT', sigintHandler);
     display.stop();
     process.stderr.write(formatError(caught) + '\n');
     exitCode = exitCodeFor(caught);

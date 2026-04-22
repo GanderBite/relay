@@ -15,7 +15,7 @@
  * Flags:
  *   --resume <runId>      delegates to the resume command
  *   --cost               print per-step cost table after success banner
- *   --fresh              placeholder for sprint-13 task_88 (stale-runDir purge)
+ *   --fresh              always start a new run (default behavior — relay run never implicitly resumes)
  *   --provider <name>    override provider selection (flag > flow-settings > global-settings)
  */
 
@@ -41,6 +41,7 @@ import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { parseInputFromArgv } from '../input-parser.js';
+import { renderPausedBanner } from '../paused-banner.js';
 import { ProgressDisplay, type AuthInfo } from '../progress.js';
 import { maybeSendRunEvent } from '../telemetry.js';
 
@@ -249,9 +250,35 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
   const progress = new ProgressDisplay(runDir, flow, authInfo);
 
-  // --fresh: TODO(task_88/sprint-13) — purge stale runDir with same input-hash.
-
   progress.start(runId);
+
+  // ---------------------------------------------------------------------------
+  // SIGINT handler — Ctrl-C paused UX (product spec §11.5)
+  //
+  // First ^C: flag the interruption. The Runner registers its own SIGINT
+  // listener and fires its AbortController, which causes runner.run() to
+  // resolve with status = 'aborted'. We detect that below and render the
+  // paused banner instead of the failure banner.
+  //
+  // Second ^C within 2 s: hard exit 130 (SIGINT convention).
+  // ---------------------------------------------------------------------------
+  let wasInterrupted = false;
+  let lastSigintMs = 0;
+
+  const sigintHandler = (): void => {
+    const now = Date.now();
+    if (!wasInterrupted || now - lastSigintMs > 2000) {
+      wasInterrupted = true;
+      lastSigintMs = now;
+      // The Runner's own SIGINT handler fires simultaneously and aborts the run.
+      // Nothing more to do here — runner.run() will resolve with 'aborted'.
+    } else {
+      // Second ^C within 2 s — hard exit.
+      process.exit(130);
+    }
+  };
+
+  process.on('SIGINT', sigintHandler);
 
   // ---------------------------------------------------------------------------
   // Step 6 — build and run the runner
@@ -282,15 +309,22 @@ export default async function runCommand(
 
   let result: RunResult;
   try {
-    const runOpts: Parameters<typeof runner.run>[2] = {
+    // --fresh: always start a new run (default behavior — relay run never implicitly resumes).
+    // The Runner generates a fresh runId on every invocation so this flag is currently a no-op;
+    // it is forwarded for future stale-runDir purge behavior and so the banner's next: block is truthful.
+    const runOpts: Parameters<typeof runner.run>[2] & { fresh?: boolean } = {
       flowDir,
       flowPath,
     };
     if (options.provider !== undefined) {
       runOpts.flagProvider = options.provider;
     }
+    if (options.fresh === true) {
+      runOpts.fresh = true;
+    }
     result = await runner.run(flow, input, runOpts);
   } catch (caught) {
+    process.removeListener('SIGINT', sigintHandler);
     progress.stop();
     maybeSendRunEvent({
       flowName: flow.name,
@@ -308,8 +342,9 @@ export default async function runCommand(
   }
 
   // ---------------------------------------------------------------------------
-  // Step 7 — stop progress display
+  // Step 7 — stop progress display, remove SIGINT handler
   // ---------------------------------------------------------------------------
+  process.removeListener('SIGINT', sigintHandler);
   progress.stop();
 
   // ---------------------------------------------------------------------------
@@ -352,8 +387,26 @@ export default async function runCommand(
     });
 
     process.exit(0);
+  } else if (result.status === 'aborted' && wasInterrupted) {
+    // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
+    // This is not an error: state is saved, the run can be resumed.
+    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.stepOrder);
+
+    maybeSendRunEvent({
+      flowName: flow.name,
+      flowVersion: flow.version,
+      status: 'aborted',
+      durationMs: result.durationMs,
+      stepsCount: flow.stepOrder.length,
+      totalCostUsd: result.cost.totalUsd,
+      relayVersion,
+      nodeVersion: process.version.replace(/^v/, ''),
+      platform: process.platform,
+    });
+
+    process.exit(130);
   } else {
-    // failed or aborted
+    // failed or aborted (non-interactive)
     const failureRows = await buildFailureStepRows(result.runDir, flow.stepOrder);
     const failureBanner = renderFailureBanner({
       flowName: flow.name,

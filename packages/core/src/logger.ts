@@ -1,6 +1,17 @@
 // Scoped NDJSON logger. Factory returns a pino instance pre-bound with
 // flowName/runId; per-step scope is logger.child({ stepId }). Secret redaction
 // is on by default so accidental dumps of env or auth headers stay safe.
+//
+// ANSI color output is stripped from console (stdout) streams when color is
+// disabled. Color is considered disabled when:
+//   1. NO_COLOR env variable is set (non-empty).
+//   2. stdout is not a TTY.
+//   3. color='never' in ~/.relay/settings.json.
+// The settings file is read once synchronously at module load.
+
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import pino, { type DestinationStream, type Logger as PinoLogger, type LoggerOptions } from 'pino';
 
@@ -25,6 +36,51 @@ export interface CreateLoggerOptions {
   // Defaults to process.env.LOG_LEVEL or 'info'.
   level?: string;
 }
+
+// ---------------------------------------------------------------------------
+// ANSI stripping — applied to console output when color is disabled.
+// ---------------------------------------------------------------------------
+
+/** Strip ANSI SGR escape sequences from a string. */
+export function stripAnsi(s: string): string {
+  return s.replace(/\x1B\[[\d;]*m/g, '');
+}
+
+/** Read color setting from ~/.relay/settings.json synchronously at module load. */
+function readSettingsColorField(): 'auto' | 'always' | 'never' | null {
+  try {
+    const raw = readFileSync(join(homedir(), '.relay', 'settings.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const color = (parsed as Record<string, unknown>)['color'];
+      if (color === 'auto' || color === 'always' || color === 'never') {
+        return color;
+      }
+    }
+  } catch {
+    // File absent or unreadable — fall through to TTY detection.
+  }
+  return null;
+}
+
+/**
+ * True when console output should have ANSI codes stripped.
+ * Precedence mirrors visual.ts:
+ *   1. NO_COLOR env (non-empty) wins.
+ *   2. color='never' in settings wins over TTY auto-detect.
+ *   3. !stdout.isTTY is the fallback.
+ *   color='always' in settings forces color on regardless of TTY.
+ */
+function resolveConsoleColorDisabled(): boolean {
+  if (process.env['NO_COLOR'] !== undefined && process.env['NO_COLOR'] !== '') return true;
+  const setting = readSettingsColorField();
+  if (setting === 'never') return true;
+  if (setting === 'always') return false;
+  return !process.stdout.isTTY;
+}
+
+/** True when console output should have ANSI codes stripped (resolved at module load). */
+export const CONSOLE_COLOR_DISABLED = resolveConsoleColorDisabled();
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
@@ -65,8 +121,9 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
   };
 
   // pino-pretty is loaded only in development; production writes raw NDJSON to fd 1.
+  // Colorize is disabled in dev mode when ANSI codes should be stripped.
   const stdoutDest: DestinationStream = IS_DEV
-    ? pino.transport({ target: 'pino-pretty', options: { colorize: true } })
+    ? pino.transport({ target: 'pino-pretty', options: { colorize: !CONSOLE_COLOR_DISABLED } })
     : pino.destination(1);
 
   if (opts.logFile === undefined) {

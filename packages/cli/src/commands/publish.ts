@@ -125,9 +125,9 @@ export default async function publishCommand(
 
   // Header
   const modeLabel = dryRun ? '  (dry run)' : '';
-  process.stdout.write(`${MARK}  relay publish${modeLabel}\n`);
+  process.stdout.write(`${MARK}  publish${modeLabel}\n`);
   process.stdout.write('\n');
-  process.stdout.write(gray(`path    ${dir}`) + '\n');
+  process.stdout.write(gray(`  path    ${dir}`) + '\n');
   process.stdout.write('\n');
 
   // ---------------------------------------------------------------------------
@@ -216,28 +216,32 @@ export default async function publishCommand(
   }
 
   // ---------------------------------------------------------------------------
-  // Step 3 — npm publish (skipped in dry-run)
+  // Step 3 — npm publish (or --dry-run variant)
   // ---------------------------------------------------------------------------
-  if (dryRun) {
-    process.stdout.write(
-      yellow(` ${SYMBOLS.warn} dry run — skipping npm publish`) + '\n',
-    );
-    process.stdout.write('\n');
-    process.stdout.write('to publish for real:\n');
-    process.stdout.write(gray(`    relay publish ${rawPath}`) + '\n');
-    process.exit(0);
-  }
 
-  process.stdout.write(gray(`$ npm publish --access public`) + '\n');
+  // Pre-run command preview — print before executing so user can ctrl-c.
+  const publishArgs = dryRun
+    ? 'npm publish --access public --dry-run'
+    : 'npm publish --access public';
+  process.stdout.write(`  running: ${publishArgs}\n`);
+  process.stdout.write('\n');
+
+  // Read package meta before publish so we have it for the success/failure rows.
+  const meta = await readPackageMeta(dir);
+
+  const npmArgs = dryRun
+    ? ['publish', '--access', 'public', '--dry-run']
+    : ['publish', '--access', 'public'];
 
   try {
-    const publishResult = await execFileAsync(
-      'npm',
-      ['publish', '--access', 'public'],
-      { cwd: dir },
-    );
+    const publishResult = await execFileAsync('npm', npmArgs, { cwd: dir });
     if (publishResult.stdout.trim().length > 0) {
-      process.stdout.write(gray(publishResult.stdout.trimEnd()) + '\n');
+      // Indent each output line to subordinate it visually.
+      const lines = publishResult.stdout.trimEnd().split('\n');
+      for (const line of lines) {
+        process.stdout.write(gray(`  ${line}`) + '\n');
+      }
+      process.stdout.write('\n');
     }
   } catch (publishErr: unknown) {
     const stderr =
@@ -247,23 +251,25 @@ export default async function publishCommand(
           ? publishErr.message
           : String(publishErr);
 
-    process.stderr.write(
-      red(` ${SYMBOLS.fail} npm publish failed`) + '\n',
-    );
+    process.stdout.write(`  ${red(SYMBOLS.fail)}  publish failed\n`);
     if (stderr.trim().length > 0) {
-      process.stderr.write(gray(stderr.trim()) + '\n');
+      const lines = stderr.trim().split('\n');
+      for (const line of lines) {
+        process.stderr.write(gray(`  ${line}`) + '\n');
+      }
     }
-    process.stderr.write('\n');
-    process.stderr.write(`  → check the npm publish output above, then: relay publish ${rawPath}\n`);
+    process.stdout.write('\n');
+    process.stdout.write(`     ${gray('→')} fix the errors above, then relay publish ${rawPath}\n`);
     process.exit(1);
   }
 
-  // Read what was just published to report the name@version
-  const meta = await readPackageMeta(dir);
-  const publishedLabel =
-    meta !== null ? `${meta.name}@${meta.version}` : dir;
+  // Success row with npm link.
+  const publishedName = meta?.name ?? rawPath;
+  const publishedVersion = meta?.version ?? '';
+  const versionSuffix = publishedVersion !== '' ? ` v${publishedVersion}` : '';
 
-  process.stdout.write(green(` ${SYMBOLS.ok} published ${publishedLabel}`) + '\n');
+  process.stdout.write(`  ${green(SYMBOLS.ok)}  published ${publishedName}${versionSuffix}\n`);
+  process.stdout.write(`     npm: ${gray(`https://www.npmjs.com/package/${publishedName}`)}\n`);
   process.stdout.write('\n');
 
   // ---------------------------------------------------------------------------
@@ -300,11 +306,6 @@ export default async function publishCommand(
     process.stdout.write('\n');
   }
 
-  // ---------------------------------------------------------------------------
-  // Summary
-  // ---------------------------------------------------------------------------
-  process.stdout.write(green(`published.`) + '\n');
-  process.stdout.write('\n');
-  process.stdout.write('next:\n');
-  process.stdout.write(gray(`    view in catalog    relay search ${meta?.name ?? rawPath}`) + '\n');
+  // Footer next: block
+  process.stdout.write(`  next: relay install ${meta?.name ?? rawPath}\n`);
 }

@@ -77,7 +77,7 @@ export type {
   TerminalStepSpec,
 } from './flow/types.js';
 // Logger — factory that returns a scoped pino instance with flowName/runId bindings.
-export { createLogger } from './logger.js';
+export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
 // Provider registry
 export { defaultRegistry, ProviderRegistry } from './providers/registry.js';

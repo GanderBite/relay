@@ -18,8 +18,13 @@
  *   - Yellow — in-flight work, warnings, API-billing mode.
  *   - Red    — failed steps, broken auth, refused runs.
  *   - Gray   — pending steps, metadata, secondary text.
- *   - Colors are disabled when: NO_COLOR is set, --no-color was passed,
- *     or stdout is not a TTY. Pass-through (identity) in all disabled cases.
+ *
+ * Color disable precedence (no-color.org convention):
+ *   1. --no-color flag         — always wins, overrides everything.
+ *   2. NO_COLOR env variable   — wins over settings.
+ *   3. color='never' in ~/.relay/settings.json — wins over TTY auto-detect.
+ *   4. !process.stdout.isTTY  — fallback auto-disable when not a terminal.
+ *   color='always' in settings forces color on even in non-TTY stdout.
  *
  * Column widths for step rows (product spec §6.5, §6.6, §11.3):
  *   STEP_NAME_WIDTH  = 16  — accommodates "designReview" (12) with margin
@@ -27,27 +32,79 @@
  *   DURATION_WIDTH   = 9   — accommodates "11m 42s" (7) with margin
  */
 
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import chalk from 'chalk';
 
 // ---------------------------------------------------------------------------
 // Color-disable detection
 //
-// Chalk respects NO_COLOR natively when chalk.level is checked, but we also
-// need to handle non-TTY stdout and an explicit --no-color argv flag. Set
-// chalk.level = 0 before any output if any disabled condition is true.
+// Precedence (evaluated once at module load):
+//   1. --no-color flag wins over everything.
+//   2. NO_COLOR env variable wins over settings.
+//   3. color='never' in ~/.relay/settings.json wins over TTY auto-detect.
+//   4. !process.stdout.isTTY is the fallback auto-disable.
+//   color='always' in settings forces chalk on regardless of TTY.
 // ---------------------------------------------------------------------------
 
-function isColorDisabled(): boolean {
-  return (
-    process.env['NO_COLOR'] !== undefined ||
-    !process.stdout.isTTY ||
-    process.argv.includes('--no-color')
-  );
+/** Read color setting from ~/.relay/settings.json synchronously at module load. */
+function readSettingsColor(): 'auto' | 'always' | 'never' | null {
+  try {
+    const raw = readFileSync(join(homedir(), '.relay', 'settings.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const color = (parsed as Record<string, unknown>)['color'];
+      if (color === 'auto' || color === 'always' || color === 'never') {
+        return color;
+      }
+    }
+  } catch {
+    // File absent or unreadable — not an error, fall through to TTY detection.
+  }
+  return null;
 }
 
-if (isColorDisabled()) {
-  chalk.level = 0;
-}
+/**
+ * Module-level flag: true when color was explicitly forced on via
+ * color='always' in settings.json (enables color in non-TTY stdout).
+ */
+let _colorForced = false;
+
+// Apply color disable/force at module load.
+(function applyColorSettings(): void {
+  // Precedence 1: --no-color flag always wins.
+  if (process.argv.includes('--no-color')) {
+    chalk.level = 0;
+    return;
+  }
+
+  // Precedence 2: NO_COLOR env variable wins over settings.
+  if (process.env['NO_COLOR'] !== undefined && process.env['NO_COLOR'] !== '') {
+    chalk.level = 0;
+    return;
+  }
+
+  // Precedence 3: explicit setting in ~/.relay/settings.json.
+  const settingsColor = readSettingsColor();
+  if (settingsColor === 'never') {
+    chalk.level = 0;
+    return;
+  }
+  if (settingsColor === 'always') {
+    _colorForced = true;
+    if (chalk.level === 0) {
+      chalk.level = 3;
+    }
+    return;
+  }
+
+  // Precedence 4: TTY auto-detect (settingsColor === 'auto' or null).
+  if (!process.stdout.isTTY) {
+    chalk.level = 0;
+  }
+})();
 
 /**
  * Programmatically disable color output.
@@ -57,7 +114,27 @@ if (isColorDisabled()) {
  * runtime, where the module-load check has already run.
  */
 export function setColorDisabled(): void {
+  _colorForced = false;
   chalk.level = 0;
+}
+
+/**
+ * Returns true when color output is currently enabled.
+ * Reflects the current chalk.level (0 = disabled, >0 = enabled).
+ */
+export function enableColor(): boolean {
+  return chalk.level > 0;
+}
+
+/**
+ * Returns the active color mode as a string.
+ * 'always'  — color is explicitly forced on (chalk.level forced to >0 via settings).
+ * 'never'   — color is disabled (chalk.level = 0).
+ * 'auto'    — color is enabled by default TTY detection.
+ */
+export function colorMode(): 'always' | 'never' | 'auto' {
+  if (chalk.level === 0) return 'never';
+  return _colorForced ? 'always' : 'auto';
 }
 
 // ---------------------------------------------------------------------------

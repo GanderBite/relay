@@ -25,6 +25,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import semver from 'semver';
+
 import { MARK, SYMBOLS, gray, green, red } from '../visual.js';
 import installCommand from './install.js';
 
@@ -125,24 +127,35 @@ const NAME_COL = 22;
 /**
  * Render one flow diff row.
  *
- *   updated:  "  codebase-discovery  v0.1.0 → v0.1.1"   (green arrow + new ver)
- *   current:  "  api-audit           already at v0.2.1"   (gray)
- *   failed:   "  ✕ broken-flow       failed: <reason>"    (red)
+ *   upgraded:  "  ✓  <name>  v0.1.0 → v0.1.1"   (green arrow + new ver)
+ *   current:   "  ·  <name>  v0.1.0 → v0.1.0 (up to date)"  (gray)
+ *   downgrade: "  ✓  <name>  v0.1.1 → v0.1.0"   (red arrow + old ver)
+ *   failed:    "  ✕  <name>  failed: <reason>"   (red)
  */
 function renderOutcome(outcome: UpgradeOutcome): string {
   const namePad = outcome.name.padEnd(NAME_COL);
 
   if (outcome.status === 'failed') {
     const reason = outcome.reason ?? 'unknown error';
-    return red(`  ${SYMBOLS.fail} ${namePad}failed: ${reason}`);
+    return `  ${red(SYMBOLS.fail)}  ${namePad}${red(`failed: ${reason}`)}`;
   }
 
   if (outcome.status === 'current') {
-    return gray(`  ${namePad}already at v${outcome.before}`);
+    return `  ${gray(SYMBOLS.dot)}  ${namePad}${gray(`v${outcome.before} → v${outcome.before} (up to date)`)}`;
   }
 
-  // updated — green arrow between versions
-  return green(`  ${namePad}v${outcome.before} → v${outcome.after}`);
+  // updated — compare versions to determine color
+  const cmp = semver.valid(outcome.before) !== null && semver.valid(outcome.after) !== null
+    ? semver.compare(outcome.after, outcome.before)
+    : 1; // treat unparseable as upgrade
+
+  if (cmp >= 0) {
+    // upgrade (new > old) — green
+    return `  ${green(SYMBOLS.ok)}  ${namePad}v${outcome.before} ${green('→')} ${green(`v${outcome.after}`)}`;
+  } else {
+    // downgrade (new < old) — red
+    return `  ${red(SYMBOLS.ok)}  ${namePad}v${outcome.before} ${red('→')} ${red(`v${outcome.after}`)}`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -181,9 +194,7 @@ export default async function upgradeCommand(
     // All-flows mode: discover installed flows.
     const discovered = await discoverFlows(flowsDir);
     if (discovered === null || discovered.length === 0) {
-      process.stdout.write(
-        `  no flows installed. run relay install <name> first.\n`,
-      );
+      process.stdout.write(`  no flows installed. try relay install.\n`);
       process.exit(0);
     }
     flowNames = discovered;
@@ -207,15 +218,11 @@ export default async function upgradeCommand(
 
   // Summary footer.
   const updated = outcomes.filter((o) => o.status === 'updated').length;
-  const current = outcomes.filter((o) => o.status === 'current').length;
   const failed  = outcomes.filter((o) => o.status === 'failed').length;
 
-  const parts: string[] = [];
-  if (updated > 0) parts.push(`${updated} updated`);
-  if (current > 0) parts.push(`${current} already current`);
-  if (failed > 0)  parts.push(`${failed} failed`);
-
-  process.stdout.write(`upgrade complete. ${parts.join(', ')}.\n`);
+  process.stdout.write(`  ${updated} flow${updated === 1 ? '' : '(s)'} upgraded.\n`);
+  process.stdout.write('\n');
+  process.stdout.write(`  next: relay run <flow> .\n`);
 
   if (failed > 0) {
     process.exit(1);
