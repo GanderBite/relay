@@ -17,6 +17,7 @@ const KNOWN_COMMANDS = new Set([
   'test',
   'logs',
   'config',
+  'help',
 ]);
 
 /**
@@ -119,7 +120,8 @@ export function buildProgram(): Command {
     .command('run <flow> [input...]')
     .description('run a flow')
     .option('--provider <name>', 'provider to use (overrides settings)')
-    .action(async (flow: string, input: string[], cmdOpts: { provider?: string }) => {
+    .option('--fresh', 'start a new run, ignoring any cached state')
+    .action(async (flow: string, input: string[], cmdOpts: { provider?: string; fresh?: boolean }) => {
       const handler = await loadCommand('run');
       await handler([flow, ...input], { ...program.opts(), ...cmdOpts });
     });
@@ -196,17 +198,59 @@ export function buildProgram(): Command {
   program
     .command('logs <runId>')
     .description('structured run log')
-    .action(async (runId: string) => {
+    .option('--step <id>', 'filter to a specific step')
+    .option('-f, --follow', 'tail the log stream')
+    .option('--level <lvl>', 'minimum log level (debug|info|warn|error)')
+    .action(async (runId: string, cmdOpts: { step?: string; follow?: boolean; level?: string }) => {
       const handler = await loadCommand('logs');
-      await handler([runId], program.opts());
+      await handler([runId], { ...program.opts(), ...cmdOpts });
     });
 
   // -------------------------------------------------------------- config --
-  program
+  // The config command parses subcommands internally via process.argv.
+  // Commander definitions here improve help text and tab completion only.
+  const configCmd = program
     .command('config')
-    .description('view or edit Relay configuration')
+    .description('view or edit Relay configuration (get <key> | set <key> <value> | list)')
     .action(async () => {
       const handler = await loadCommand('config');
+      await handler([], program.opts());
+    });
+
+  configCmd
+    .command('list')
+    .description('print all settings')
+    .action(async () => {
+      const handler = await loadCommand('config');
+      await handler([], program.opts());
+    });
+
+  configCmd
+    .command('get <key>')
+    .description('print the value of one setting')
+    .action(async () => {
+      const handler = await loadCommand('config');
+      await handler([], program.opts());
+    });
+
+  configCmd
+    .command('set <key> <value>')
+    .description('write one setting atomically')
+    .action(async () => {
+      const handler = await loadCommand('config');
+      await handler([], program.opts());
+    });
+
+  // ----------------------------------------------------------------- help --
+  const helpCmd = program
+    .command('help')
+    .description('learn about relay commands and concepts');
+
+  helpCmd
+    .command('glossary')
+    .description('print the relay terminology glossary')
+    .action(async () => {
+      const handler = await loadCommand('glossary');
       await handler([], program.opts());
     });
 
@@ -231,8 +275,9 @@ export function buildProgram(): Command {
       }
     }
 
-    // No subcommand, no shorthand match — placeholder until sprint 13.
-    process.stdout.write('(splash help coming in sprint 13)\n');
+    // No subcommand, no shorthand match — show splash help.
+    const { renderSplash } = await import('./help.js');
+    renderSplash();
   });
 
   return program;

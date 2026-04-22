@@ -4,6 +4,7 @@ import { CommanderError } from 'commander';
 import { buildProgram } from './dispatcher.js';
 import { MARK } from './visual.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
+import { renderSplash } from './help.js';
 
 // Public API re-exports — consumed by bin shims and catalog tooling.
 export { generateRegistryJson } from './registry.js';
@@ -66,6 +67,17 @@ export async function main(argv: string[]): Promise<void> {
   // Top-level --version short-circuit before commander processes argv.
   if (argv.includes('--version') || argv.includes('-V')) {
     printVersion();
+    process.exit(0);
+  }
+
+  // Bare `relay` (no args) or `relay --help` with no subcommand → splash.
+  // `relay <subcommand> --help` still reaches Commander for per-command help.
+  const extraArgs = argv.slice(2).filter((a) => a !== '--no-color' && a !== '--verbose');
+  const isBareSplash =
+    extraArgs.length === 0 ||
+    (extraArgs.length === 1 && extraArgs[0] === '--help');
+  if (isBareSplash) {
+    renderSplash();
     process.exit(0);
   }
 
