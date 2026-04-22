@@ -91,60 +91,11 @@ async function readPackageMeta(dir: string): Promise<{ name: string; version: st
 }
 
 /**
- * Compute a human-readable registry diff between the previous entry for a
- * package and the newly generated entry.
- *
- * Returns an array of lines to print — never empty:
- *   - "new package added to registry" for first-time publishes
- *   - Changed field lines for subsequent publishes
+ * Returns a fixed registry diff line for a newly published package.
+ * Per-field diffing is deferred until a future sprint adds a registry cache.
  */
-function registryDiff(
-  prev: RegistryEntry | undefined,
-  next: RegistryEntry,
-): string[] {
-  if (prev === undefined) {
-    return ['new package added to registry'];
-  }
-
-  const lines: string[] = [];
-
-  if (prev.version !== next.version) {
-    lines.push(`version   ${gray(prev.version)} → ${green(next.version)}`);
-  }
-  if (prev.displayName !== next.displayName) {
-    lines.push(`displayName  ${gray(prev.displayName)} → ${next.displayName}`);
-  }
-  if (prev.description !== next.description) {
-    lines.push(`description  updated`);
-  }
-  if (JSON.stringify(prev.tags) !== JSON.stringify(next.tags)) {
-    lines.push(`tags      ${gray(prev.tags.join(', '))} → ${next.tags.join(', ')}`);
-  }
-  if (JSON.stringify(prev.audience) !== JSON.stringify(next.audience)) {
-    lines.push(`audience  ${gray(prev.audience.join(', '))} → ${next.audience.join(', ')}`);
-  }
-  if (
-    prev.estimatedCostUsd.min !== next.estimatedCostUsd.min ||
-    prev.estimatedCostUsd.max !== next.estimatedCostUsd.max
-  ) {
-    lines.push(
-      `cost      ${gray(`$${prev.estimatedCostUsd.min}–$${prev.estimatedCostUsd.max}`)} → $${next.estimatedCostUsd.min}–$${next.estimatedCostUsd.max}`,
-    );
-  }
-  if (
-    prev.estimatedDurationMin.min !== next.estimatedDurationMin.min ||
-    prev.estimatedDurationMin.max !== next.estimatedDurationMin.max
-  ) {
-    lines.push(
-      `duration  ${gray(`${prev.estimatedDurationMin.min}–${prev.estimatedDurationMin.max}min`)} → ${next.estimatedDurationMin.min}–${next.estimatedDurationMin.max}min`,
-    );
-  }
-
-  if (lines.length === 0) {
-    lines.push('no registry fields changed');
-  }
-
-  return lines;
+function registryDiff(_next: RegistryEntry): string[] {
+  return ['new package added to registry'];
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +165,7 @@ export default async function publishCommand(
       red(`${report.errors.length} lint ${noun} — fix before publishing.`) + '\n',
     );
     process.stdout.write('\n');
-    process.stdout.write(`  → relay publish ${rawPath}\n`);
+    process.stdout.write(`  → fix the lint errors above, then: relay publish ${rawPath}\n`);
     process.exit(1);
   }
 
@@ -303,7 +254,7 @@ export default async function publishCommand(
       process.stderr.write(gray(stderr.trim()) + '\n');
     }
     process.stderr.write('\n');
-    process.stderr.write(`  → relay publish ${rawPath}\n`);
+    process.stderr.write(`  → check the npm publish output above, then: relay publish ${rawPath}\n`);
     process.exit(1);
   }
 
@@ -319,30 +270,28 @@ export default async function publishCommand(
   // Step 4 — registry diff
   // ---------------------------------------------------------------------------
 
-  // Generate the registry entry for the just-published package (by name — it
-  // is now on npm, so processNpmPackage will pick it up). Fall back to local
-  // dir read on failure (the package may not yet be indexed).
-  const packageInput = meta !== null ? meta.name : dir;
-
-  const regResult = await generateRegistryJson([packageInput]);
+  // Generate the registry entry from the local directory — the npm registry
+  // may not have indexed the new version yet, so reading the local filesystem
+  // is the reliable source immediately after publish.
+  const regResult = await generateRegistryJson([dir]);
 
   if (regResult.isErr()) {
-    // Non-fatal: the registry update may lag behind the publish.
+    // Non-fatal: report the warning and continue to the summary.
     process.stdout.write(
       yellow(` ${SYMBOLS.warn} registry update not available yet — try: relay search`) + '\n',
     );
     process.stdout.write('\n');
   } else {
     const doc = regResult.value;
-    const nextEntry = doc.flows.find((f) => f.name === (meta?.name ?? ''));
+    const nextEntry = doc.flows.find((f) => f.name === (meta?.name ?? dir));
 
     if (nextEntry === undefined) {
       process.stdout.write(
-        gray(`registry    no entry found for ${packageInput}`) + '\n',
+        gray(`registry    no entry found for ${meta?.name ?? dir}`) + '\n',
       );
     } else {
       process.stdout.write('registry diff:\n');
-      const diffLines = registryDiff(undefined, nextEntry);
+      const diffLines = registryDiff(nextEntry);
       for (const line of diffLines) {
         process.stdout.write(`    ${line}\n`);
       }
