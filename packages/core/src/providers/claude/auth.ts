@@ -52,6 +52,10 @@ const SDK_TOS_LEAK_MESSAGE =
 const CLI_REQUIRES_SUBSCRIPTION =
   'claude-cli requires subscription auth. Run `claude /login`, or run `relay init` and choose claude-agent-sdk.';
 
+/** Remediation when the CLI provider has no subscription credentials but ANTHROPIC_API_KEY is set — steer the user away from assuming the key will be used. */
+const CLI_API_KEY_NOT_USABLE =
+  'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first. Alternatively, run `relay init` and choose claude-agent-sdk.';
+
 /** Warning surfaced once per run whenever the SDK provider routes via API account billing. */
 const API_ACCOUNT_WARNING = 'billing to API account, not subscription';
 
@@ -81,7 +85,9 @@ export interface InspectClaudeAuthOptions {
  *   claude-cli:
  *     1. CLAUDE_CODE_OAUTH_TOKEN set → ok(subscription, token mode).
  *     2. ~/.claude/.credentials.json present → ok(subscription, interactive).
- *     3. Otherwise (including ANTHROPIC_API_KEY-only) → err(missing subscription).
+ *     3. ANTHROPIC_API_KEY set with no subscription signals → err(key set but
+ *        not usable on this path).
+ *     4. Otherwise → err(missing subscription).
  *
  * After deciding, spawns `claude --version` to confirm the binary exists.
  * The probe runs after the policy check so a misconfigured machine never
@@ -113,7 +119,7 @@ export async function inspectClaudeAuth(
   if (opts.providerKind === 'claude-agent-sdk') {
     return inspectAgentSdk({ hasApiKey, hasOauth });
   }
-  return inspectCli({ hasOauth });
+  return inspectCli({ hasApiKey, hasOauth });
 }
 
 async function inspectAgentSdk(args: {
@@ -155,6 +161,7 @@ async function inspectAgentSdk(args: {
 }
 
 async function inspectCli(args: {
+  hasApiKey: boolean;
   hasOauth: boolean;
 }): Promise<Result<AuthState, ClaudeAuthError>> {
   // (1) Authoritative env signal — the OAuth token tells the binary which
@@ -189,7 +196,17 @@ async function inspectCli(args: {
   // (3) No subscription signal. ANTHROPIC_API_KEY is intentionally NOT a
   // valid fallback here — the user picked claude-cli, which means they want
   // subscription billing; an API key in the env is something to strip from
-  // the subprocess, not something to silently route the run through.
+  // the subprocess, not something to silently route the run through. When a
+  // key is nonetheless present, point that out so the user does not assume
+  // it is in use.
+  if (args.hasApiKey) {
+    return err(
+      new ClaudeAuthError(CLI_API_KEY_NOT_USABLE, {
+        envObserved: ['ANTHROPIC_API_KEY'],
+        billingSource: 'subscription',
+      }),
+    );
+  }
   return err(
     new ClaudeAuthError(CLI_REQUIRES_SUBSCRIPTION, {
       envObserved: [],
