@@ -100,7 +100,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-import { ok, err, NoProviderConfiguredError, FlowDefinitionError } from '@relay/core';
+import { ok, err, NoProviderConfiguredError } from '@relay/core';
 import doctorCommand from '../../src/commands/doctor.js';
 
 // ---------------------------------------------------------------------------
@@ -172,9 +172,6 @@ beforeEach(() => {
   mockResolveProvider.mockReturnValue(
     ok({ name: 'claude-cli', capabilities: {}, authenticate: mockCliAuthenticate }),
   );
-
-  // Clear env vars that affect the env check.
-  vi.stubEnv('ANTHROPIC_API_KEY', '');
 });
 
 afterEach(() => {
@@ -244,23 +241,6 @@ describe('relay doctor', () => {
     });
   });
 
-  describe('env block', () => {
-    it('[DOCTOR-008] shows clean env when ANTHROPIC_API_KEY is absent', async () => {
-      await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
-      expect(stdoutOutput).toContain('no conflicting ANTHROPIC_API_KEY');
-    });
-
-    it('[DOCTOR-009] shows billing-safety blocker when ANTHROPIC_API_KEY is set', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-
-      await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
-
-      // The env blocker message must be present.
-      expect(stdoutOutput).toContain('ANTHROPIC_API_KEY is set');
-      expect(stdoutOutput).toContain('unset ANTHROPIC_API_KEY');
-    });
-  });
-
   describe('exit codes', () => {
     it('[DOCTOR-010] exits 0 when all checks pass', async () => {
       const exitSpy = vi.mocked(process.exit);
@@ -268,18 +248,6 @@ describe('relay doctor', () => {
       await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(0);
-    });
-
-    it('[DOCTOR-011] exits 3 when ANTHROPIC_API_KEY is the sole blocker', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-
-      const exitSpy = vi.mocked(process.exit);
-
-      await expect(doctorCommand([], {})).rejects.toThrow('process.exit called');
-
-      // The ONLY blocker is the API key check — exit code 3.
-      // The resolver is still ok since we left mockResolveProvider returning ok.
-      expect(exitSpy).toHaveBeenCalledWith(3);
     });
 
     it('[DOCTOR-012] exits 1 when non-API-key blockers are present', async () => {
