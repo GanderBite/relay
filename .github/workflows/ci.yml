@@ -1,0 +1,71 @@
+# ci.yml
+#
+# Pull-request correctness gate: typecheck, test, and build for every
+# PR targeting main. Also runnable manually from the Actions tab.
+#
+# No Anthropic credentials are needed — this workflow only compiles and
+# runs unit tests with MockProvider; it does not execute any live races.
+#
+# Node version note
+# ─────────────────
+# The root package.json specifies engines.node ">=25.8". Node 25 is not
+# available on GitHub Actions runners (latest available LTS as of 2026 is
+# Node 22.x). This workflow uses node-version: '22' — the closest available
+# LTS — until GitHub Actions ships a Node 25 runner image. Update this value
+# once that image becomes available.
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel in-flight runs for the same branch when a new commit arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. pnpm setup ────────────────────────────────────────────────────
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      # ── 3. Node setup ────────────────────────────────────────────────────
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      # ── 4. Install workspace dependencies ────────────────────────────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 5. Typecheck all packages ─────────────────────────────────────────
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # ── 6. Test all packages ──────────────────────────────────────────────
+      - name: Test
+        run: pnpm -r test
+
+      # ── 7. Build all packages ─────────────────────────────────────────────
+      - name: Build
+        run: pnpm -r build

@@ -1,0 +1,108 @@
+# npm-publish.yml
+#
+# Publishes @relay/core, @relay/cli, and @relay/generator to npm on every
+# push to main that bumps one or more package versions. The step is
+# idempotent: packages whose local version already exists on npm are
+# silently skipped.
+#
+# Required secret
+# ───────────────
+# NPM_TOKEN  — a granular npm access token with "Publish" permission for
+#              each @relay/* package. Set it under:
+#              Settings -> Secrets and variables -> Actions -> New repository secret
+#              Name:  NPM_TOKEN
+#              Value: <your npm automation token>
+#
+# Provenance attestation (npm --provenance) is enabled automatically when
+# id-token: write permission is present. npm >=9.5 is required; the node
+# setup step brings a compatible version.
+
+name: npm publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Do not cancel in-progress publish runs — a half-published set of packages
+# is worse than waiting for the previous run to finish.
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish packages to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node + pnpm setup ─────────────────────────────────────────────
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Match the packageManager field in the root package.json.
+          version: '10'
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # packages/*/package.json require node>=25.8, but GitHub Actions
+          # hosted runners do not yet ship Node 25. Node 22 (LTS) is used
+          # here for CI purposes; the published dist targets the engines
+          # constraint declared in each package.json.
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      # ── 3. Install workspace dependencies ────────────────────────────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 4. Build all packages ─────────────────────────────────────────────
+      - name: Build
+        run: pnpm -r build
+
+      # ── 5. Publish (with version guard) ──────────────────────────────────
+      #
+      # For each publishable package compare the local version field against
+      # the latest version currently on npm. If they match the package is
+      # already published at that version and the step skips it. This makes
+      # the workflow safe to re-run without accidentally republishing.
+      - name: Publish packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          publish_if_new() {
+            local pkg_dir="$1"
+            local pkg_name
+            local local_version
+            local npm_version
+
+            pkg_name=$(python3 -c "import json,sys; p=json.load(open('$pkg_dir/package.json')); sys.stdout.write(p['name'])")
+            local_version=$(python3 -c "import json,sys; p=json.load(open('$pkg_dir/package.json')); sys.stdout.write(p['version'])")
+
+            npm_version=$(npm view "$pkg_name" version 2>/dev/null || echo 'unpublished')
+
+            if [ "$npm_version" = "$local_version" ]; then
+              echo "  skip  $pkg_name@$local_version (already on npm)"
+            else
+              echo "  publish  $pkg_name@$local_version (npm has: $npm_version)"
+              pnpm --filter "$pkg_name" publish --access public --no-git-checks
+            fi
+          }
+
+          publish_if_new packages/core
+          publish_if_new packages/cli
+          publish_if_new packages/generator
