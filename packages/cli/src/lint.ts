@@ -1,11 +1,11 @@
 /**
- * Flow package linter.
+ * Race package linter.
  *
- * Checks a flow package directory against the §7 contract:
+ * Checks a race package directory against the §7 contract:
  *   (1) package.json fields and relay metadata block
- *   (2) flow.ts or dist/flow.js presence and default-export syntax
+ *   (2) race.ts or dist/race.js presence and default-export syntax
  *   (3) README.md §7.4 ordered sections
- *   (4) prompts/ directory when any step references promptFile
+ *   (4) prompts/ directory when any runner references promptFile
  *   (5) schemas/ files presence (compile check deferred to tsc)
  *
  * All fallible operations return Result<T, E> via neverthrow. No throws.
@@ -56,13 +56,21 @@ export class LintError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Backward-compat aliases — callers that imported the old flow-centric names
+// continue to work without changes.
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use {@link LintReport} — renamed as part of race/runner/baton vocabulary. */
+export type LintIssue = LintFinding;
+
+// ---------------------------------------------------------------------------
 // README section headings — §7.4
 //
 // Sections 1–5 are required (missing → ERROR).
 // Sections 6–8 are recommended (missing → WARN).
 //
-// The heading strings are matched case-insensitively against lines that start
-// with a markdown heading marker (`#`) so that both `## Foo` and `# Foo` match.
+// Headings are matched case-insensitively against lines that start with a
+// markdown heading marker (`#`) so that both `## Foo` and `# Foo` match.
 // ---------------------------------------------------------------------------
 
 const README_ERROR_SECTIONS: ReadonlyArray<{ heading: string; code: string }> = [
@@ -132,7 +140,8 @@ function prop(obj: unknown, key: string): unknown {
  * Check (1): package.json exists and contains all required fields.
  *
  * Required top-level:  name, version (strict semver), type = "module", main
- * Required relay block: displayName, tags, estimatedCostUsd, estimatedDurationMin, audience
+ * Required relay block: raceName, displayName, tags, estimatedCostUsd,
+ *                       estimatedDurationMin, audience
  */
 async function checkPackageJson(dir: string): Promise<LintFinding[]> {
   const findings: LintFinding[] = [];
@@ -209,6 +218,16 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
     return findings;
   }
 
+  // raceName — machine-readable identifier for the race
+  const raceName = prop(relayBlock, 'raceName');
+  if (typeof raceName !== 'string' || raceName.trim() === '') {
+    findings.push({
+      code: 'PKG_MISSING_RACE_NAME',
+      message: 'relay metadata block missing or empty: raceName',
+      path: 'package.json',
+    });
+  }
+
   // displayName
   const displayName = prop(relayBlock, 'displayName');
   if (typeof displayName !== 'string' || displayName.trim() === '') {
@@ -281,7 +300,7 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
 }
 
 /**
- * Check (2): flow.ts OR dist/flow.js is present and has a default export.
+ * Check (2): race.ts OR dist/race.js is present and has a default export.
  *
  * We do not dynamic-import user code; we check existence and grep for the
  * `export default` token syntactically.
@@ -289,23 +308,23 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
 async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
   const findings: LintFinding[] = [];
 
-  const flowTs = join(dir, 'flow.ts');
-  const distFlowJs = join(dir, 'dist', 'flow.js');
+  const raceTs = join(dir, 'race.ts');
+  const distRaceJs = join(dir, 'dist', 'race.js');
 
-  const hasFlowTs = await pathExists(flowTs);
-  const hasDistFlowJs = await pathExists(distFlowJs);
+  const hasRaceTs = await pathExists(raceTs);
+  const hasDistRaceJs = await pathExists(distRaceJs);
 
-  if (!hasFlowTs && !hasDistFlowJs) {
+  if (!hasRaceTs && !hasDistRaceJs) {
     findings.push({
       code: 'ENTRY_MISSING',
-      message: 'neither flow.ts nor dist/flow.js found — one must be present',
+      message: 'neither race.ts nor dist/race.js found — one must be present',
     });
     return findings;
   }
 
-  // Prefer flow.ts for the source check; fall back to dist/flow.js.
-  const candidate = hasFlowTs ? flowTs : distFlowJs;
-  const relativePath = hasFlowTs ? 'flow.ts' : 'dist/flow.js';
+  // Prefer race.ts for the source check; fall back to dist/race.js.
+  const candidate = hasRaceTs ? raceTs : distRaceJs;
+  const relativePath = hasRaceTs ? 'race.ts' : 'dist/race.js';
 
   const source = await readTextFile(candidate);
   if (source === null) {
@@ -320,8 +339,6 @@ async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
   // Must have a default export. Accepts any of:
   //   export default ...
   //   export { something as default }
-  //   module.exports = ... (for compiled CJS — reported as a warning, not an error,
-  //   since the spec mandates ESM but some legacy flows compile to CJS)
   const hasDefaultExport =
     /\bexport\s+default\b/.test(source) ||
     /\bexport\s*\{[^}]*\bas\s+default\b[^}]*\}/.test(source);
@@ -329,7 +346,7 @@ async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
   if (!hasDefaultExport) {
     findings.push({
       code: 'ENTRY_NO_DEFAULT_EXPORT',
-      message: `${relativePath} does not contain a default export — flow.ts must "export default defineFlow(...)"`,
+      message: `${relativePath} does not contain a default export — race.ts must "export default defineRace(...)"`,
       path: relativePath,
     });
   }
@@ -404,27 +421,27 @@ async function checkReadme(dir: string): Promise<{ errors: LintFinding[]; warnin
 }
 
 /**
- * Check (4): prompts/ directory exists when any step uses promptFile.
+ * Check (4): prompts/ directory exists when any runner uses promptFile.
  *
- * We scan flow.ts (or dist/flow.js) for the string `promptFile` to detect
- * whether any step references prompt files, then verify prompts/ exists.
+ * We scan race.ts (or dist/race.js) for the string `promptFile` to detect
+ * whether any runner references prompt files, then verify prompts/ exists.
  */
 async function checkPromptsDirectory(dir: string): Promise<LintFinding[]> {
   const findings: LintFinding[] = [];
 
   // Determine which file to scan for promptFile references.
-  const flowTs = join(dir, 'flow.ts');
-  const distFlowJs = join(dir, 'dist', 'flow.js');
+  const raceTs = join(dir, 'race.ts');
+  const distRaceJs = join(dir, 'dist', 'race.js');
 
-  const hasFlowTs = await pathExists(flowTs);
-  const hasDistFlowJs = await pathExists(distFlowJs);
+  const hasRaceTs = await pathExists(raceTs);
+  const hasDistRaceJs = await pathExists(distRaceJs);
 
-  if (!hasFlowTs && !hasDistFlowJs) {
+  if (!hasRaceTs && !hasDistRaceJs) {
     // Entry point absence is already reported by checkEntryPoint — skip here.
     return findings;
   }
 
-  const candidate = hasFlowTs ? flowTs : distFlowJs;
+  const candidate = hasRaceTs ? raceTs : distRaceJs;
   const source = await readTextFile(candidate);
 
   if (source === null) return findings;
@@ -437,7 +454,7 @@ async function checkPromptsDirectory(dir: string): Promise<LintFinding[]> {
   if (!(await pathExists(promptsDir))) {
     findings.push({
       code: 'PROMPTS_DIR_MISSING',
-      message: 'flow references promptFile but prompts/ directory does not exist',
+      message: 'race references promptFile but prompts/ directory does not exist',
       path: 'prompts',
     });
   }
@@ -498,21 +515,21 @@ async function checkSchemas(dir: string): Promise<LintFinding[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * Lint a flow package directory against the §7 contract.
+ * Lint a race package directory against the §7 contract.
  *
  * Returns ok(LintReport) when the linter ran to completion — even if the
  * report contains errors and warnings. Returns err(LintError) only when an
  * unexpected internal failure (e.g., the directory is not accessible at all)
  * prevented the linter from running.
  *
- * @param dir  Absolute path to the flow package root.
+ * @param dir  Absolute path to the race package root.
  */
-export async function lintFlowPackage(
+export async function lintRacePackage(
   dir: string,
 ): Promise<Result<LintReport, LintError>> {
   // Guard: the directory must be accessible before we start any checks.
   if (!(await pathExists(dir))) {
-    return err(new LintError(`flow package directory not found: ${dir}`));
+    return err(new LintError(`race package directory not found: ${dir}`));
   }
 
   // Run all checks. Errors from individual checks are accumulated into the
@@ -550,3 +567,6 @@ export async function lintFlowPackage(
 
   return ok(report);
 }
+
+/** @deprecated Use {@link lintRacePackage} — renamed as part of race/runner/baton vocabulary. */
+export const lintFlowPackage = lintRacePackage;

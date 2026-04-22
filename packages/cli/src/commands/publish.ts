@@ -1,8 +1,8 @@
 /**
- * relay publish — lint, build, and publish a flow package to npm.
+ * relay publish — lint, build, and publish a race package to npm.
  *
  * Steps:
- *   1. lintFlowPackage(dir) — fail on any ERROR finding, warn on WARN finding
+ *   1. lintRacePackage(dir) — fail on any ERROR finding, warn on WARN finding
  *   2. npm run build inside the package if a build script exists
  *   3. npm publish --access public (skipped when --dry-run)
  *   4. generateRegistryJson against the published package — print registry diff
@@ -20,7 +20,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import { lintFlowPackage } from '../lint.js';
+import { lintRacePackage } from '../lint.js';
 import type { LintFinding } from '../lint.js';
 import { generateRegistryJson } from '../registry.js';
 import type { RegistryEntry } from '../registry.js';
@@ -135,7 +135,7 @@ export default async function publishCommand(
   // ---------------------------------------------------------------------------
   process.stdout.write('linting...\n');
 
-  const lintResult = await lintFlowPackage(dir);
+  const lintResult = await lintRacePackage(dir);
 
   if (lintResult.isErr()) {
     process.stderr.write(
@@ -289,7 +289,7 @@ export default async function publishCommand(
     process.stdout.write('\n');
   } else {
     const doc = regResult.value;
-    const nextEntry = doc.flows.find((f) => f.name === (meta?.name ?? dir));
+    const nextEntry = doc.races.find((f) => f.name === (meta?.name ?? dir));
 
     if (nextEntry === undefined) {
       process.stdout.write(

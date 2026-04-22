@@ -1,5 +1,5 @@
 /**
- * `relay search <query>` — finds flows in the public catalog.
+ * `relay search <query>` — finds races in the public catalog.
  *
  * Output shape (product spec §6.8):
  *
@@ -156,8 +156,13 @@ async function fetchRegistry(): Promise<RegistryEntry[] | null> {
     return null;
   }
 
-  if (!Array.isArray(json)) return null;
-  return json as RegistryEntry[];
+  // Support both the new { races: [...] } shape and a legacy flat array.
+  if (Array.isArray(json)) return json as RegistryEntry[];
+  if (json !== null && typeof json === 'object' && 'races' in (json as object)) {
+    const races = (json as Record<string, unknown>)['races'];
+    if (Array.isArray(races)) return races as RegistryEntry[];
+  }
+  return null;
 }
 
 /**
@@ -319,7 +324,7 @@ export default async function searchCommand(args: unknown[], _opts: unknown): Pr
   const matches = sortEntries(entries.filter((e) => matchesQuery(e, query)));
 
   if (matches.length === 0) {
-    process.stdout.write(`  no flows match "${query}". try a broader search term.\n`);
+    process.stdout.write(`  no races match "${query}". try a broader search term.\n`);
     return;
   }
 

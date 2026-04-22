@@ -1,7 +1,7 @@
 /**
- * Registry generator — reads flow package metadata from local directories or
+ * Registry generator — reads race package metadata from local directories or
  * npm package names and emits a RegistryDoc suitable for serving at
- * flows.relay.dev/registry.json.
+ * relay.dev/registry.json.
  *
  * The same shape is consumed by:
  *   - catalog/app.js  (browser, fetches the static file)
@@ -22,13 +22,13 @@ const execFileAsync = promisify(execFile);
 // ---------------------------------------------------------------------------
 
 /**
- * A single entry in the registry, describing one published flow package.
+ * A single entry in the registry, describing one published race package.
  *
  * This type is the canonical declaration — both the CLI (relay search) and
  * the catalog site (catalog/app.js) consume this exact shape.
  */
 export interface RegistryEntry {
-  /** npm package name, e.g. "@ganderbite/flow-codebase-discovery". */
+  /** npm package name, e.g. "@relay/races-codebase-discovery". */
   name: string;
   /** Strict semver version string, e.g. "0.1.0". */
   version: string;
@@ -57,7 +57,7 @@ export interface RegistryDoc {
   version: 1;
   /** ISO-8601 timestamp of when this document was generated. */
   generatedAt: string;
-  flows: RegistryEntry[];
+  races: RegistryEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,7 @@ export class RegistryError extends Error {
 // ---------------------------------------------------------------------------
 
 interface RelayMetaBlock {
+  raceName: string;
   displayName: string;
   tags: string[];
   estimatedCostUsd: { min: number; max: number };
@@ -124,6 +125,7 @@ function isCostRange(v: unknown): v is { min: number; max: number } {
 
 function isRelayMeta(v: unknown): v is RelayMetaBlock {
   if (!isRecord(v)) return false;
+  if (typeof v['raceName'] !== 'string') return false;
   if (typeof v['displayName'] !== 'string') return false;
   if (!isStringArray(v['tags'])) return false;
   if (!isCostRange(v['estimatedCostUsd'])) return false;
@@ -213,7 +215,7 @@ async function processLocalDir(
   if (!isRelayMeta(relayMeta)) {
     return err(
       new RegistryError(
-        `package.json at ${dir} is missing a valid "relay" metadata block`,
+        `package.json at ${dir} is missing a valid "relay" metadata block (raceName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience)`,
         'PACKAGE_INVALID',
         dir,
       ),
@@ -331,7 +333,7 @@ async function processNpmPackage(
   if (!isRelayMeta(relayMeta)) {
     return err(
       new RegistryError(
-        `"${pkg}" is missing a valid "relay" metadata block in its published package.json`,
+        `"${pkg}" is missing a valid "relay" metadata block (raceName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience) in its published package.json`,
         'PACKAGE_INVALID',
         pkg,
       ),
@@ -400,7 +402,7 @@ function isLocalPath(input: string): boolean {
  * Each input is either:
  *   - A local directory path (starts with `.` or `/`): read package.json and
  *     README.md from the directory.
- *   - An npm package name (e.g. "@ganderbite/flow-codebase-discovery"): call
+ *   - An npm package name (e.g. "@relay/races-codebase-discovery"): call
  *     `npm view <pkg> --json` to get published metadata.
  *
  * Returns err() only if every input fails. When some inputs succeed and some
@@ -413,7 +415,7 @@ function isLocalPath(input: string): boolean {
 export async function generateRegistryJson(
   packages: string[],
 ): Promise<Result<RegistryDoc, RegistryError>> {
-  const flows: RegistryEntry[] = [];
+  const races: RegistryEntry[] = [];
   const errors: RegistryError[] = [];
 
   for (const input of packages) {
@@ -422,14 +424,14 @@ export async function generateRegistryJson(
       : await processNpmPackage(input);
 
     if (result.isOk()) {
-      flows.push(result.value);
+      races.push(result.value);
     } else {
       errors.push(result.error);
     }
   }
 
   // If every input failed, surface the first error.
-  if (flows.length === 0 && errors.length > 0) {
+  if (races.length === 0 && errors.length > 0) {
     return err(errors[0] as RegistryError);
   }
 
@@ -437,7 +439,7 @@ export async function generateRegistryJson(
   const doc: RegistryDoc = {
     version: 1,
     generatedAt: new Date().toISOString(),
-    flows,
+    races,
   };
 
   return ok(doc);

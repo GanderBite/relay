@@ -1,6 +1,6 @@
 // catalog/app.js
 // Vanilla browser JS. No bundler, no framework. ES module.
-// Fetches registry.json and renders a flow card per entry.
+// Fetches registry.json and renders a race card per entry.
 
 /**
  * Active tag filter. Empty string means "show all".
@@ -9,10 +9,10 @@
 let activeTag = '';
 
 /**
- * All flows loaded from registry.json.
+ * All races loaded from registry.json.
  * @type {Array<Object>}
  */
-let allFlows = [];
+let allRaces = [];
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -27,9 +27,9 @@ async function main() {
     return;
   }
 
-  allFlows = res.flows;
-  buildTagFilter(allFlows);
-  renderFlows(allFlows);
+  allRaces = res.races;
+  buildTagFilter(allRaces);
+  renderRaces(allRaces);
 }
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ async function main() {
 // ---------------------------------------------------------------------------
 
 async function fetchRegistry() {
-  const loadingEl = document.getElementById('flows-loading');
+  const loadingEl = document.getElementById('races-loading');
 
   let response;
   try {
@@ -57,28 +57,28 @@ async function fetchRegistry() {
     return { ok: false, error: 'registry.json is not valid JSON.' };
   }
 
-  if (!Array.isArray(doc.flows)) {
-    return { ok: false, error: 'registry.json missing "flows" array.' };
+  if (!Array.isArray(doc.races)) {
+    return { ok: false, error: 'registry.json missing "races" array.' };
   }
 
   if (loadingEl) loadingEl.hidden = true;
 
-  return { ok: true, flows: doc.flows };
+  return { ok: true, races: doc.races };
 }
 
 // ---------------------------------------------------------------------------
 // Tag filter UI
 // ---------------------------------------------------------------------------
 
-function buildTagFilter(flows) {
+function buildTagFilter(races) {
   const bar = document.getElementById('filter-bar');
   if (!bar) return;
 
-  // Collect unique tags across all flows, preserving insertion order.
+  // Collect unique tags across all races, preserving insertion order.
   const seen = new Set();
-  for (const flow of flows) {
-    if (Array.isArray(flow.tags)) {
-      for (const tag of flow.tags) {
+  for (const race of races) {
+    if (Array.isArray(race.tags)) {
+      for (const tag of race.tags) {
         seen.add(tag);
       }
     }
@@ -91,7 +91,7 @@ function buildTagFilter(flows) {
   allBtn.addEventListener('click', function () {
     activeTag = '';
     updateTagButtons(bar, '');
-    renderFlows(allFlows);
+    renderRaces(allRaces);
   });
   bar.appendChild(allBtn);
 
@@ -101,8 +101,8 @@ function buildTagFilter(flows) {
     btn.addEventListener('click', function () {
       activeTag = tag;
       updateTagButtons(bar, tag);
-      renderFlows(allFlows.filter(function (f) {
-        return Array.isArray(f.tags) && f.tags.includes(tag);
+      renderRaces(allRaces.filter(function (r) {
+        return Array.isArray(r.tags) && r.tags.includes(tag);
       }));
     });
     bar.appendChild(btn);
@@ -127,30 +127,30 @@ function updateTagButtons(bar, activeTagValue) {
 }
 
 // ---------------------------------------------------------------------------
-// Flow rendering
+// Race rendering
 // ---------------------------------------------------------------------------
 
-function renderFlows(flows) {
-  const container = document.getElementById('flows');
+function renderRaces(races) {
+  const container = document.getElementById('races');
   if (!container) return;
   while (container.firstChild) {
     container.removeChild(container.firstChild);
   }
 
-  if (flows.length === 0) {
+  if (races.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'flows-loading';
-    empty.textContent = 'No flows match this filter.';
+    empty.textContent = 'No races match this filter.';
     container.appendChild(empty);
     return;
   }
 
-  for (const flow of flows) {
-    container.appendChild(renderFlowCard(flow));
+  for (const race of races) {
+    container.appendChild(renderRaceCard(race));
   }
 }
 
-function renderFlowCard(flow) {
+function renderRaceCard(race) {
   const card = document.createElement('article');
   card.className = 'flow-card';
 
@@ -160,21 +160,21 @@ function renderFlowCard(flow) {
 
   const displayName = document.createElement('span');
   displayName.className = 'flow-display-name';
-  displayName.textContent = flow.displayName || flow.name;
+  displayName.textContent = race.displayName || race.name;
   header.appendChild(displayName);
 
   const version = document.createElement('span');
   version.className = 'flow-version';
-  version.textContent = 'v' + (flow.version || '0.0.0');
+  version.textContent = 'v' + (race.version || '0.0.0');
   header.appendChild(version);
 
   card.appendChild(header);
 
   // ── tags ─────────────────────────────────────────────────────────────────
-  if (Array.isArray(flow.tags) && flow.tags.length > 0) {
+  if (Array.isArray(race.tags) && race.tags.length > 0) {
     const tagsEl = document.createElement('div');
     tagsEl.className = 'flow-tags';
-    for (const tag of flow.tags) {
+    for (const tag of race.tags) {
       const t = document.createElement('span');
       t.className = 'flow-tag';
       t.textContent = tag;
@@ -187,23 +187,23 @@ function renderFlowCard(flow) {
   const meta = document.createElement('div');
   meta.className = 'flow-meta';
 
-  meta.appendChild(makeMetaRow('cost', formatCostRange(flow.estimatedCostUsd)));
-  meta.appendChild(makeMetaRow('duration', formatDurationRange(flow.estimatedDurationMin)));
+  meta.appendChild(makeMetaRow('cost', formatCostRange(race.estimatedCostUsd)));
+  meta.appendChild(makeMetaRow('duration', formatDurationRange(race.estimatedDurationMin)));
 
-  if (Array.isArray(flow.audience) && flow.audience.length > 0) {
-    meta.appendChild(makeMetaRow('audience', flow.audience.join(', ')));
+  if (Array.isArray(race.audience) && race.audience.length > 0) {
+    meta.appendChild(makeMetaRow('audience', race.audience.join(', ')));
   }
 
   card.appendChild(meta);
 
   // ── readme excerpt ────────────────────────────────────────────────────────
-  if (flow.readmeExcerpt) {
+  if (race.readmeExcerpt) {
     const excerpt = document.createElement('p');
     excerpt.className = 'flow-excerpt';
     // Truncate to 200 chars for the card view
-    const text = flow.readmeExcerpt.length > 200
-      ? flow.readmeExcerpt.slice(0, 200) + '\u2026'
-      : flow.readmeExcerpt;
+    const text = race.readmeExcerpt.length > 200
+      ? race.readmeExcerpt.slice(0, 200) + '…'
+      : race.readmeExcerpt;
     excerpt.textContent = text;
     card.appendChild(excerpt);
   }
@@ -211,7 +211,7 @@ function renderFlowCard(flow) {
   // ── install command ───────────────────────────────────────────────────────
   const install = document.createElement('div');
   install.className = 'flow-install';
-  const npmPkg = flow.npmPackage || flow.name;
+  const npmPkg = race.npmPackage || race.name;
   install.textContent = 'relay install ' + npmPkg;
   card.appendChild(install);
 
@@ -219,13 +219,13 @@ function renderFlowCard(flow) {
   const footer = document.createElement('div');
   footer.className = 'flow-card-footer';
 
-  if (flow.repoUrl) {
+  if (race.repoUrl) {
     const link = document.createElement('a');
     link.className = 'flow-readme-link';
-    link.href = flow.repoUrl;
+    link.href = race.repoUrl;
     link.rel = 'noopener noreferrer';
     link.target = '_blank';
-    link.textContent = 'source \u2192';
+    link.textContent = 'source →';
     footer.appendChild(link);
   } else {
     // Empty placeholder to preserve layout
@@ -262,19 +262,19 @@ function formatCostRange(range) {
   if (!range || typeof range.min !== 'number' || typeof range.max !== 'number') {
     return 'unknown';
   }
-  return '$' + range.min.toFixed(2) + ' \u2013 $' + range.max.toFixed(2);
+  return '$' + range.min.toFixed(2) + ' – $' + range.max.toFixed(2);
 }
 
 function formatDurationRange(range) {
   if (!range || typeof range.min !== 'number' || typeof range.max !== 'number') {
     return 'unknown';
   }
-  return range.min + ' \u2013 ' + range.max + ' min';
+  return range.min + ' – ' + range.max + ' min';
 }
 
 function showError(message) {
-  const loadingEl = document.getElementById('flows-loading');
-  const errorEl = document.getElementById('flows-error');
+  const loadingEl = document.getElementById('races-loading');
+  const errorEl = document.getElementById('races-error');
 
   if (loadingEl) loadingEl.hidden = true;
   if (errorEl) {

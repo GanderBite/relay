@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "generatedAt": "2026-04-22T18:22:21.710Z",
+  "races": [
+    {
+      "name": "@relay/races-codebase-discovery",
+      "version": "0.1.0",
+      "displayName": "Codebase Discovery",
+      "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
+      "tags": [
+        "analysis",
+        "documentation",
+        "architecture"
+      ],
+      "audience": [
+        "pm",
+        "dev"
+      ],
+      "estimatedCostUsd": {
+        "min": 0.2,
+        "max": 0.8
+      },
+      "estimatedDurationMin": {
+        "min": 5,
+        "max": 20
+      },
+      "npmPackage": "@relay/races-codebase-discovery",
+      "readmeExcerpt": "codebase-discovery\n\nThe canonical reference race. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt runners, arranged as a fan-out over a shared inventory. The first runner () walks the repository and emits a JSON baton listing every package, its language, and its top-level structure. Two runners then run in"
+    }
+  ]
+}

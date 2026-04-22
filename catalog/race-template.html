@@ -4,15 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!--
-    flow-template.html
-    Per-flow landing page. Placeholders in the form <!-- {{KEY}} --> are
-    replaced at runtime by app.js when rendering a flow detail view.
+    race-template.html
+    Per-race landing page. Placeholders in the form <!-- {{KEY}} --> are
+    replaced at runtime by app.js when rendering a race detail view.
     This file is also valid standalone HTML for visual development — the
     placeholder comments render as empty content in a browser.
   -->
-  <title><!-- {{FLOW_NAME}} --> — Relay</title>
+  <title><!-- {{RACE_NAME}} --> — Relay</title>
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="./flow-template.css" />
+  <link rel="stylesheet" href="./race-template.css" />
 </head>
 <body>
 
@@ -24,7 +24,7 @@
       <a href="./index.html" class="header-mark" aria-label="Relay home">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</a>
       <span class="header-name">Relay</span>
       <nav class="header-nav">
-        <a href="./index.html#flows">flows</a>
+        <a href="./index.html#races">races</a>
         <a href="./index.html#why">why Relay</a>
         <a href="https://github.com/ganderbite/relay">GitHub</a>
       </nav>
@@ -32,51 +32,51 @@
   </header>
 
   <!-- =========================================================
-       FLOW PAGE BODY
+       RACE PAGE BODY
   ========================================================= -->
-  <main class="flow-page-main">
+  <main class="race-page-main">
     <div class="container">
-      <div class="flow-page">
+      <div class="race-page">
 
         <!-- ── mark + name ──────────────────────────────────── -->
-        <header class="flow-header">
-          <span class="flow-mark"><!-- {{MARK}} --></span>
-          <h1 class="flow-name"><!-- {{FLOW_NAME}} --></h1>
+        <header class="race-header">
+          <span class="race-mark"><!-- {{MARK}} --></span>
+          <h1 class="race-name"><!-- {{RACE_NAME}} --></h1>
         </header>
 
         <!-- ── one-paragraph description ────────────────────── -->
-        <p class="flow-description"><!-- {{FLOW_DESCRIPTION}} --></p>
+        <p class="race-description"><!-- {{RACE_DESCRIPTION}} --></p>
 
         <!-- ── 4-row metadata grid ───────────────────────────── -->
-        <dl class="flow-meta-dl">
-          <div class="flow-meta-dl-row">
+        <dl class="race-meta-dl">
+          <div class="race-meta-dl-row">
             <dt>COST</dt>
             <dd><!-- {{COST}} --></dd>
           </div>
-          <div class="flow-meta-dl-row">
+          <div class="race-meta-dl-row">
             <dt>DURATION</dt>
             <dd><!-- {{DURATION}} --></dd>
           </div>
-          <div class="flow-meta-dl-row">
+          <div class="race-meta-dl-row">
             <dt>AUDIENCE</dt>
             <dd><!-- {{AUDIENCE}} --></dd>
           </div>
-          <div class="flow-meta-dl-row flow-meta-dl-row--tier">
-            <dt class="flow-tier-label"><!-- {{TIER_LABEL}} --></dt>
+          <div class="race-meta-dl-row race-meta-dl-row--tier">
+            <dt class="race-tier-label"><!-- {{TIER_LABEL}} --></dt>
             <dd><!-- {{TIER_VALUE}} --></dd>
           </div>
         </dl>
 
-        <hr class="flow-rule" />
+        <hr class="race-rule" />
 
         <!-- ── run command ───────────────────────────────────── -->
-        <pre class="flow-run-command"><code><span class="flow-run-prompt">$</span> <!-- {{RUN_COMMAND}} --></code></pre>
+        <pre class="race-run-command"><code><span class="race-run-prompt">$</span> <!-- {{RUN_COMMAND}} --></code></pre>
 
-        <hr class="flow-rule" />
+        <hr class="race-rule" />
 
         <!-- ── three tabs ────────────────────────────────────── -->
-        <div class="flow-tabs">
-          <div class="tab-bar" role="tablist" aria-label="Flow details">
+        <div class="race-tabs">
+          <div class="tab-bar" role="tablist" aria-label="Race details">
             <button class="tab-btn active" data-tab="sample" role="tab" aria-selected="true" aria-controls="panel-sample" id="tab-sample">[ sample output ]</button>
             <button class="tab-btn" data-tab="how" role="tab" aria-selected="false" aria-controls="panel-how" id="tab-how">[ how it works ]</button>
             <button class="tab-btn" data-tab="customize" role="tab" aria-selected="false" aria-controls="panel-customize" id="tab-customize">[ customize ]</button>
