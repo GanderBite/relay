@@ -202,8 +202,8 @@ describe('Runner.resume — persisted status gate', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.resume(tmp, { flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(result.runId).toBe('r-gate');
@@ -236,8 +236,8 @@ describe('Runner.resume — persisted status gate', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.resume(tmp, { flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(provider.invokedSteps).toEqual(['a', 'b']);
@@ -263,8 +263,8 @@ describe('Runner.resume — persisted status gate', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.resume(tmp, { flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(provider.invokedSteps).toEqual(['a', 'b']);
@@ -289,8 +289,8 @@ describe('Runner.resume — persisted status gate', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.resume(tmp, { flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(provider.invokedSteps).toEqual(['a', 'b']);

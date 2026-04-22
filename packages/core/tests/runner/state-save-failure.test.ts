@@ -115,11 +115,10 @@ describe('Runner — state save failure escalation', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
-    const thrown = await runner.run(twoStepFlow(), {}).catch((e: unknown) => e);
+    const thrown = await runner.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
 
     expect(thrown).toBeInstanceOf(StateWriteError);
     expect(failStateSave.consumed).toBe(true);
@@ -143,11 +142,10 @@ describe('Runner — state save failure escalation', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
-    const thrown = await runner.run(twoStepFlow(), {}).catch((e: unknown) => e);
+    const thrown = await runner.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
 
     expect(thrown).toBeInstanceOf(StateWriteError);
     expect(failStateSave.consumed).toBe(true);
@@ -169,12 +167,11 @@ describe('Runner — state save failure escalation', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
     const outcome = await runner
-      .run(twoStepFlow(), {})
+      .run(twoStepFlow(), {}, { flagProvider: 'mock' })
       .then((value) => ({ kind: 'resolved' as const, value }))
       .catch((error: unknown) => ({ kind: 'rejected' as const, error }));
 

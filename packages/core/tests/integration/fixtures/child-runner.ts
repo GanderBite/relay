@@ -130,7 +130,6 @@ await writeFile(join(hereDir, 'p.md'), 'ping', 'utf8');
 
 const runner = createRunner({
   providers: registry,
-  defaultProvider: 'mock',
   runDir,
 });
 
@@ -139,6 +138,7 @@ try {
     flowPath,
     flowDir: hereDir,
     authTimeoutMs: 5_000,
+    flagProvider: 'mock',
   });
 } catch {
   // run() may throw if the process is still alive when the flow fails;

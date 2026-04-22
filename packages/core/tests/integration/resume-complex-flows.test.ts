@@ -227,13 +227,13 @@ describe('resume with complex flow topologies', () => {
 
       const runner = createRunner({
         providers: registry,
-        defaultProvider: 'mock',
         runDir,
       });
 
       const result = await runner.resume(runDir, {
         authTimeoutMs: 5_000,
         flowDir: FIXTURES_DIR,
+        flagProvider: 'mock',
       });
 
       // ── Assertions ───────────────────────────────────────────────────────
@@ -365,13 +365,13 @@ describe('resume with complex flow topologies', () => {
 
       const runner = createRunner({
         providers: registry,
-        defaultProvider: 'mock',
         runDir,
       });
 
       const result = await runner.resume(runDir, {
         authTimeoutMs: 5_000,
         flowDir: FIXTURES_DIR,
+        flagProvider: 'mock',
       });
 
       // ── Assertions ───────────────────────────────────────────────────────

@@ -101,8 +101,15 @@ export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 export { z } from './zod.js';
 
 // ClaudeAgentSdkProvider
-export { ClaudeAgentSdkProvider, registerDefaultProviders } from './providers/claude/index.js';
+export { ClaudeAgentSdkProvider } from './providers/claude/index.js';
 export type { ClaudeAgentSdkProviderOptions } from './providers/claude/index.js';
+
+// Default provider registration — registers both Claude backends idempotently.
+export { registerDefaultProviders } from './providers/index.js';
+
+// ClaudeCliProvider
+export { ClaudeCliProvider } from './providers/claude-cli/index.js';
+export type { ClaudeCliProviderOptions } from './providers/claude-cli/index.js';
 
 // Runner — orchestrates flow execution
 export { createRunner, Runner } from './runner/index.js';

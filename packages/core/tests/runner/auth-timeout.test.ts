@@ -100,13 +100,12 @@ describe('Runner — provider.authenticate() timeout', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
     const start = Date.now();
     const thrown = await runner
-      .run(singleStepFlow(), {}, { authTimeoutMs: 50 })
+      .run(singleStepFlow(), {}, { authTimeoutMs: 50, flagProvider: 'mock' })
       .catch((e: unknown) => e);
     const elapsed = Date.now() - start;
 

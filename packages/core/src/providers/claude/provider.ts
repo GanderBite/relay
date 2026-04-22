@@ -28,7 +28,6 @@ import {
   StepFailureError,
   TimeoutError,
 } from '../../errors.js';
-import { defaultRegistry, ProviderRegistry } from '../registry.js';
 import type {
   AuthState,
   InvocationContext,
@@ -475,18 +474,4 @@ function isResultMessage(msg: unknown): boolean {
   if (!('type' in msg)) return false;
   const record: Record<string, unknown> = msg;
   return record['type'] === 'result';
-}
-
-// ---------------------------------------------------------------------------
-// Default registration
-// ---------------------------------------------------------------------------
-
-/**
- * Idempotent — safe to call multiple times. Returns 'registered' on first
- * call, 'already-present' thereafter.
- */
-export function registerDefaultProviders(
-  registry: ProviderRegistry = defaultRegistry,
-): Result<'registered' | 'already-present', never> {
-  return registry.registerIfAbsent(new ClaudeAgentSdkProvider());
 }

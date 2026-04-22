@@ -1,96 +1,30 @@
-import { FlowDefinitionError, ProviderCapabilityError } from '../errors.js';
-import type { Flow, Step } from '../flow/types.js';
-import type { ProviderRegistry } from '../providers/registry.js';
+import { ProviderCapabilityError } from '../errors.js';
+import type { Flow } from '../flow/types.js';
 import type { Provider } from '../providers/types.js';
 
 /**
- * Minimal subset of runner configuration required for provider resolution.
- * Matches the shape the Runner passes when it calls resolveProvider and
- * checkCapabilities.
- */
-export interface RunnerProviderConfig {
-  defaultProvider: string;
-  providers: ProviderRegistry;
-}
-
-/**
- * Resolve which Provider instance serves a given step.
+ * Walk every prompt step in the flow and validate the step's requirements
+ * against the resolved provider's capabilities. The Runner resolves a single
+ * provider for the run via the settings/flag/registry chain (see
+ * `resolveProvider`); every prompt step is bound to that provider.
  *
- * Resolution: runner.defaultProvider (the sole tier after author-facing
- * provider fields were removed in the breaking-change refactor).
+ * Returns a Map<stepId, Provider> so the Runner can reuse the binding during
+ * step dispatch without repeating the lookup.
  *
- * Accepts Step | undefined because flow.steps is Record<string, Step> and
- * indexed access under noUncheckedIndexedAccess returns Step | undefined.
- * Throws FlowDefinitionError when:
- *   - the step is undefined or not a prompt step (programming error)
- *   - the resolved provider name is not in the registry
- */
-export function resolveProvider(
-  step: Step | undefined,
-  _flow: Flow<unknown>,
-  runner: RunnerProviderConfig,
-): Provider {
-  if (step === undefined) {
-    throw new FlowDefinitionError(
-      'resolveProvider received an undefined step. Verify the step id is present in the flow.',
-    );
-  }
-
-  if (step.kind !== 'prompt') {
-    throw new FlowDefinitionError(
-      `resolveProvider was called on a "${step.kind}" step (id: "${step.id}"). Provider resolution only applies to prompt steps.`,
-      { stepId: step.id, stepKind: step.kind },
-    );
-  }
-
-  // Provider is resolved from the runner's default. Per-step and per-flow
-  // provider overrides were removed — task_123 will wire the full resolved-
-  // provider contract when the runner context carries it.
-  const providerName = runner.defaultProvider;
-
-  const result = runner.providers.get(providerName);
-  if (result.isErr()) {
-    const registeredNames = runner.providers.list().map((p) => p.name);
-    throw new FlowDefinitionError(
-      `Step "${step.id}" references provider "${providerName}", which is not registered. ` +
-        `Registered providers: [${registeredNames.join(', ')}]. ` +
-        `Register the provider via ProviderRegistry.register() before calling runner.run().`,
-      {
-        stepId: step.id,
-        requestedProvider: providerName,
-        registeredProviders: registeredNames,
-      },
-    );
-  }
-
-  return result.value;
-}
-
-/**
- * Walk every prompt step in the flow, resolve its provider via the runner
- * default, and validate the step's requirements against that provider's
- * capabilities.
- *
- * Returns a Map<stepId, Provider> so the Runner can reuse the resolved binding
- * during execution without repeating the lookup.
- *
- * Throws ProviderCapabilityError (or FlowDefinitionError for unknown providers)
- * before any tokens are spent.
+ * Throws ProviderCapabilityError before any tokens are spent when a step
+ * requests a capability the provider does not advertise (structured output,
+ * tool use, an unknown built-in tool, an unsupported model, or a per-call
+ * budget cap).
  */
 export function checkCapabilities(
   flow: Flow<unknown>,
-  registry: ProviderRegistry,
-  runnerDefault: string,
+  provider: Provider,
 ): Map<string, Provider> {
-  const runner: RunnerProviderConfig = { defaultProvider: runnerDefault, providers: registry };
   const resolved = new Map<string, Provider>();
+  const { capabilities } = provider;
 
   for (const [stepId, step] of Object.entries(flow.steps)) {
     if (step.kind !== 'prompt') continue;
-
-    const provider = resolveProvider(step, flow, runner);
-
-    const { capabilities } = provider;
 
     // Check: structured output
     if ('schema' in step.output && step.output.schema !== undefined) {

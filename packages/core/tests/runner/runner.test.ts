@@ -87,8 +87,8 @@ describe('Runner — DAG walker', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(linearFlow(), {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.run(linearFlow(), {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(order).toEqual(['a', 'b', 'c']);
@@ -133,8 +133,8 @@ describe('Runner — DAG walker', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(flow, {}, { parallelism: MAX, flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.run(flow, {}, { parallelism: MAX, flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(result.status).toBe('succeeded');
     expect(maxSeen).toBeLessThanOrEqual(MAX);
@@ -167,8 +167,8 @@ describe('Runner — DAG walker', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(result.status).toBe('failed');
     expect(bSpy).not.toHaveBeenCalled();
@@ -214,8 +214,8 @@ describe('Runner — DAG walker', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(bSpy).toHaveBeenCalled();
     expect(cSpy).toHaveBeenCalled();
@@ -235,8 +235,8 @@ describe('Runner — DAG walker', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await expect(runner.run(flow, { repoPath: 123 }, { flowDir: tmp, authTimeoutMs: 1_000 })).rejects.toBeInstanceOf(FlowDefinitionError);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await expect(runner.run(flow, { repoPath: 123 }, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })).rejects.toBeInstanceOf(FlowDefinitionError);
   });
 
   it('[RUNNER-006] writes handoffs + state.json between steps (observable mid-run)', async () => {
@@ -267,8 +267,8 @@ describe('Runner — DAG walker', () => {
       },
     });
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     const mid = stateMidRun as { steps: Record<string, { status: string }> };
     expect(mid.steps.a.status).toBe('succeeded');
@@ -285,8 +285,8 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
     const flow = linearFlow();
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(authSpy).toHaveBeenCalledTimes(1);
   });
@@ -305,8 +305,8 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
     const flow = linearFlow();
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await expect(runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 })).rejects.toBeInstanceOf(ClaudeAuthError);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await expect(runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })).rejects.toBeInstanceOf(ClaudeAuthError);
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 });
@@ -340,8 +340,8 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     });
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     setTimeout(() => process.emit('SIGINT'), 80);
     const result = await p.catch((e) => e);
 
@@ -366,8 +366,8 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
         slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
       },
     });
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     setTimeout(() => process.emit('SIGTERM'), 80);
     await p.catch(() => undefined);
     const state = JSON.parse(await readFile(join(tmp, 'state.json'), 'utf8'));
@@ -404,8 +404,8 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     });
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const p = runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     // Send SIGINT only after the step factory confirms it is running.
     void inFlight.then(() => process.emit('SIGINT'));
     await p.catch(() => undefined);
@@ -425,8 +425,8 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
         a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
     });
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     const after = process.listenerCount('SIGINT');
     expect(after).toBe(before);
   });
@@ -447,8 +447,8 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     });
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 });
@@ -496,8 +496,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await (runner as unknown as Runner).resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await (runner as unknown as Runner).resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(aSpy).not.toHaveBeenCalled();
     expect(bSpy).toHaveBeenCalled();
@@ -533,8 +533,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const provider = new MockProvider({ responses: { a: canned, b: canned } });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    const result = await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    const result = await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     // The run result should include the pre-resume spend (0.05) in total cost.
     expect(result.cost.totalUsd).toBeGreaterThanOrEqual(0.05);
@@ -545,7 +545,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const provider = new MockProvider({ responses: {} });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
+    const runner = createRunner({ providers: registry, runDir: tmp });
     await expect(runner.resume(tmp)).rejects.toBeTruthy();
   });
 
@@ -561,7 +561,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const provider = new MockProvider({ responses: {} });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
+    const runner = createRunner({ providers: registry, runDir: tmp });
     await expect(runner.resume(tmp)).rejects.toMatchObject({
       message: expect.stringMatching(/oldFlow|mismatch|version/),
     });
@@ -578,8 +578,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const provider = new MockProvider({ responses: { a: aSpy } });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 }).catch(() => undefined);
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' }).catch(() => undefined);
 
     // maxRetries:3 and 2 attempts already used => resume should run exactly 1 more.
     expect(aSpy).toHaveBeenCalledTimes(1);
@@ -607,8 +607,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir: tmp });
-    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000 });
+    const runner = createRunner({ providers: registry, runDir: tmp });
+    await runner.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(callOrder[0]).toBe('b');
     expect(callOrder).toContain('c');

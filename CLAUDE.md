@@ -54,6 +54,8 @@ One sprint per session. The user invokes the `sprint-workflow` skill (or just sa
 | `typescript` | Writing or refactoring `.ts` — strict mode, ESM, discriminated unions, Zod inference |
 | `javascript` | Editing the small JS surface — bin shims, catalog browser JS, GitHub Actions |
 | `vitest` | Writing or maintaining tests — mocking, snapshots, async, MockProvider |
+| `claude-cli-provider` | Building or wiring `ClaudeCliProvider` — subprocess lifecycle, stream-json, env allowlist |
+| `relay-settings` | Three-tier provider selection, `relay init`, `NoProviderConfiguredError` |
 
 ## Hooks (`.claude/settings.json`)
 
@@ -69,7 +71,7 @@ The harness runs four hook events to keep the loop tight:
 
 1. **No emojis in any code, output, or doc.** Use the Unicode symbol vocabulary only (`✓ ✕ ⚠ ⠋ ○ · ●─▶`). The mark `●─▶●─▶●─▶●` is the brand.
 2. **The word "simply" is banned in user-facing copy.** Same with trailing exclamation marks.
-3. **Subscription billing is the default.** `ANTHROPIC_API_KEY` must trigger `ClaudeAuthError` unless explicitly opted in. See `billing-safety` skill.
+3. **Subscription billing is the default.** `ANTHROPIC_API_KEY` must trigger `ClaudeAuthError` unless explicitly opted in. See `billing-safety` skill. Each provider enforces its own auth contract; see claude-agent-sdk and claude-cli-provider skills for the matrix.
 4. **ESM only, Node ≥20.10, TypeScript 5.4+.** No CJS dual-publish.
 5. **Atomic writes for any file other processes might read** (state.json, handoffs/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.

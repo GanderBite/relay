@@ -4,10 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import {
-  checkCapabilities,
-  resolveProvider,
-} from '../../src/runner/capability-check.js';
+import { checkCapabilities } from '../../src/runner/capability-check.js';
+import { resolveProvider } from '../../src/settings/resolve.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { ProviderCapabilityError } from '../../src/errors.js';
@@ -25,8 +23,6 @@ describe('capability-check', () => {
       responses: {},
       capabilities: { structuredOutput: false },
     });
-    const registry = new ProviderRegistry();
-    registry.register(provider);
 
     const flow = makeFlow(() => ({
       name: 'f',
@@ -40,7 +36,7 @@ describe('capability-check', () => {
       },
     }));
 
-    expect(() => checkCapabilities(flow, registry, 'mock')).toThrow(ProviderCapabilityError);
+    expect(() => checkCapabilities(flow, provider)).toThrow(ProviderCapabilityError);
   });
 
   it('[CAP-002] rejects step requesting a tool the provider does not advertise', () => {
@@ -48,8 +44,6 @@ describe('capability-check', () => {
       responses: {},
       capabilities: { tools: true, builtInTools: ['Read', 'Grep'] },
     });
-    const registry = new ProviderRegistry();
-    registry.register(provider);
 
     const flow = makeFlow(() => ({
       name: 'f',
@@ -64,7 +58,7 @@ describe('capability-check', () => {
       },
     }));
 
-    expect(() => checkCapabilities(flow, registry, 'mock')).toThrow(/UnknownTool/);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/UnknownTool/);
   });
 
   it('[CAP-003] rejects an unknown model when provider.models is non-empty', () => {
@@ -72,8 +66,6 @@ describe('capability-check', () => {
       responses: {},
       capabilities: { models: ['sonnet'] },
     });
-    const registry = new ProviderRegistry();
-    registry.register(provider);
 
     const flow = makeFlow(() => ({
       name: 'f',
@@ -84,7 +76,7 @@ describe('capability-check', () => {
       },
     }));
 
-    expect(() => checkCapabilities(flow, registry, 'mock')).toThrow(/opus/);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/opus/);
   });
 
   it('[CAP-004] rejects maxBudgetUsd on a budgetCap:false provider', () => {
@@ -92,8 +84,6 @@ describe('capability-check', () => {
       responses: {},
       capabilities: { budgetCap: false },
     });
-    const registry = new ProviderRegistry();
-    registry.register(provider);
 
     const flow = makeFlow(() => ({
       name: 'f',
@@ -108,48 +98,36 @@ describe('capability-check', () => {
       },
     }));
 
-    expect(() => checkCapabilities(flow, registry, 'mock')).toThrow(/budget/i);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/budget/i);
   });
 
-  it('[CAP-005] resolveProvider uses runner default when no per-step or per-flow override', () => {
+  it('[CAP-005] resolveProvider uses the flag-supplied provider name', () => {
     const runnerProv = new MockProvider({ responses: {} });
     (runnerProv as unknown as { name: string }).name = 'runnerProv';
 
     const registry = new ProviderRegistry();
     registry.register(runnerProv);
 
-    const flow = makeFlow(() => ({
-      name: 'f',
-      version: '0.1.0',
-      input: z.object({}),
-      steps: {
-        a: step.prompt({
-          promptFile: 'p.md',
-          output: { handoff: 'x' },
-        }),
-      },
-    }));
-
-    const resolved = resolveProvider(flow.steps.a, flow, { defaultProvider: 'runnerProv', providers: registry });
-    expect(resolved).toBe(runnerProv);
+    const resolved = resolveProvider({
+      flagProvider: 'runnerProv',
+      flowSettings: null,
+      globalSettings: null,
+      registry,
+    });
+    expect(resolved.isOk() && resolved.value).toBe(runnerProv);
   });
 
-  it('[CAP-006] resolveProvider falls back to runner default', () => {
+  it('[CAP-006] resolveProvider falls back to global-settings when no flag is supplied', () => {
     const claudeLike = new MockProvider({ responses: {} });
     (claudeLike as unknown as { name: string }).name = 'claude-agent-sdk';
     const registry = new ProviderRegistry();
     registry.register(claudeLike);
 
-    const flow = makeFlow(() => ({
-      name: 'f',
-      version: '0.1.0',
-      input: z.object({}),
-      steps: {
-        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'x' } }),
-      },
-    }));
-
-    const resolved = resolveProvider(flow.steps.a, flow, { defaultProvider: 'claude-agent-sdk', providers: registry });
-    expect(resolved).toBe(claudeLike);
+    const resolved = resolveProvider({
+      flowSettings: null,
+      globalSettings: { provider: 'claude-agent-sdk' },
+      registry,
+    });
+    expect(resolved.isOk() && resolved.value).toBe(claudeLike);
   });
 });

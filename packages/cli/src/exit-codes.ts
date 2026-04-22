@@ -8,6 +8,7 @@
  *   3 — auth error (ClaudeAuthError, ProviderAuthError)
  *   4 — handoff / schema error (HandoffSchemaError)
  *   5 — timeout (TimeoutError, AuthTimeoutError)
+ *   6 — no provider configured (NoProviderConfiguredError)
  *
  * Error format follows the product spec error template:
  *   ✕ <one-line headline>
@@ -23,6 +24,7 @@ import {
   ClaudeAuthError,
   FlowDefinitionError,
   HandoffSchemaError,
+  NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
   StepFailureError,
@@ -41,6 +43,7 @@ export const EXIT_CODES = {
   auth_error: 3,
   handoff_error: 4,
   timeout: 5,
+  no_provider: 6,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
@@ -53,6 +56,7 @@ export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
  * Map any thrown value to a CLI exit code.
  */
 export function exitCodeFor(err: unknown): number {
+  if (err instanceof NoProviderConfiguredError) return EXIT_CODES.no_provider;
   if (err instanceof StepFailureError)    return EXIT_CODES.step_failure;
   if (err instanceof FlowDefinitionError) return EXIT_CODES.definition_error;
   if (err instanceof ClaudeAuthError)     return EXIT_CODES.auth_error;

@@ -81,8 +81,8 @@ async function main(): Promise<void> {
   const thisFile = fileURLToPath(import.meta.url);
   const flowDir = resolve(dirname(thisFile), '..');
 
-  const runner = createRunner({ providers: registry, defaultProvider: 'mock' });
-  const result = await runner.run(flow, { name }, { flowDir });
+  const runner = createRunner({ providers: registry });
+  const result = await runner.run(flow, { name }, { flowDir, flagProvider: 'mock' });
 
   process.stdout.write(
     [

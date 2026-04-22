@@ -225,13 +225,13 @@ describe('crash-resume integration (real SIGKILL)', () => {
 
       const runner = createRunner({
         providers: registry,
-        defaultProvider: 'mock',
         runDir,
       });
 
       const result = await runner.resume(runDir, {
         authTimeoutMs: 5_000,
         flowDir: fixtureDir,
+        flagProvider: 'mock',
       });
 
       // ── Assertions ─────────────────────────────────────────────────────────

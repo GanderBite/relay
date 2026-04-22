@@ -19,14 +19,17 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import {
   ClaudeAuthError,
   CostTracker,
   defaultRegistry,
+  loadFlowSettings,
+  loadGlobalSettings,
   loadState,
   registerDefaultProviders,
+  resolveProvider,
   Runner,
   StateNotFoundError,
 } from '@relay/core';
@@ -242,13 +245,19 @@ function printPreResumeBanner(
 // Main command
 // ---------------------------------------------------------------------------
 
+export interface ResumeCommandOptions {
+  /** Provider name from --provider flag. Takes precedence over all settings. */
+  provider?: string;
+}
+
 /**
  * Entry point for `relay resume <runId>`.
  */
 export default async function resumeCommand(
   args: unknown[],
-  _opts: unknown,
+  opts: unknown,
 ): Promise<void> {
+  const options = (opts ?? {}) as ResumeCommandOptions;
   // ---- (1) Parse runId ----
   const runId = typeof args[0] === 'string' ? args[0] : undefined;
   if (runId === undefined || runId.trim() === '') {
@@ -332,8 +341,30 @@ export default async function resumeCommand(
   printPreResumeBanner(runId, flowRef, state, flow.graph.topoOrder, flow.graph.predecessors, spentUsd);
 
   // ---- (7) Auth check — must happen before the Runner so we can exit 3 on auth failure ----
+  // Resolve the provider via the same chain Runner.resume() uses below
+  // (--provider flag > flow settings > global settings) so any auth failure
+  // surfaces here with a clean exit code rather than mid-resume.
   registerDefaultProviders();
-  const providerResult = defaultRegistry.get('claude');
+  const flowDirForSettings = dirname(flowRef.flowPath);
+  const globalSettingsResult = await loadGlobalSettings();
+  if (globalSettingsResult.isErr()) {
+    process.stderr.write(formatError(globalSettingsResult.error) + '\n');
+    process.exit(exitCodeFor(globalSettingsResult.error));
+  }
+  const flowSettingsResult = await loadFlowSettings(flowDirForSettings);
+  if (flowSettingsResult.isErr()) {
+    process.stderr.write(formatError(flowSettingsResult.error) + '\n');
+    process.exit(exitCodeFor(flowSettingsResult.error));
+  }
+  const resolverArgs: Parameters<typeof resolveProvider>[0] = {
+    flowSettings: flowSettingsResult.value,
+    globalSettings: globalSettingsResult.value,
+    registry: defaultRegistry,
+  };
+  if (options.provider !== undefined) {
+    resolverArgs.flagProvider = options.provider;
+  }
+  const providerResult = resolveProvider(resolverArgs);
   let auth: AuthState | undefined;
   if (providerResult.isOk()) {
     const authResult = await providerResult.value.authenticate();
@@ -347,14 +378,15 @@ export default async function resumeCommand(
       process.exit(exitCodeFor(authErr));
     }
     auth = authResult.value;
+  } else {
+    // Surface NoProviderConfiguredError up front; falling through with no
+    // provider would silently downgrade the bill row to a fabricated
+    // subscription state and then crash the resume mid-walk.
+    process.stderr.write(formatError(providerResult.error) + '\n');
+    process.exit(exitCodeFor(providerResult.error));
   }
 
-  // Fallback synthetic AuthState when no provider is registered.
-  const effectiveAuth: AuthState = auth ?? {
-    ok: true,
-    billingSource: 'subscription',
-    detail: 'subscription (max)',
-  };
+  const effectiveAuth: AuthState = auth;
 
   // ---- (8) Construct Runner and start progress display ----
   const runner = new Runner({ runDir });
@@ -372,7 +404,11 @@ export default async function resumeCommand(
 
   let exitCode = 0;
   try {
-    const result = await runner.resume(runDir);
+    const resumeOpts: Parameters<typeof runner.resume>[1] = {};
+    if (options.provider !== undefined) {
+      resumeOpts.flagProvider = options.provider;
+    }
+    const result = await runner.resume(runDir, resumeOpts);
 
     display.stop();
 

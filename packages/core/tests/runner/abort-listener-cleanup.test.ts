@@ -153,11 +153,10 @@ describe('Runner — abort listener cleanup', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
-    const thrown = await runner.run(twoStepFlow(), {}).catch((e: unknown) => e);
+    const thrown = await runner.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
     expect(thrown).toBeInstanceOf(Error);
     expect(failStateSave.consumed).toBe(true);
 
@@ -193,11 +192,10 @@ describe('Runner — abort listener cleanup', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tmp,
     });
 
-    const result = await runner.run(twoStepFlow(), {}, { flowDir: tmp });
+    const result = await runner.run(twoStepFlow(), {}, { flowDir: tmp, flagProvider: 'mock' });
     expect(result.status).toBe('succeeded');
 
     const onAbortAdds = countOnAbortCalls(addSpy);

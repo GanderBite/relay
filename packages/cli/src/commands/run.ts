@@ -26,6 +26,7 @@ import { join } from 'node:path';
 
 import {
   ClaudeAgentSdkProvider,
+  registerDefaultProviders,
   Runner,
   type AuthState,
   type RunResult,
@@ -49,6 +50,8 @@ export interface RunCommandOptions {
   cost?: boolean;
   resume?: string;
   fresh?: boolean;
+  /** Provider name from --provider flag. Takes precedence over all settings. */
+  provider?: string;
 }
 
 /**
@@ -247,6 +250,10 @@ export default async function runCommand(
 
   const startMs = Date.now();
 
+  // Register both Claude providers idempotently so the resolver chain in
+  // Runner.run() can pick whichever the user (or settings) selected.
+  registerDefaultProviders();
+
   const runner = new Runner({ runDir });
   if (options.apiKey === true) {
     runner.allowApiKey();
@@ -254,10 +261,14 @@ export default async function runCommand(
 
   let result: RunResult;
   try {
-    result = await runner.run(flow, input, {
+    const runOpts: Parameters<typeof runner.run>[2] = {
       flowDir,
       flowPath,
-    });
+    };
+    if (options.provider !== undefined) {
+      runOpts.flagProvider = options.provider;
+    }
+    result = await runner.run(flow, input, runOpts);
   } catch (caught) {
     progress.stop();
     maybeSendRunEvent({

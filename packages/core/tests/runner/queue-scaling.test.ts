@@ -86,13 +86,12 @@ describe('Runner — ready queue O(1) membership', () => {
 
     const runner = createRunner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: join(tmp, 'run'),
       logger: silentLogger,
     });
 
     const start = Date.now();
-    const result = await runner.run(flow, {}, { flowDir: tmp });
+    const result = await runner.run(flow, {}, { flowDir: tmp, flagProvider: 'mock' });
     const elapsed = Date.now() - start;
 
     expect(result.status).toBe('succeeded');

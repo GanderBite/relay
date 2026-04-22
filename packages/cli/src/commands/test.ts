@@ -175,12 +175,12 @@ async function runFixture(
   try {
     const runner = new Runner({
       providers: registry,
-      defaultProvider: 'mock',
       runDir: tempDir,
     });
     runResult = await runner.run(flow, fixture.input, {
       flowDir: loadedFlow.dir,
       authTimeoutMs: 5000,
+      flagProvider: 'mock',
     });
   } catch (runErr) {
     const msg = runErr instanceof Error ? runErr.message : String(runErr);

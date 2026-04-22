@@ -3,6 +3,7 @@ import { setColorDisabled } from './visual.js';
 
 // All v1 command names — used for shorthand routing (first-positional bypass).
 const KNOWN_COMMANDS = new Set([
+  'init',
   'list',
   'search',
   'install',
@@ -75,6 +76,17 @@ export function buildProgram(): Command {
     void actionCommand;
   });
 
+  // ------------------------------------------------------------------ init --
+  program
+    .command('init')
+    .description('choose a provider and write ~/.relay/settings.json')
+    .option('--provider <name>', 'provider to use (skips the interactive menu)')
+    .option('--force', 'overwrite existing settings without prompting')
+    .action(async (cmdOpts: { provider?: string; force?: boolean }) => {
+      const handler = await loadCommand('init');
+      await handler([], { ...program.opts(), ...cmdOpts });
+    });
+
   // ------------------------------------------------------------------ list --
   program
     .command('list')
@@ -106,18 +118,20 @@ export function buildProgram(): Command {
   program
     .command('run <flow> [input...]')
     .description('run a flow')
-    .action(async (flow: string, input: string[]) => {
+    .option('--provider <name>', 'provider to use (overrides settings)')
+    .action(async (flow: string, input: string[], cmdOpts: { provider?: string }) => {
       const handler = await loadCommand('run');
-      await handler([flow, ...input], program.opts());
+      await handler([flow, ...input], { ...program.opts(), ...cmdOpts });
     });
 
   // -------------------------------------------------------------- resume --
   program
     .command('resume <runId>')
     .description('continue a failed or stopped run')
-    .action(async (runId: string) => {
+    .option('--provider <name>', 'provider to use (overrides settings)')
+    .action(async (runId: string, cmdOpts: { provider?: string }) => {
       const handler = await loadCommand('resume');
-      await handler([runId], program.opts());
+      await handler([runId], { ...program.opts(), ...cmdOpts });
     });
 
   // ----------------------------------------------------------------- runs --

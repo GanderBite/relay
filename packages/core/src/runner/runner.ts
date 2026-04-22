@@ -17,6 +17,8 @@ import { createLogger, type Logger } from '../logger.js';
 import { ClaudeAgentSdkProvider } from '../providers/claude/provider.js';
 import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
+import { loadFlowSettings, loadGlobalSettings } from '../settings/load.js';
+import { resolveProvider } from '../settings/resolve.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
 
@@ -32,7 +34,6 @@ import { withRetry } from './retry.js';
 import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
-const DEFAULT_PROVIDER_NAME = 'claude-agent-sdk';
 // Mirrors the default in flow/schemas.ts. Duplicated here so the Runner
 // can backstop hand-built PromptStepSpec values that bypassed the schema parse
 // (e.g. spec literals authored without going through promptStep(...)).
@@ -49,7 +50,6 @@ const RUN_LOG_FILENAME = 'run.log';
 
 export interface RunnerOptions {
   providers?: ProviderRegistry;
-  defaultProvider?: string;
   logger?: Logger;
   runDir?: string;
 }
@@ -59,7 +59,8 @@ export interface RunOptions {
   parallelism?: number;
   /**
    * Directory the flow package lives in — used to resolve prompt template
-   * paths (step.promptFile) relative to the flow. Defaults to process.cwd().
+   * paths (step.promptFile) relative to the flow AND to locate the per-flow
+   * `settings.json` for provider resolution. Defaults to process.cwd().
    * Set explicitly when the Runner is embedded in a host process whose cwd
    * is not the flow's directory.
    */
@@ -78,6 +79,13 @@ export interface RunOptions {
    * Defaults to 30_000. Tests typically shorten this to keep the suite fast.
    */
   authTimeoutMs?: number;
+  /**
+   * Provider name supplied via the CLI `--provider` flag. When set it wins
+   * over per-flow and per-user settings during resolution. Leave undefined to
+   * fall back to the flow's `settings.json`, then `~/.relay/settings.json`,
+   * and finally `NoProviderConfiguredError` if neither carries a name.
+   */
+  flagProvider?: string;
 }
 
 export interface RunResult {
@@ -114,7 +122,7 @@ export interface StepExecutionContext {
   stateMachine: StateMachine;
   logger: Logger;
   providers: ProviderRegistry;
-  defaultProvider: string;
+  provider: Provider;
 }
 
 function shortRunId(): string {
@@ -164,14 +172,12 @@ function isAbortLike(err: unknown): boolean {
  */
 export class Runner {
   readonly #providers: ProviderRegistry;
-  readonly #defaultProvider: string;
   readonly #logger: Logger | undefined;
   readonly #runDirOverride: string | undefined;
   #allowApiKey = false;
 
   constructor(opts: RunnerOptions = {}) {
     this.#providers = opts.providers ?? defaultRegistry;
-    this.#defaultProvider = opts.defaultProvider ?? DEFAULT_PROVIDER_NAME;
     this.#logger = opts.logger;
     this.#runDirOverride = opts.runDir;
   }
@@ -228,13 +234,13 @@ export class Runner {
     const initialSave = await stateMachine.save();
     if (initialSave.isErr()) throw initialSave.error;
 
+    // Provider resolution happens BEFORE any step runs, so a misconfiguration
+    // surfaces as a single typed error (NoProviderConfiguredError or
+    // FlowDefinitionError) rather than a half-executed run.
     const effectiveProviders = this.#applyAllowApiKey(this.#providers);
-    const providerByStep = checkCapabilities(
-      flow as Flow<unknown>,
-      effectiveProviders,
-      this.#defaultProvider,
-    );
-    const uniqueProviders = new Set<Provider>(providerByStep.values());
+    const provider = await this.#resolveRunProvider(effectiveProviders, flowDir, opts.flagProvider);
+    const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
+    const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
     let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
@@ -275,6 +281,7 @@ export class Runner {
           logger,
           providerByStep,
           providers: effectiveProviders,
+          provider,
           validatedInput,
           initialQueue: [...flow.graph.rootSteps],
         });
@@ -455,12 +462,9 @@ export class Runner {
     if (savedStart.isErr()) throw savedStart.error;
 
     const effectiveProviders = this.#applyAllowApiKey(this.#providers);
-    const providerByStep = checkCapabilities(
-      flow as Flow<unknown>,
-      effectiveProviders,
-      this.#defaultProvider,
-    );
-    const uniqueProviders = new Set<Provider>(providerByStep.values());
+    const provider = await this.#resolveRunProvider(effectiveProviders, flowDir, opts.flagProvider);
+    const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
+    const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
     let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
@@ -502,6 +506,7 @@ export class Runner {
           logger,
           providerByStep,
           providers: effectiveProviders,
+          provider,
           validatedInput: stateMachine.getState().input,
           initialQueue,
         });
@@ -582,6 +587,38 @@ export class Runner {
       artifacts,
       durationMs,
     };
+  }
+
+  /**
+   * Run the per-run provider resolution chain — flag → flow settings → global
+   * settings → registry. Surfaces typed errors verbatim so the CLI exit-code
+   * mapper can branch on `NoProviderConfiguredError` (E_NO_PROVIDER) and on a
+   * `FlowDefinitionError` for an unknown provider name. Settings file IO
+   * errors are also bubbled — a malformed settings.json must not silently
+   * collapse to a different provider.
+   */
+  async #resolveRunProvider(
+    registry: ProviderRegistry,
+    flowDir: string,
+    flagProvider: string | undefined,
+  ): Promise<Provider> {
+    const globalResult = await loadGlobalSettings();
+    if (globalResult.isErr()) throw globalResult.error;
+    const flowResult = await loadFlowSettings(flowDir);
+    if (flowResult.isErr()) throw flowResult.error;
+
+    const args: Parameters<typeof resolveProvider>[0] = {
+      flowSettings: flowResult.value,
+      globalSettings: globalResult.value,
+      registry,
+    };
+    if (flagProvider !== undefined) {
+      args.flagProvider = flagProvider;
+    }
+
+    const resolved = resolveProvider(args);
+    if (resolved.isErr()) throw resolved.error;
+    return resolved.value;
   }
 
   /**
@@ -713,6 +750,7 @@ export class Runner {
     logger: Logger;
     providerByStep: Map<string, Provider>;
     providers: ProviderRegistry;
+    provider: Provider;
     validatedInput: unknown;
     initialQueue: string[];
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
@@ -729,6 +767,7 @@ export class Runner {
       logger,
       providerByStep,
       providers,
+      provider,
       validatedInput,
       initialQueue,
     } = args;
@@ -808,13 +847,13 @@ export class Runner {
         stateMachine,
         logger: stepLogger,
         providers,
-        defaultProvider: this.#defaultProvider,
+        provider,
       };
 
       switch (step.kind) {
         case 'prompt': {
-          const provider = providerByStep.get(step.id);
-          if (provider === undefined) {
+          const stepProvider = providerByStep.get(step.id);
+          if (stepProvider === undefined) {
             throw new FlowDefinitionError(
               `no provider resolved for prompt step "${step.id}"`,
               { stepId: step.id },
@@ -831,7 +870,7 @@ export class Runner {
             handoffStore,
             costTracker,
             logger: stepLogger,
-            provider,
+            provider: stepProvider,
             inputVars,
           });
         }
