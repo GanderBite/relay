@@ -225,34 +225,10 @@ export default async function runCommand(
   // ---------------------------------------------------------------------------
   // Step 6 — build and run the runner
   // ---------------------------------------------------------------------------
-  const runner = new Runner({ runDir });
-  if (options.apiKey === true) {
-    runner.allowApiKey();
-  }
-
-  let result: RunResult;
-  try {
-    result = await runner.run(flow, input, {
-      flowDir,
-      flowPath,
-    });
-  } catch (caught) {
-    progress.stop();
-    process.stderr.write(formatError(caught) + '\n');
-    process.exit(exitCodeFor(caught));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Step 7 — stop progress display
-  // ---------------------------------------------------------------------------
-  progress.stop();
-
-  // ---------------------------------------------------------------------------
-  // Step 8 — read per-step data and render the appropriate banner
-  // ---------------------------------------------------------------------------
 
   // Resolve relay version for the telemetry event. Falls back to 'unknown'
   // when the package.json is not available (e.g. running from source).
+  // Resolved here so it is available in both the catch block and success/failure paths.
   const _require = createRequire(import.meta.url);
   let relayVersion = 'unknown';
   try {
@@ -268,6 +244,45 @@ export default async function runCommand(
   } catch {
     // version stays 'unknown'
   }
+
+  const startMs = Date.now();
+
+  const runner = new Runner({ runDir });
+  if (options.apiKey === true) {
+    runner.allowApiKey();
+  }
+
+  let result: RunResult;
+  try {
+    result = await runner.run(flow, input, {
+      flowDir,
+      flowPath,
+    });
+  } catch (caught) {
+    progress.stop();
+    maybeSendRunEvent({
+      flowName: flow.name,
+      flowVersion: flow.version,
+      status: 'failure',
+      durationMs: Date.now() - startMs,
+      stepsCount: flow.stepOrder.length,
+      totalCostUsd: 0,
+      relayVersion,
+      nodeVersion: process.version.replace(/^v/, ''),
+      platform: process.platform,
+    });
+    process.stderr.write(formatError(caught) + '\n');
+    process.exit(exitCodeFor(caught));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step 7 — stop progress display
+  // ---------------------------------------------------------------------------
+  progress.stop();
+
+  // ---------------------------------------------------------------------------
+  // Step 8 — read per-step data and render the appropriate banner
+  // ---------------------------------------------------------------------------
 
   if (result.status === 'succeeded') {
     const stepRows = await buildSuccessStepRows(result.runDir, flow.stepOrder);
@@ -292,7 +307,7 @@ export default async function runCommand(
       process.stdout.write(buildCostTable(stepRows) + '\n');
     }
 
-    await maybeSendRunEvent({
+    maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
       status: 'success',
@@ -317,7 +332,7 @@ export default async function runCommand(
 
     process.stdout.write(failureBanner);
 
-    await maybeSendRunEvent({
+    maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
       status: result.status === 'aborted' ? 'aborted' : 'failure',
