@@ -5,7 +5,6 @@ import {
   ProviderRateLimitError,
   ProviderAuthError,
   StepFailureError,
-  TimeoutError,
 } from '../../../src/errors.js';
 import { GITHUB_ISSUES_URL } from '../../../src/constants.js';
 
@@ -72,36 +71,39 @@ describe('classifyExit', () => {
     expect(err).toBeInstanceOf(ProviderRateLimitError);
   });
 
-  it('returns TimeoutError on "timeout" in stderr', () => {
+  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "timeout" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'operation timeout after 30s',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(TimeoutError);
-    const te = err as TimeoutError;
-    expect(te.stepId).toBe(BASE.stepId);
+    expect(err).toBeInstanceOf(StepFailureError);
+    const sfe = err as StepFailureError;
+    expect(sfe.stepId).toBe(BASE.stepId);
+    expect(sfe.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
-  it('returns TimeoutError on "ETIMEDOUT" in stderr', () => {
+  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "ETIMEDOUT" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'connect ETIMEDOUT 10.0.0.1:443',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(TimeoutError);
+    expect(err).toBeInstanceOf(StepFailureError);
+    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
-  it('returns TimeoutError on "deadline exceeded" in stderr', () => {
+  it('returns StepFailureError with E_CLAUDE_CLI_TIMEOUT on "deadline exceeded" in stderr', () => {
     const err = classifyExit({
       ...BASE,
       exitCode: 1,
       stderr: 'context deadline exceeded',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(TimeoutError);
+    expect(err).toBeInstanceOf(StepFailureError);
+    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 
   it('returns ProviderAuthError on "authentication" in stderr', () => {
@@ -207,6 +209,7 @@ describe('classifyExit', () => {
       stderr: 'timeout authentication failed',
       aborted: false,
     });
-    expect(err).toBeInstanceOf(TimeoutError);
+    expect(err).toBeInstanceOf(StepFailureError);
+    expect((err as StepFailureError).details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
   });
 });

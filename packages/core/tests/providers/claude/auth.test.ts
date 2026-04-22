@@ -230,7 +230,7 @@ describe('inspectClaudeAuth — per-provider TOS contracts', () => {
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
       expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err.message).toContain('claude-cli requires subscription auth');
+      expect(err.message).toContain('ANTHROPIC_API_KEY is set but claude-cli cannot use it');
       expect(mockExecFile).not.toHaveBeenCalled();
     });
 

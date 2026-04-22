@@ -550,7 +550,7 @@ describe('ClaudeCliProvider', () => {
       expect(result._unsafeUnwrapErr().code).toBe('relay_PROVIDER_AUTH');
     });
 
-    it('[CLI-ERR-002] timeout error in stderr maps to TimeoutError code', async () => {
+    it('[CLI-ERR-002] timeout error in stderr maps to StepFailureError with E_CLAUDE_CLI_TIMEOUT', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
@@ -562,7 +562,9 @@ describe('ClaudeCliProvider', () => {
 
       const result = await invokePromise;
       expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr().code).toBe('relay_TIMEOUT');
+      const pipelineErr = result._unsafeUnwrapErr();
+      expect(pipelineErr.code).toBe('relay_STEP_FAILURE');
+      expect(pipelineErr.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
     });
   });
 });
