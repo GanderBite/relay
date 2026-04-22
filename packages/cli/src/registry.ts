@@ -9,7 +9,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ok, err } from '@relay/core';
@@ -154,8 +154,8 @@ function stripMarkdown(md: string): string {
     .replace(/^#{1,6}\s+/gm, '')          // headings
     .replace(/\*\*([^*]+)\*\*/g, '$1')    // bold
     .replace(/\*([^*]+)\*/g, '$1')        // italic
-    .replace(/`{1,3}[^`]*`{1,3}/g, '')   // inline code and code fences
-    .replace(/```[\s\S]*?```/gm, '')      // fenced code blocks
+    .replace(/```[\s\S]*?```/gm, '')      // fenced code blocks (must run before inline-code)
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')   // inline code
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
     .replace(/\n{3,}/g, '\n\n')           // excess blank lines
@@ -386,9 +386,9 @@ async function processNpmPackage(
  */
 function isLocalPath(input: string): boolean {
   return (
+    isAbsolute(input) ||
     input.startsWith('./') ||
     input.startsWith('../') ||
-    input.startsWith('/') ||
     input === '.' ||
     input === '..'
   );
