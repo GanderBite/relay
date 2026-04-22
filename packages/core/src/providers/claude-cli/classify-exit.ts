@@ -12,7 +12,6 @@ import {
   ProviderRateLimitError,
   ProviderAuthError,
   StepFailureError,
-  TimeoutError,
 } from '../../errors.js';
 
 const RATE_LIMIT_RE = /rate[\s-]?limit|HTTP 429|status 429|429 Too Many/i;
@@ -35,7 +34,7 @@ export interface ClassifyExitArgs {
  *
  * Priority order for stderr matching:
  *   1. Rate limit  → ProviderRateLimitError
- *   2. Timeout     → TimeoutError
+ *   2. Timeout     → StepFailureError (errorCode: E_CLAUDE_CLI_TIMEOUT)
  *   3. Auth        → ProviderAuthError
  *   4. Other       → StepFailureError
  */
@@ -61,11 +60,11 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
   }
 
   if (TIMEOUT_RE.test(stderr)) {
-    return new TimeoutError(
+    return new StepFailureError(
       `claude -p timeout: ${stderr.slice(0, 400)}`,
       stepId,
-      0,
-      { providerName, attempt },
+      attempt,
+      { providerName, errorCode: 'E_CLAUDE_CLI_TIMEOUT' },
     );
   }
 
