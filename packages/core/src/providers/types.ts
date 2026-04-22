@@ -218,7 +218,15 @@ export type InvocationEvent =
    * guarantees a non-empty string — it substitutes 'stream_completed' when
    * the SDK omits stop_reason.
    */
-  | { type: 'stream.end'; stopReason: string; costUsd?: number; sessionId?: string };
+  | { type: 'stream.end'; stopReason: string; costUsd?: number; sessionId?: string }
+  /**
+   * Terminal error event emitted by a provider's stream() when the underlying
+   * iteration fails. Carries a typed PipelineError so the caller can branch on
+   * the error without catching a thrown value — stream() never throws. Consumers
+   * that aggregate streams into an InvocationResponse treat this as the
+   * stream's final event and surface the error via their own Result channel.
+   */
+  | { type: 'stream.error'; error: PipelineError };
 
 // ---------------------------------------------------------------------------
 // CostEstimate (used by Provider.estimateCost)

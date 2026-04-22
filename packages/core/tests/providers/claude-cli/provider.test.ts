@@ -32,8 +32,12 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 import { ClaudeCliProvider } from '../../../src/providers/claude-cli/provider.js';
-import { ClaudeAuthError, SubscriptionTosLeakError } from '../../../src/errors.js';
-import type { InvocationContext, InvocationRequest } from '../../../src/providers/types.js';
+import { ClaudeAuthError, PipelineError, SubscriptionTosLeakError } from '../../../src/errors.js';
+import type {
+  InvocationContext,
+  InvocationEvent,
+  InvocationRequest,
+} from '../../../src/providers/types.js';
 import type { Logger } from '../../../src/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -460,22 +464,29 @@ describe('ClaudeCliProvider', () => {
       expect(events[events.length - 1]).toBe('stream.end');
     });
 
-    it('[CLI-STREAM-003] non-zero exit throws from generator', async () => {
+    it('[CLI-STREAM-003] non-zero exit yields a terminal stream.error event', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
       const provider = new ClaudeCliProvider();
+      const collected: InvocationEvent[] = [];
       const streamPromise = (async () => {
         const iterable = provider.stream(makeReq(), makeCtx());
-        for await (const _event of iterable) {
-          // consume
+        for await (const event of iterable) {
+          collected.push(event);
         }
       })();
 
       child.stderr.emit('data', Buffer.from('authentication failed: unauthorized'));
       child.emit('close', 1, null);
 
-      await expect(streamPromise).rejects.toBeDefined();
+      await streamPromise;
+
+      const last = collected[collected.length - 1];
+      expect(last?.type).toBe('stream.error');
+      if (last?.type === 'stream.error') {
+        expect(last.error).toBeInstanceOf(PipelineError);
+      }
     });
   });
 

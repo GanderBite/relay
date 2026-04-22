@@ -17,6 +17,9 @@
  *     camelCase. Downstream code never sees raw SDK shapes.
  *   - No provider-level retries. The Runner owns step retries; the SDK's own
  *     network retries are kept as-is.
+ *   - stream() emits a terminal stream.error event instead of throwing;
+ *     invoke() returns err(...). Abort-shaped errors still propagate through
+ *     stream() untouched so the Runner's abort plumbing handles them.
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -270,10 +273,24 @@ export class ClaudeAgentSdkProvider implements Provider {
     req: InvocationRequest,
     ctx: InvocationContext,
   ): AsyncIterable<InvocationEvent> {
-    for await (const step of this.#iterate(req, ctx)) {
-      for (const event of step.events) {
-        yield event;
+    try {
+      for await (const step of this.#iterate(req, ctx)) {
+        for (const event of step.events) {
+          yield event;
+        }
       }
+    } catch (cause) {
+      // stream() promises a pure-data channel. Route SDK throws through the
+      // same translator invoke() uses so the caller sees a consistent
+      // PipelineError shape via a terminal stream.error event, never a raw
+      // exception. Abort-shaped causes still propagate so the Runner's abort
+      // plumbing handles them unchanged.
+      const translated = translateSdkError(cause, ctx.stepId, ctx.attempt, this.name);
+      if (translated === 'rethrow') {
+        throw cause;
+      }
+      const errorEvent: InvocationEvent = { type: 'stream.error', error: translated };
+      yield errorEvent;
     }
   }
 

@@ -30,13 +30,14 @@
  *   - Abort plumbing: the InvocationContext.abortSignal is forwarded straight
  *     to runClaudeProcess; no extra AbortController is constructed.
  *   - No provider-level retries. Step retries are owned by the Runner.
- *   - On non-zero exit, classifyExit produces a typed PipelineError; invoke()
- *     returns err(...), stream() throws from the generator.
+ *   - On non-zero exit, classifyExit produces a typed PipelineError; stream()
+ *     emits a stream.error event instead of throwing; invoke() returns err(...)
+ *     — neither path throws to the caller.
  */
 
 import { err, ok, type Result } from 'neverthrow';
 
-import type { PipelineError } from '../../errors.js';
+import { PipelineError, StepFailureError } from '../../errors.js';
 import { extractSdkResultSummary, mergeUsage } from '../claude/translate.js';
 import { inspectClaudeAuth } from '../claude/auth.js';
 import { buildEnvAllowlist } from '../claude/env.js';
@@ -125,9 +126,12 @@ export class ClaudeCliProvider implements Provider {
    * tool-name placeholder or the 0-turn sentinel when a real value exists.
    *
    * On a non-zero exit the generator throws the PipelineError produced by
-   * classifyExit. On clean exit the generator returns the
-   * RunClaudeProcessResult so invoke() can read the final exit code while
-   * keeping stream()'s contract free of terminal values.
+   * classifyExit. Both callers catch that throw at the boundary: invoke()
+   * converts it to err(...), stream() converts it to a terminal stream.error
+   * event — neither path surfaces a raw exception to external callers. On
+   * clean exit the generator returns the RunClaudeProcessResult so invoke()
+   * can read the final exit code while keeping stream()'s contract free of
+   * terminal values.
    */
   async *#iterate(
     req: InvocationRequest,
@@ -226,8 +230,9 @@ export class ClaudeCliProvider implements Provider {
     }
 
     // Translate the terminal exit envelope into either a clean return (so
-    // invoke() can read the result) or a thrown PipelineError that propagates
-    // through stream() and the invoke() try/catch alike.
+    // invoke() can read the result) or a thrown PipelineError. Both callers
+    // catch at the boundary: invoke() returns err(...), stream() yields a
+    // stream.error event. Neither exposes the throw to external callers.
     const error = classifyExit({
       exitCode: exitResult.exitCode,
       stderr: exitResult.stderr,
@@ -248,10 +253,29 @@ export class ClaudeCliProvider implements Provider {
     req: InvocationRequest,
     ctx: InvocationContext,
   ): AsyncIterable<InvocationEvent> {
-    for await (const step of this.#iterate(req, ctx)) {
-      for (const event of step.events) {
-        yield event;
+    try {
+      for await (const step of this.#iterate(req, ctx)) {
+        for (const event of step.events) {
+          yield event;
+        }
       }
+    } catch (cause) {
+      // stream() promises a pure-data channel to its caller. Any failure in
+      // #iterate() — classifyExit's terminal PipelineError, or an upstream
+      // contract violation producing some other throw — is funnelled into a
+      // terminal stream.error event so the caller never has to wrap the
+      // async-iterator in a try/catch.
+      const error =
+        cause instanceof PipelineError
+          ? cause
+          : new StepFailureError(
+              cause instanceof Error ? cause.message : String(cause),
+              ctx.stepId,
+              ctx.attempt,
+              { cause, providerName: this.name },
+            );
+      const errorEvent: InvocationEvent = { type: 'stream.error', error };
+      yield errorEvent;
     }
   }
 
@@ -300,12 +324,20 @@ export class ClaudeCliProvider implements Provider {
       // classifyExit — every other failure mode (malformed lines, spawn
       // failure) is captured as a terminal-value envelope inside the
       // subprocess runner. A non-PipelineError here would mean a contract
-      // violation upstream, so wrap it in a generic StepFailure rather than
-      // silently swallowing.
+      // violation upstream. invoke() must never throw per the Provider
+      // contract, so wrap any non-PipelineError in a StepFailureError and
+      // return it via err(...) instead of rethrowing.
       if (isPipelineError(cause)) {
         return err(cause);
       }
-      throw cause;
+      return err(
+        new StepFailureError(
+          cause instanceof Error ? cause.message : String(cause),
+          ctx.stepId,
+          ctx.attempt,
+          { cause, providerName: this.name },
+        ),
+      );
     }
 
     // The result envelope is the source of truth for response-level metadata.
