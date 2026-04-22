@@ -14,7 +14,6 @@ import {
 import type { Flow, RunState, Step, StepState } from '../flow/types.js';
 import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
-import { ClaudeAgentSdkProvider } from '../providers/claude/provider.js';
 import { defaultRegistry, ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
 import { loadFlowSettings, loadGlobalSettings } from '../settings/load.js';
@@ -102,11 +101,10 @@ export interface RunResult {
  * subset of this shape; the Runner builds each per-step ctx from this central
  * bag plus the resolved provider binding.
  *
- * The ANTHROPIC_API_KEY opt-in is intentionally not threaded here: it must be
- * applied at provider construction time (so authenticate() and the env
- * allowlist for the SDK subprocess both see it) rather than per-step, and the
- * Runner substitutes a fresh ClaudeAgentSdkProvider before any authenticate()
- * call rather than passing the flag through this context.
+ * Auth opt-in lives entirely in provider selection: selecting `claude-agent-sdk`
+ * (via --provider, flow settings, or global settings) IS the API-key opt-in,
+ * and that provider's authenticate() enforces the required ANTHROPIC_API_KEY.
+ * No escape hatch is threaded through this context.
  */
 export interface StepExecutionContext {
   flow: Flow<unknown>;
@@ -174,23 +172,11 @@ export class Runner {
   readonly #providers: ProviderRegistry;
   readonly #logger: Logger | undefined;
   readonly #runDirOverride: string | undefined;
-  #allowApiKey = false;
 
   constructor(opts: RunnerOptions = {}) {
     this.#providers = opts.providers ?? defaultRegistry;
     this.#logger = opts.logger;
     this.#runDirOverride = opts.runDir;
-  }
-
-  /**
-   * Opt in to the ANTHROPIC_API_KEY path. When unset (the default), the
-   * Claude provider's authenticate() refuses to spawn a subprocess that
-   * would silently bill the user's API account. Chainable — call once
-   * before run().
-   */
-  allowApiKey(): this {
-    this.#allowApiKey = true;
-    return this;
   }
 
   async run<TInput>(
@@ -237,8 +223,7 @@ export class Runner {
     // Provider resolution happens BEFORE any step runs, so a misconfiguration
     // surfaces as a single typed error (NoProviderConfiguredError or
     // FlowDefinitionError) rather than a half-executed run.
-    const effectiveProviders = this.#applyAllowApiKey(this.#providers);
-    const provider = await this.#resolveRunProvider(effectiveProviders, flowDir, opts.flagProvider);
+    const provider = await this.#resolveRunProvider(this.#providers, flowDir, opts.flagProvider);
     const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
     const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
@@ -280,7 +265,7 @@ export class Runner {
           stateMachine,
           logger,
           providerByStep,
-          providers: effectiveProviders,
+          providers: this.#providers,
           provider,
           validatedInput,
           initialQueue: [...flow.graph.rootSteps],
@@ -461,8 +446,7 @@ export class Runner {
     const savedStart = await stateMachine.save();
     if (savedStart.isErr()) throw savedStart.error;
 
-    const effectiveProviders = this.#applyAllowApiKey(this.#providers);
-    const provider = await this.#resolveRunProvider(effectiveProviders, flowDir, opts.flagProvider);
+    const provider = await this.#resolveRunProvider(this.#providers, flowDir, opts.flagProvider);
     const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
     const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
@@ -505,7 +489,7 @@ export class Runner {
           stateMachine,
           logger,
           providerByStep,
-          providers: effectiveProviders,
+          providers: this.#providers,
           provider,
           validatedInput: stateMachine.getState().input,
           initialQueue,
@@ -619,33 +603,6 @@ export class Runner {
     const resolved = resolveProvider(args);
     if (resolved.isErr()) throw resolved.error;
     return resolved.value;
-  }
-
-  /**
-   * When the caller opted into ANTHROPIC_API_KEY billing via runner.allowApiKey(),
-   * substitute the registry's `claude-agent-sdk` entry with a fresh
-   * ClaudeAgentSdkProvider — the SDK provider naturally accepts ANTHROPIC_API_KEY
-   * so replacing it forces a clean authenticate() call with the new instance.
-   * Returns the original registry unchanged when no opt-in is in effect or when
-   * the registered provider is not a stock ClaudeAgentSdkProvider (custom
-   * registrations win).
-   */
-  #applyAllowApiKey(registry: ProviderRegistry): ProviderRegistry {
-    if (!this.#allowApiKey) return registry;
-    const existing = registry.get('claude-agent-sdk');
-    if (existing.isErr()) return registry;
-    if (!(existing.value instanceof ClaudeAgentSdkProvider)) return registry;
-
-    const next = new ProviderRegistry();
-    for (const provider of registry.list()) {
-      if (provider.name === 'claude-agent-sdk') continue;
-      const result = next.register(provider);
-      if (result.isErr()) throw result.error;
-    }
-    const replacement = new ClaudeAgentSdkProvider();
-    const registered = next.register(replacement);
-    if (registered.isErr()) throw registered.error;
-    return next;
   }
 
   async #writeFlowRef<TInput>(
