@@ -76,13 +76,7 @@ const SUPPRESS_CLI: readonly string[] = ['ANTHROPIC_API_KEY'] as const;
 // buildEnvAllowlist
 // ---------------------------------------------------------------------------
 
-/** Provider identifiers accepted by `buildEnvAllowlist`. */
-export type ClaudeProviderKind = 'claude-cli';
-
 export interface BuildEnvAllowlistOptions {
-  /** Which Claude-backed provider is asking. Reserved for future providers; currently only `'claude-cli'` is accepted. */
-  providerKind: ClaudeProviderKind;
-
   /**
    * Per-step or per-run env overrides merged on top of the filtered host env.
    * Keys here take precedence over anything in process.env and over the
@@ -92,30 +86,25 @@ export interface BuildEnvAllowlistOptions {
 }
 
 /**
- * Build a safe env patch for a Claude-backed subprocess invocation.
+ * Build a safe env patch for the claude-cli subprocess.
  *
  * Walks process.env once and for each key either:
  *   - copies the real value (allowlisted via exact match or prefix), or
  *   - emits `undefined` (instructs the subprocess runner to strip the
  *     inherited var).
  *
- * Always-suppressed keys for the chosen provider are then force-set to
- * `undefined` regardless of whether the host had them, so the patch is
- * complete on its own and downstream code does not have to introspect
- * process.env to decide what is safe.
+ * Always-suppressed keys are then force-set to `undefined` regardless of
+ * whether the host had them, so the patch is complete on its own and
+ * downstream code does not have to introspect process.env to decide what is
+ * safe.
  *
  * Caller-supplied extras are merged last and always carry a string value.
  *
  * Never mutates process.env. Always returns a fresh plain object.
  */
 export function buildEnvAllowlist(
-  opts: BuildEnvAllowlistOptions,
+  opts: BuildEnvAllowlistOptions = {},
 ): Record<string, string | undefined> {
-  // providerKind is currently restricted to 'claude-cli' by the type union;
-  // the opts argument retains the discriminant for forward-compat with any
-  // future provider kinds that would redefine the allowlist.
-  void opts.providerKind;
-
   const prefixes = ALLOWLIST_PREFIX_CLI;
   const suppress = SUPPRESS_CLI;
   const exact = new Set<string>([...ALLOWLIST_EXACT, ...ALLOWLIST_CLOUD_ROUTING]);

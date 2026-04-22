@@ -29,7 +29,7 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 import { ClaudeAuthError, ERROR_CODES } from '../../../src/errors.js';
-import { inspectClaudeAuth } from '../../../src/providers/claude/auth.js';
+import { inspectClaudeAuth } from '../../../src/providers/claude-cli/auth.js';
 
 function stubExecFileOk(): void {
   mockExecFile.mockImplementation(
@@ -82,12 +82,12 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
   // claude-cli truth table
   // -----------------------------------------------------------------------
 
-  describe('providerKind: claude-cli', () => {
+  describe('claude-cli truth table', () => {
     it('[AUTH-CLI-001] no env at all + no credentials file returns ClaudeAuthError', async () => {
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk(); // should not be reached
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
@@ -104,7 +104,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk(); // should not be reached
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
@@ -117,7 +117,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       const state = result._unsafeUnwrap();
@@ -129,7 +129,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(true);
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       const state = result._unsafeUnwrap();
@@ -142,7 +142,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       const state = result._unsafeUnwrap();
@@ -155,7 +155,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(true);
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('subscription');
@@ -167,7 +167,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('bedrock');
@@ -179,7 +179,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('vertex');
@@ -190,7 +190,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('foundry');
@@ -204,7 +204,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       });
       stubExecFileOk();
 
-      await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      await inspectClaudeAuth();
 
       expect(capturedPath).toBeDefined();
       expect(capturedPath).toMatch(/\.claude[/\\]\.credentials\.json$/);
@@ -220,7 +220,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileEnoent();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isErr()).toBe(true);
       const err = result._unsafeUnwrapErr();
@@ -236,7 +236,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       mockExistsSync.mockReturnValue(false);
       stubExecFileOk();
 
-      const result = await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      const result = await inspectClaudeAuth();
 
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr().message).toContain('requires subscription auth');
@@ -260,7 +260,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
         },
       );
 
-      await inspectClaudeAuth({ providerKind: 'claude-cli' });
+      await inspectClaudeAuth();
 
       expect(capturedEnv).toBeDefined();
       expect(capturedEnv?.PATH).toBe('/usr/bin');

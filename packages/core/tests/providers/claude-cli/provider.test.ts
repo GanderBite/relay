@@ -251,7 +251,7 @@ describe('ClaudeCliProvider', () => {
   });
 
   // -------------------------------------------------------------------------
-  // authenticate() — delegates to inspectClaudeAuth({ providerKind: 'claude-cli' })
+  // authenticate() — delegates to inspectClaudeAuth()
   // -------------------------------------------------------------------------
 
   describe('authenticate()', () => {

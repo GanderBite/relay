@@ -3,9 +3,8 @@
  *
  * Wraps the `claude` binary's stream-json output. The provider uses the auth
  * inspector (`inspectClaudeAuth`) and env allowlist builder
- * (`buildEnvAllowlist`) under the `'claude-cli'` providerKind so the TOS-leak
- * surface (a stray `ANTHROPIC_API_KEY` in the host env) is stripped at the
- * subprocess boundary.
+ * (`buildEnvAllowlist`) so the TOS-leak surface (a stray `ANTHROPIC_API_KEY`
+ * in the host env) is stripped at the subprocess boundary.
  *
  * Translator: the stream-json envelopes from `claude -p` have stable
  * snake_case shapes — `system`, `assistant`, `user`, `result`, plus the
@@ -17,15 +16,15 @@
  * for the live progress display.
  *
  * Design invariants:
- *   - authenticate() delegates to `inspectClaudeAuth({ providerKind: 'claude-cli' })`;
- *     never inlines auth checks. ANTHROPIC_API_KEY-only environments fail with
- *     the subscription-remediation message the inspector produced.
+ *   - authenticate() delegates to `inspectClaudeAuth()`; never inlines auth
+ *     checks. ANTHROPIC_API_KEY-only environments fail with the
+ *     subscription-remediation message the inspector produced.
  *   - invoke() and stream() share the private #iterate() generator; there is
  *     one subprocess spawn per invocation, no duplicated `claude -p` calls.
  *   - The env passed to runClaudeProcess always comes from
- *     `buildEnvAllowlist({ providerKind: 'claude-cli', extra })` — that
- *     builder force-strips ANTHROPIC_API_KEY at the boundary regardless of
- *     what is in process.env. This is mandatory for TOS safety.
+ *     `buildEnvAllowlist({ extra })` — that builder force-strips
+ *     ANTHROPIC_API_KEY at the boundary regardless of what is in process.env.
+ *     This is mandatory for TOS safety.
  *   - Abort plumbing: the InvocationContext.abortSignal is forwarded straight
  *     to runClaudeProcess; no extra AbortController is constructed.
  *   - No provider-level retries. Runner retries are owned by the Runner.
@@ -37,8 +36,6 @@
 import { err, ok, type Result } from 'neverthrow';
 
 import { PipelineError, RunnerFailureError } from '../../errors.js';
-import { inspectClaudeAuth } from '../claude/auth.js';
-import { buildEnvAllowlist } from '../claude/env.js';
 import type {
   AuthState,
   InvocationContext,
@@ -50,14 +47,15 @@ import type {
   ProviderCapabilities,
 } from '../types.js';
 import { buildCliArgs, type ClaudeCliProviderOptions } from './args.js';
+import { inspectClaudeAuth } from './auth.js';
 import { classifyExit } from './classify-exit.js';
+import { buildEnvAllowlist } from './env.js';
 import { type RunClaudeProcessResult, runClaudeProcess } from './process.js';
 import { extractResultSummary, mergeUsage, translateCliMessage } from './translate.js';
 
 // ---------------------------------------------------------------------------
 // Capabilities — published to the Runner so static capability checks can
-// run at race-load time, before any tokens are spent. Mirrors the SDK
-// provider exactly: both backends ultimately drive the same `claude` binary.
+// run at race-load time, before any tokens are spent.
 // ---------------------------------------------------------------------------
 
 const CAPABILITIES: ProviderCapabilities = {
@@ -105,7 +103,7 @@ export class ClaudeCliProvider implements Provider {
   }
 
   async authenticate(): Promise<Result<AuthState, PipelineError>> {
-    return inspectClaudeAuth({ providerKind: 'claude-cli' });
+    return inspectClaudeAuth();
   }
 
   /**
@@ -129,7 +127,6 @@ export class ClaudeCliProvider implements Provider {
     ctx: InvocationContext,
   ): AsyncGenerator<InvocationStep, RunClaudeProcessResult, void> {
     const env = buildEnvAllowlist({
-      providerKind: 'claude-cli',
       extra: this.#options.extraEnv,
     });
     const cliArgs = buildCliArgs(req, this.#options);
@@ -283,6 +280,7 @@ export class ClaudeCliProvider implements Provider {
     let fallbackTurnCount = 0;
     let lastRawMessage: unknown;
     let lastResultMessage: unknown;
+    let streamCostUsd: number | undefined;
 
     try {
       for await (const runner of this.#iterate(req, ctx)) {
@@ -301,6 +299,11 @@ export class ClaudeCliProvider implements Provider {
               break;
             case 'turn.end':
               fallbackTurnCount += 1;
+              break;
+            case 'stream.end':
+              if (event.costUsd !== undefined) {
+                streamCostUsd = event.costUsd;
+              }
               break;
             default:
               break;
@@ -330,8 +333,9 @@ export class ClaudeCliProvider implements Provider {
 
     // The result envelope is the source of truth for response-level metadata.
     // The request's model is only used as a fallback if the envelope omits it.
+    // costUsd rides on the translated stream.end event; the provider does not
+    // re-read the raw envelope to recover it.
     const summary = extractResultSummary(lastResultMessage);
-    const totalCostUsd = extractTotalCostUsd(lastResultMessage);
 
     const response: InvocationResponse = {
       text: accumulatedText,
@@ -346,8 +350,8 @@ export class ClaudeCliProvider implements Provider {
     if (summary?.sessionId !== undefined) {
       response.sessionId = summary.sessionId;
     }
-    if (totalCostUsd !== undefined) {
-      response.costUsd = totalCostUsd;
+    if (streamCostUsd !== undefined) {
+      response.costUsd = streamCostUsd;
     }
 
     return ok(response);
@@ -374,16 +378,4 @@ function isPipelineError(value: unknown): value is PipelineError {
     typeof value['message'] === 'string' &&
     typeof value['name'] === 'string'
   );
-}
-
-/**
- * Pull `total_cost_usd` from the CLI's result envelope. Subscription runs
- * still surface a cost estimate (the binary computes the API-equivalent
- * amount); the Runner's banner labels it as estimated, not billed.
- */
-function extractTotalCostUsd(msg: unknown): number | undefined {
-  if (!isRecord(msg)) return undefined;
-  if (msg['type'] !== 'result') return undefined;
-  const cost = msg['total_cost_usd'];
-  return typeof cost === 'number' && Number.isFinite(cost) ? cost : undefined;
 }

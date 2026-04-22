@@ -5,7 +5,7 @@ import {
   ALLOWLIST_EXACT,
   ALLOWLIST_PREFIX_CLI,
   buildEnvAllowlist,
-} from '../../../src/providers/claude/env.js';
+} from '../../../src/providers/claude-cli/env.js';
 
 describe('buildEnvAllowlist — claude-cli containment contract', () => {
   beforeEach(() => {
@@ -29,7 +29,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
         vi.stubEnv(key, `sentinel-${key}`);
       }
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       for (const key of ALLOWLIST_EXACT) {
         expect(result[key]).toBe(`sentinel-${key}`);
@@ -41,7 +41,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
         vi.stubEnv(key, `cloud-${key}`);
       }
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       for (const key of ALLOWLIST_CLOUD_ROUTING) {
         expect(result[key]).toBe(`cloud-${key}`);
@@ -55,7 +55,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'secret');
       vi.stubEnv('DATABASE_URL', 'postgres://example');
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       expect(result.PATH).toBe('/bin');
       for (const k of ['SLACK_TOKEN', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'DATABASE_URL']) {
@@ -69,7 +69,6 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       vi.stubEnv('TEST_VAR', 'hostvalue');
 
       const result = buildEnvAllowlist({
-        providerKind: 'claude-cli',
         extra: { TEST_VAR: 'stepvalue', NEW_VAR: 'fresh' },
       });
 
@@ -82,8 +81,8 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       vi.stubEnv('FOO', 'bar');
       const before = { ...process.env };
 
-      buildEnvAllowlist({ providerKind: 'claude-cli' });
-      buildEnvAllowlist({ providerKind: 'claude-cli', extra: { X: 'y' } });
+      buildEnvAllowlist();
+      buildEnvAllowlist({ extra: { X: 'y' } });
 
       const after = { ...process.env };
       expect(after).toEqual(before);
@@ -98,7 +97,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       };
       Object.defineProperty(process, 'env', { value: synthetic, configurable: true });
       try {
-        const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+        const result = buildEnvAllowlist();
         expect('UNDEFINED_KEY' in result).toBe(false);
         expect('DEFINED_KEY' in result).toBe(true);
       } finally {
@@ -111,12 +110,12 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
   // claude-cli surface
   // -----------------------------------------------------------------------
 
-  describe('providerKind: claude-cli', () => {
+  describe('claude-cli surface', () => {
     it('[ENV-CLI-001] forwards CLAUDE_* prefixed variables (including OAuth)', () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       vi.stubEnv('CLAUDE_CUSTOM', 'sentinel');
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       expect(result.CLAUDE_CODE_OAUTH_TOKEN).toBe('oat-xxx');
       expect(result.CLAUDE_CUSTOM).toBe('sentinel');
@@ -125,14 +124,14 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
     it('[ENV-CLI-002] suppresses ANTHROPIC_API_KEY even when host has it set', () => {
       vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       expect('ANTHROPIC_API_KEY' in result).toBe(true);
       expect(result.ANTHROPIC_API_KEY).toBeUndefined();
     });
 
     it('[ENV-CLI-003] emits ANTHROPIC_API_KEY=undefined sentinel even when host did NOT set it', () => {
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       expect('ANTHROPIC_API_KEY' in result).toBe(true);
       expect(result.ANTHROPIC_API_KEY).toBeUndefined();
@@ -141,7 +140,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
     it('[ENV-CLI-004] forwards other ANTHROPIC_* vars (only ANTHROPIC_API_KEY is the suppressed surface)', () => {
       vi.stubEnv('ANTHROPIC_BASE_URL', 'https://api.example.com');
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       // ANTHROPIC_BASE_URL is not on the CLI prefix list and not a cloud
       // routing key, so it is suppressed.
@@ -153,7 +152,7 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       vi.stubEnv('CLAUDE_CODE_USE_VERTEX', '1');
       vi.stubEnv('ANTHROPIC_FOUNDRY_URL', 'https://foundry.example.com');
 
-      const result = buildEnvAllowlist({ providerKind: 'claude-cli' });
+      const result = buildEnvAllowlist();
 
       expect(result.CLAUDE_CODE_USE_VERTEX).toBe('1');
       expect(result.ANTHROPIC_FOUNDRY_URL).toBe('https://foundry.example.com');
@@ -163,7 +162,6 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       vi.stubEnv('ANTHROPIC_API_KEY', 'host-key');
 
       const result = buildEnvAllowlist({
-        providerKind: 'claude-cli',
         extra: { ANTHROPIC_API_KEY: 'caller-supplied' },
       });
 

@@ -42,25 +42,17 @@ const CLI_REQUIRES_SUBSCRIPTION =
 const CLI_API_KEY_NOT_USABLE =
   'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first.';
 
-/** Provider identifiers accepted by `inspectClaudeAuth`. */
-export type ClaudeProviderKind = 'claude-cli';
-
-export interface InspectClaudeAuthOptions {
-  /** Which Claude-backed provider is asking. Reserved for future providers; currently only `'claude-cli'` is accepted. */
-  providerKind: ClaudeProviderKind;
-}
-
 /**
  * Inspect the host env and return the billing surface the claude-cli provider
  * would use, or an error explaining why the run cannot proceed.
  *
  * Precedence (a match short-circuits the rest):
  *
- *   Cloud routing wins for all providers:
+ *   Cloud routing wins:
  *     CLAUDE_CODE_USE_BEDROCK / CLAUDE_CODE_USE_VERTEX
  *     CLAUDE_CODE_USE_FOUNDRY / ANTHROPIC_FOUNDRY_URL
  *
- *   claude-cli:
+ *   Otherwise:
  *     1. CLAUDE_CODE_OAUTH_TOKEN set → ok(subscription, token mode).
  *     2. ~/.claude/.credentials.json present → ok(subscription, interactive).
  *     3. ANTHROPIC_API_KEY set with no subscription signals → err(key set but
@@ -71,9 +63,7 @@ export interface InspectClaudeAuthOptions {
  * The probe runs after the policy check so a misconfigured machine never
  * reaches a subprocess at all.
  */
-export async function inspectClaudeAuth(
-  opts: InspectClaudeAuthOptions,
-): Promise<Result<AuthState, ClaudeAuthError>> {
+export async function inspectClaudeAuth(): Promise<Result<AuthState, ClaudeAuthError>> {
   const env = process.env;
   const hasApiKey = isNonEmpty(env.ANTHROPIC_API_KEY);
   const hasOauth = isNonEmpty(env.CLAUDE_CODE_OAUTH_TOKEN);
@@ -95,9 +85,6 @@ export async function inspectClaudeAuth(
     );
   }
 
-  // providerKind is currently restricted to 'claude-cli' by the type union;
-  // the opts argument is kept for forward-compat with future provider kinds.
-  void opts;
   return inspectCli({ hasApiKey, hasOauth });
 }
 

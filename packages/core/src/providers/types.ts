@@ -200,23 +200,23 @@ export type InvocationEvent =
   | { type: 'text.delta'; delta: string }
   /**
    * `toolUseId` pairs a `tool.call` event with its later `tool.result`.
-   * Providers populate this when the SDK exposes a correlation id.
+   * Providers populate this when the wire envelope exposes a correlation id.
    */
   | { type: 'tool.call'; name: string; input?: unknown; toolUseId?: string }
   /**
    * `toolUseId` pairs a `tool.call` event with its later `tool.result`.
-   * Providers populate this when the SDK exposes a correlation id.
+   * Providers populate this when the wire envelope exposes a correlation id.
    */
   | { type: 'tool.result'; name: string; ok: boolean; toolUseId?: string }
   | { type: 'usage'; usage: Partial<NormalizedUsage> }
   | { type: 'turn.end'; turn: number }
   /**
-   * Terminal event emitted once by the provider when the SDK's final result
-   * message arrives. Carries the normalized stopReason so downstream callers
+   * Terminal event emitted once by the provider when the final result
+   * envelope arrives. Carries the normalized stopReason so downstream callers
    * aggregating a stream into an InvocationResponse can populate the required
-   * stopReason field without re-reading the raw SDK payload. The provider
+   * stopReason field without re-reading the raw wire payload. The provider
    * guarantees a non-empty string — it substitutes 'stream_completed' when
-   * the SDK omits stop_reason.
+   * the envelope omits stop_reason.
    */
   | { type: 'stream.end'; stopReason: string; costUsd?: number; sessionId?: string }
   /**

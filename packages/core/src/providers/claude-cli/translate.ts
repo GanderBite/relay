@@ -183,7 +183,8 @@ function translateCore(msg: unknown): InvocationEvent[] {
     // present) followed by a stream.end event so stream-path aggregators can
     // populate InvocationResponse.stopReason without re-reading the raw
     // payload. The provider substitutes 'stream_completed' when stop_reason
-    // is omitted so downstream callers never see null.
+    // is omitted so downstream callers never see null. costUsd and sessionId
+    // ride along on stream.end when the envelope carries them.
     if (msgType === 'result') {
       const events: InvocationEvent[] = [];
       const usage = extractUsage(msg['usage']);
@@ -192,8 +193,29 @@ function translateCore(msg: unknown): InvocationEvent[] {
       }
       const rawStop = msg['stop_reason'];
       const stopReason = isString(rawStop) && rawStop.length > 0 ? rawStop : 'stream_completed';
-      events.push({ type: 'stream.end', stopReason });
+      const streamEnd: Extract<InvocationEvent, { type: 'stream.end' }> = {
+        type: 'stream.end',
+        stopReason,
+      };
+      const rawCost = msg['total_cost_usd'];
+      if (typeof rawCost === 'number' && Number.isFinite(rawCost)) {
+        streamEnd.costUsd = rawCost;
+      }
+      const rawSid = msg['session_id'];
+      if (isString(rawSid)) {
+        streamEnd.sessionId = rawSid;
+      }
+      events.push(streamEnd);
       return events;
+    }
+
+    // message_delta — wire-level Messages-API streaming envelope that carries
+    // a usage delta in its own `usage` field (not under `message.usage`).
+    // Handle explicitly so the usage update is not dependent on the
+    // fall-through top-level usage probe at the bottom of this function.
+    if (msgType === 'message_delta') {
+      const usage = extractUsage(msg['usage']);
+      return usage !== null ? [{ type: 'usage', usage }] : [];
     }
 
     // Assistant message — walk ALL content blocks and collect events.
