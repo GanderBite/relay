@@ -13,9 +13,16 @@
 #              Name:  NPM_TOKEN
 #              Value: <your npm automation token>
 #
-# Provenance attestation (npm --provenance) is enabled automatically when
-# id-token: write permission is present. npm >=9.5 is required; the node
-# setup step brings a compatible version.
+# Provenance attestation is enabled via the --provenance flag on the
+# publish command, which requires the id-token: write permission granted
+# below. npm >=9.5 is required; the node setup step brings a compatible
+# version.
+#
+# Partial-publish recovery
+# ────────────────────────
+# If the workflow fails mid-publish (network error, registry 5xx, etc.),
+# re-run it from: Actions -> <this run> -> Re-run all jobs.
+# The version guard skips packages already on npm and retries the rest.
 
 name: npm publish
 
@@ -74,35 +81,42 @@ jobs:
 
       # ── 5. Publish (with version guard) ──────────────────────────────────
       #
-      # For each publishable package compare the local version field against
-      # the latest version currently on npm. If they match the package is
-      # already published at that version and the step skips it. This makes
-      # the workflow safe to re-run without accidentally republishing.
+      # For each publishable package check whether the local version is
+      # already present in the full published version list on npm (including
+      # pre-releases). If it is, the package is skipped. This makes the
+      # workflow safe to re-run without hitting EPUBLISHCONFLICT.
       - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
+          published=""
+          skipped=""
+
           publish_if_new() {
             local pkg_dir="$1"
             local pkg_name
             local local_version
-            local npm_version
 
-            pkg_name=$(python3 -c "import json,sys; p=json.load(open('$pkg_dir/package.json')); sys.stdout.write(p['name'])")
-            local_version=$(python3 -c "import json,sys; p=json.load(open('$pkg_dir/package.json')); sys.stdout.write(p['version'])")
+            pkg_name=$(jq -r .name "$pkg_dir/package.json")
+            local_version=$(jq -r .version "$pkg_dir/package.json")
 
-            npm_version=$(npm view "$pkg_name" version 2>/dev/null || echo 'unpublished')
-
-            if [ "$npm_version" = "$local_version" ]; then
+            if npm view "$pkg_name" versions --json 2>/dev/null | grep -Fq "\"$local_version\""; then
               echo "  skip  $pkg_name@$local_version (already on npm)"
+              skipped="$skipped $pkg_name@$local_version"
             else
-              echo "  publish  $pkg_name@$local_version (npm has: $npm_version)"
-              pnpm --filter "$pkg_name" publish --access public --no-git-checks
+              echo "  publish  $pkg_name@$local_version"
+              pnpm --filter "$pkg_name" publish --access public --no-git-checks --provenance
+              published="$published $pkg_name@$local_version"
             fi
           }
 
           publish_if_new packages/core
           publish_if_new packages/generator
           publish_if_new packages/cli
+
+          echo ""
+          echo "publish summary"
+          echo "  published:${published:- (none)}"
+          echo "  skipped:${skipped:- (none)}"
