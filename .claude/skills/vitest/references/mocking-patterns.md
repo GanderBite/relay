@@ -67,8 +67,8 @@ const spy = vi.spyOn(fsPromises, 'rename').mockImplementation(async () => { /* .
 ## `vi.fn` — bare mock function
 
 ```ts
-const dispatch = vi.fn(async (stepId: string) => ({ ok: true }));
-await executeParallel(step, ctx, dispatch);
+const dispatch = vi.fn(async (runnerId: string) => ({ ok: true }));
+await executeParallel(runner, ctx, dispatch);
 expect(dispatch).toHaveBeenCalledWith('entities');
 expect(dispatch).toHaveBeenCalledWith('services');
 ```
@@ -94,8 +94,8 @@ fn.mockResolvedValueOnce('first')
 ## Mock implementation
 
 ```ts
-const fn = vi.fn().mockImplementation((stepId: string) => {
-  if (stepId === 'fail-me') throw new Error('synthetic');
+const fn = vi.fn().mockImplementation((runnerId: string) => {
+  if (runnerId === 'fail-me') throw new Error('synthetic');
   return { ok: true };
 });
 ```

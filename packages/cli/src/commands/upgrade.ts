@@ -54,11 +54,11 @@ async function readVersion(flowDir: string): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Flow discovery
+// Race discovery
 // ---------------------------------------------------------------------------
 
 /**
- * Return the list of flow names (directory entries) under `.relay/flows/`.
+ * Return the list of race names (directory entries) under `.relay/races/`.
  * Returns null when the directory does not exist.
  */
 async function discoverFlows(flowsDir: string): Promise<string[] | null> {
@@ -165,7 +165,7 @@ function renderOutcome(outcome: UpgradeOutcome): string {
 /**
  * Entry point dispatched by the CLI for `relay upgrade [flow]`.
  *
- * @param args  Argv slice after "upgrade": optional [flowName]
+ * @param args  Argv slice after "upgrade": optional [raceName]
  * @param opts  Parsed option flags from the dispatcher (passed through to installCommand)
  */
 export default async function upgradeCommand(

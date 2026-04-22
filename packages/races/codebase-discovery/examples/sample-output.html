@@ -157,15 +157,15 @@
         <p>
           Relay is a pnpm workspace organized into three library packages
           (<code>@relay/core</code>, <code>@relay/cli</code>,
-          <code>@relay/generator</code>), one reference flow package
-          (<code>@ganderbite/flow-codebase-discovery</code>), and two
-          example flows (<code>hello-world</code>,
+          <code>@relay/generator</code>), one reference race package
+          (<code>@ganderbite/relay-codebase-discovery</code>), and two
+          example races (<code>hello-world</code>,
           <code>hello-world-mocked</code>). The core library exposes a
-          typed DSL (<code>defineFlow</code>, <code>step</code>) and a
-          <code>Runner</code> that executes flows against a pluggable
+          typed DSL (<code>defineRace</code>, <code>runner</code>) and an
+          <code>Orchestrator</code> that executes races against a pluggable
           <code>Provider</code>. The CLI is a thin orchestrator around the
           library; the generator is a Claude Code skill that scaffolds new
-          flow packages. The project targets Node 20.10+ and ships as
+          race packages. The project targets Node 20.10+ and ships as
           ESM-only.
         </p>
       </section>
@@ -205,22 +205,22 @@
               <td><code>src/install.ts</code>, <code>src/scaffold.ts</code>, <code>bin/install.js</code></td>
             </tr>
             <tr>
-              <td><code>@ganderbite/flow-codebase-discovery</code></td>
-              <td><code>packages/flows/codebase-discovery</code></td>
+              <td><code>@ganderbite/relay-codebase-discovery</code></td>
+              <td><code>packages/races/codebase-discovery</code></td>
               <td>TypeScript</td>
-              <td><code>flow.ts</code></td>
+              <td><code>race.ts</code></td>
             </tr>
             <tr>
               <td><code>hello-world</code></td>
               <td><code>examples/hello-world</code></td>
               <td>TypeScript</td>
-              <td><code>flow.ts</code></td>
+              <td><code>race.ts</code></td>
             </tr>
             <tr>
               <td><code>hello-world-mocked</code></td>
               <td><code>examples/hello-world-mocked</code></td>
               <td>TypeScript</td>
-              <td><code>flow.ts</code>, <code>run-mocked.ts</code></td>
+              <td><code>race.ts</code>, <code>run-mocked.ts</code></td>
             </tr>
           </tbody>
         </table>
@@ -243,16 +243,16 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>defineFlow</code></td>
+              <td><code>defineRace</code></td>
               <td>util</td>
               <td><code>@relay/core</code></td>
-              <td>Compiles a <code>FlowSpec</code> into an executable <code>Flow</code> and validates the step graph. Returns a <code>Result</code> with a <code>FlowDefinitionError</code> on failure.</td>
+              <td>Compiles a <code>RaceSpec</code> into an executable <code>Race</code> and validates the runner graph. Returns a <code>Result</code> with a <code>RaceDefinitionError</code> on failure.</td>
             </tr>
             <tr>
               <td><code>Runner</code></td>
               <td>service</td>
               <td><code>@relay/core</code></td>
-              <td>Orchestrates execution of a compiled flow — resolves the DAG, executes steps against a <code>Provider</code>, writes checkpoints, and emits step-level events.</td>
+              <td>Orchestrates execution of a compiled race — resolves the DAG, executes runners against a <code>Provider</code>, writes checkpoints, and emits runner-level events.</td>
             </tr>
             <tr>
               <td><code>ClaudeProvider</code></td>
@@ -264,25 +264,25 @@
               <td><code>MockProvider</code></td>
               <td>service</td>
               <td><code>@relay/core</code></td>
-              <td>Provider for tests and the <code>hello-world-mocked</code> example. Returns canned responses keyed by step id. No network, no Claude binary, no credentials.</td>
+              <td>Provider for tests and the <code>hello-world-mocked</code> example. Returns canned responses keyed by runner id. No network, no Claude binary, no credentials.</td>
             </tr>
             <tr>
-              <td><code>HandoffStore</code></td>
+              <td><code>BatonStore</code></td>
               <td>service</td>
               <td><code>@relay/core</code></td>
-              <td>Atomic reader and writer for the per-run <code>handoffs/*.json</code> files that carry structured context between steps.</td>
+              <td>Atomic reader and writer for the per-run <code>batons/*.json</code> files that carry structured context between runners.</td>
             </tr>
             <tr>
               <td><code>StateMachine</code></td>
               <td>model</td>
               <td><code>@relay/core</code></td>
-              <td>The serialized run-state (<code>state.json</code>) schema and the legal-transition rules that govern step status (<code>pending</code>, <code>running</code>, <code>succeeded</code>, <code>failed</code>).</td>
+              <td>The serialized run-state (<code>state.json</code>) schema and the legal-transition rules that govern runner status (<code>pending</code>, <code>running</code>, <code>succeeded</code>, <code>failed</code>).</td>
             </tr>
             <tr>
               <td><code>PipelineError</code></td>
               <td>model</td>
               <td><code>@relay/core</code></td>
-              <td>Root of the typed error hierarchy. Concrete subclasses include <code>ProviderAuthError</code>, <code>HandoffSchemaError</code>, <code>StateCorruptError</code>, and <code>AtomicWriteError</code> — each mapped to a distinct CLI exit code.</td>
+              <td>Root of the typed error hierarchy. Concrete subclasses include <code>ProviderAuthError</code>, <code>BatonSchemaError</code>, <code>StateCorruptError</code>, and <code>AtomicWriteError</code> — each mapped to a distinct CLI exit code.</td>
             </tr>
             <tr>
               <td><code>relay</code> command</td>
@@ -321,7 +321,7 @@
             </tr>
             <tr>
               <td><code>State persistence</code></td>
-              <td>Atomic writes (<code>atomicWriteJson</code>, <code>atomicWriteText</code>) for <code>state.json</code>, <code>handoffs/*.json</code>, <code>metrics.json</code>, and the <code>live/</code> directory. Tempfile-plus-rename under the hood so a crashed writer never leaves a partially written file a later resume would read.</td>
+              <td>Atomic writes (<code>atomicWriteJson</code>, <code>atomicWriteText</code>) for <code>state.json</code>, <code>batons/*.json</code>, <code>metrics.json</code>, and the <code>live/</code> directory. Tempfile-plus-rename under the hood so a crashed writer never leaves a partially written file a later resume would read.</td>
               <td><code>@relay/core</code>, <code>@relay/cli</code></td>
             </tr>
           </tbody>
@@ -338,7 +338,7 @@
           <li>
             <span class="tag">Layering</span>
             <strong>Clean dependency direction.</strong>
-            <p>The CLI depends on core; core depends on nothing in the workspace. Flow packages declare core as a <code>peerDependency</code>, which is the right choice for distribution — a flow installed against a newer core picks up fixes without re-publishing.</p>
+            <p>The CLI depends on core; core depends on nothing in the workspace. Race packages declare core as a <code>peerDependency</code>, which is the right choice for distribution — a race installed against a newer core picks up fixes without re-publishing.</p>
           </li>
           <li>
             <span class="tag">Errors</span>
@@ -357,8 +357,8 @@
           </li>
           <li>
             <span class="tag">Schemas</span>
-            <strong>Handoffs are Zod-validated at every boundary.</strong>
-            <p>Reference-flow handoff schemas live next to the flow (<code>schemas/inventory.ts</code>, <code>schemas/entities.ts</code>) and run against each step's output before the next step reads it. A malformed handoff surfaces as a typed <code>HandoffSchemaError</code> with the exact issue path, not a downstream <code>undefined</code>.</p>
+            <strong>Batons are Zod-validated at every boundary.</strong>
+            <p>Reference-race baton schemas live next to the race (<code>schemas/inventory.ts</code>, <code>schemas/entities.ts</code>) and run against each runner's output before the next runner reads it. A malformed baton surfaces as a typed <code>BatonSchemaError</code> with the exact issue path, not a downstream <code>undefined</code>.</p>
           </li>
         </ul>
       </section>
@@ -382,8 +382,8 @@
           </li>
           <li>
             <span class="tag">Low</span>
-            <strong>Ship a flow-package linter as part of the <code>relay</code> CLI.</strong>
-            <p>The §7 format is currently enforced by convention. A <code>relay lint &lt;dir&gt;</code> subcommand that checks the <code>relay</code> metadata block, required README sections, and the <code>dist/flow.js</code> entry point would make the catalog onboarding story less fragile, and the same logic can back the registry generator for the static catalog site.</p>
+            <strong>Ship a race-package linter as part of the <code>relay</code> CLI.</strong>
+            <p>The §7 format is currently enforced by convention. A <code>relay lint &lt;dir&gt;</code> subcommand that checks the <code>relay</code> metadata block, required README sections, and the <code>dist/race.js</code> entry point would make the catalog onboarding story less fragile, and the same logic can back the registry generator for the static catalog site.</p>
           </li>
         </ul>
       </section>

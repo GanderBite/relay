@@ -28,7 +28,7 @@ import { z } from 'zod';
 import { Runner } from './runner/runner';
 
 // ❌ Wrong — type imported as value (verbatimModuleSyntax errors)
-import { Flow } from './flow/types.js';
+import { Race } from './race/types.js';
 
 // ✅ Replace __dirname / __filename
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,7 @@ const __dirname = dirname(__filename);
 
 ## Discriminated unions (the workhorse pattern)
 
-Relay's `Step`, `PromptStepOutput`, `InvocationEvent`, and error class hierarchy all use discriminated unions. The pattern:
+Relay's `Runner`, `PromptRunnerOutput`, `InvocationEvent`, and error class hierarchy all use discriminated unions. The pattern:
 
 ```ts
 type Runner =
@@ -78,12 +78,12 @@ function isPromptRunner(s: Runner): s is Extract<Runner, { kind: 'prompt' }> {
 }
 
 // ✅ instanceof
-if (err instanceof StepFailureError) {
-  console.log(err.stepId);   // narrowed
+if (err instanceof RunnerFailureError) {
+  console.log(err.runnerId);   // narrowed
 }
 
 // ✅ in operator
-if ('schema' in step.spec.output) {
+if ('schema' in runner.spec.output) {
   // narrowed to the output variant that has schema
 }
 

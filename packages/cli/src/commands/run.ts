@@ -1,13 +1,13 @@
 /**
- * relay run — executes a flow from start to finish.
+ * relay run — executes a race from start to finish.
  *
- * Flow:
- *   1. loadFlow(nameOrPath, cwd) — resolve the flow package.
- *   2. parseInputFromArgv(flow.input, argv) — validate CLI arguments.
+ * Race:
+ *   1. loadFlow(nameOrPath, cwd) — resolve the race package.
+ *   2. parseInputFromArgv(race.input, argv) — validate CLI arguments.
  *   3. Register providers, load settings, resolve provider, authenticate — surface billing mode.
- *   4. renderStartBanner — shows flow, input, run id, bill row, estimate.
+ *   4. renderStartBanner — shows race, input, run id, bill row, estimate.
  *   5. ProgressDisplay.start(runId) — live TTY progress grid.
- *   6. runner.run(flow, input, { runDir, flowPath }) — execute all steps.
+ *   6. orchestrator.run(race, input, { raceDir }) — execute all runners.
  *   7. ProgressDisplay.stop() — clear live area.
  *   8. renderSuccessBanner / renderFailureBanner — final result.
  *   9. process.exit(0) on success, exitCodeFor(err) on failure.
@@ -232,8 +232,8 @@ export default async function runCommand(
   const inputExtras = namedExtras;
 
   const startBanner = renderStartBanner({
-    flowName: flow.name,
-    flowVersion: flow.version,
+    raceName: flow.name,
+    raceVersion: flow.version,
     runId,
     startedAt: new Date().toISOString(),
     inputPrimary,
@@ -327,8 +327,8 @@ export default async function runCommand(
     process.removeListener('SIGINT', sigintHandler);
     progress.stop();
     maybeSendRunEvent({
-      flowName: flow.name,
-      flowVersion: flow.version,
+      raceName: flow.name,
+      raceVersion: flow.version,
       status: 'failure',
       durationMs: Date.now() - startMs,
       stepsCount: flow.runnerOrder.length,
@@ -358,7 +358,7 @@ export default async function runCommand(
       : `./.relay/runs/${result.runId}`;
 
     const successBanner = renderSuccessBanner({
-      flowName: flow.name,
+      raceName: flow.name,
       runId: result.runId,
       steps: stepRows,
       totalDurationMs: result.durationMs,
@@ -375,8 +375,8 @@ export default async function runCommand(
     }
 
     maybeSendRunEvent({
-      flowName: flow.name,
-      flowVersion: flow.version,
+      raceName: flow.name,
+      raceVersion: flow.version,
       status: 'success',
       durationMs: result.durationMs,
       stepsCount: flow.runnerOrder.length,
@@ -393,8 +393,8 @@ export default async function runCommand(
     await renderPausedBanner(flow.name, result.runId, result.runDir, flow.runnerOrder);
 
     maybeSendRunEvent({
-      flowName: flow.name,
-      flowVersion: flow.version,
+      raceName: flow.name,
+      raceVersion: flow.version,
       status: 'aborted',
       durationMs: result.durationMs,
       stepsCount: flow.runnerOrder.length,
@@ -409,7 +409,7 @@ export default async function runCommand(
     // failed or aborted (non-interactive)
     const failureRows = await buildFailureStepRows(result.runDir, flow.runnerOrder);
     const failureBanner = renderFailureBanner({
-      flowName: flow.name,
+      raceName: flow.name,
       runId: result.runId,
       steps: failureRows,
       spentUsd: result.cost.totalUsd,
@@ -418,8 +418,8 @@ export default async function runCommand(
     process.stdout.write(failureBanner);
 
     maybeSendRunEvent({
-      flowName: flow.name,
-      flowVersion: flow.version,
+      raceName: flow.name,
+      raceVersion: flow.version,
       status: result.status === 'aborted' ? 'aborted' : 'failure',
       durationMs: result.durationMs,
       stepsCount: flow.runnerOrder.length,
@@ -446,7 +446,7 @@ interface RawStepState extends RunnerState {
 }
 
 interface RawMetrics {
-  stepId: string;
+  runnerId: string;
   durationMs?: number;
   costUsd?: number;
   model?: string;
@@ -470,8 +470,8 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
     const raw = await readFile(join(runDir, 'metrics.json'), 'utf8');
     const entries = JSON.parse(raw) as RawMetrics[];
     for (const entry of entries) {
-      if (typeof entry.stepId === 'string') {
-        map.set(entry.stepId, entry);
+      if (typeof entry.runnerId === 'string') {
+        map.set(entry.runnerId, entry);
       }
     }
   } catch {
@@ -499,13 +499,13 @@ async function buildSuccessStepRows(
   const stateSteps = await readStateSteps(runDir);
   const metrics = await readMetrics(runDir);
 
-  return stepOrder.map((stepId): SuccessStepRow => {
-    const stepState = stateSteps[stepId];
-    const metric = metrics.get(stepId);
+  return stepOrder.map((runnerId): SuccessStepRow => {
+    const stepState = stateSteps[runnerId];
+    const metric = metrics.get(runnerId);
     const durationMs = metric?.durationMs ?? (stepState ? stepDurationMs(stepState) : 0);
     const model = metric?.model ?? 'sonnet';
     const costUsd = metric?.costUsd ?? 0;
-    return { name: stepId, model, durationMs, costUsd };
+    return { name: runnerId, model, durationMs, costUsd };
   });
 }
 
@@ -516,21 +516,21 @@ async function buildFailureStepRows(
   const stateSteps = await readStateSteps(runDir);
   const metrics = await readMetrics(runDir);
 
-  return stepOrder.map((stepId): FailureStepRow => {
-    const stepState = stateSteps[stepId];
-    const metric = metrics.get(stepId);
+  return stepOrder.map((runnerId): FailureStepRow => {
+    const stepState = stateSteps[runnerId];
+    const metric = metrics.get(runnerId);
     const status = stepState?.status;
     const durationMs = metric?.durationMs ?? (stepState ? stepDurationMs(stepState) : 0);
     const model = metric?.model ?? 'sonnet';
     const costUsd = metric?.costUsd ?? 0;
 
     if (status === 'succeeded') {
-      return { name: stepId, status: 'succeeded', model, durationMs, costUsd };
+      return { name: runnerId, status: 'succeeded', model, durationMs, costUsd };
     }
     if (status === 'failed') {
       const errorMsg = stepState?.errorMessage;
       return {
-        name: stepId,
+        name: runnerId,
         status: 'failed',
         model,
         durationMs,
@@ -543,7 +543,7 @@ async function buildFailureStepRows(
       };
     }
     // pending / running / skipped / undefined — treat as skipped in the banner
-    return { name: stepId, status: 'skipped', model, durationMs, costUsd };
+    return { name: runnerId, status: 'skipped', model, durationMs, costUsd };
   });
 }
 

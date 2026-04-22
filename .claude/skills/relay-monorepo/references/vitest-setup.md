@@ -135,9 +135,9 @@ vi.mocked(childProcess.spawn).mockReturnValue({
 
 ```ts
 import { MockProvider } from '@relay/core/testing';
-import { ProviderRegistry, createRunner, defineFlow, step, z } from '@relay/core';
+import { ProviderRegistry, createRunner, defineRace, runner, z } from '@relay/core';
 
-it('runs a 2-step flow against MockProvider', async () => {
+it('runs a 2-runner race against MockProvider', async () => {
   const provider = new MockProvider({
     responses: {
       first: { text: 'hello', usage: zero, costUsd: 0, durationMs: 0, numTurns: 1, model: 'mock', stopReason: 'end_turn' },
@@ -147,18 +147,18 @@ it('runs a 2-step flow against MockProvider', async () => {
   const registry = new ProviderRegistry();
   registry.register(provider);
 
-  const flow = defineFlow({
-    name: 'two-step',
+  const race = defineRace({
+    name: 'two-runner',
     version: '0.0.1',
     input: z.object({}),
-    steps: {
-      first: step.prompt({ promptFile: 'prompts/01.md', output: { artifact: 'a.txt' } }),
-      second: step.prompt({ promptFile: 'prompts/02.md', dependsOn: ['first'], output: { handoff: 'h' } }),
+    runners: {
+      first: runner.prompt({ promptFile: 'prompts/01.md', output: { artifact: 'a.txt' } }),
+      second: runner.prompt({ promptFile: 'prompts/02.md', dependsOn: ['first'], output: { baton: 'h' } }),
     },
   });
 
-  const runner = createRunner({ providers: registry, defaultProvider: 'mock', runDir });
-  const result = await runner.run(flow, {});
+  const orchestrator = createRunner({ providers: registry, defaultProvider: 'mock', runDir });
+  const result = await orchestrator.run(race, {});
   expect(result.status).toBe('succeeded');
 });
 ```
@@ -170,12 +170,12 @@ import { renderStartBanner } from '../src/banner.js';
 
 it('matches the §6.3 banner format', () => {
   const out = renderStartBanner({
-    flow: { name: 'codebase-discovery', version: '0.1.0' },
+    race: { name: 'codebase-discovery', version: '0.1.0' },
     runId: 'f9c3a2',
     auth: { ok: true, billingSource: 'subscription', detail: 'max via OAuth' },
     input: { repoPath: '.', audience: 'both' },
     costEstimate: { min: 0.30, max: 0.50 },
-    stepCount: 5,
+    runnerCount: 5,
     etaMin: 12,
   });
   expect(out).toMatchSnapshot();

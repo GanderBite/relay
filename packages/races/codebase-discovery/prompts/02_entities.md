@@ -27,7 +27,7 @@ Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no 
       "name": "Runner",
       "kind": "service",
       "file": "packages/core/src/runner/runner.ts",
-      "summary": "Executes a flow's DAG of steps, handling retries, resumption, and handoff validation."
+      "summary": "Executes a race's DAG of runners, handling retries, resumption, and baton validation."
     }
   ]
 }

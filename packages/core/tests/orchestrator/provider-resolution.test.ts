@@ -107,7 +107,7 @@ describe('Runner — provider resolution', () => {
   });
 
   it('[PROV-RES-002] flow settings win over global settings when no flag', async () => {
-    // Flow says 'mock'; global says something that doesn't exist.
+    // Race settings say 'mock'; global says something that doesn't exist.
     mockLoadGlobalSettings.mockResolvedValue(ok({ provider: 'nonexistent-global' }));
     mockLoadFlowSettings.mockResolvedValue(ok({ provider: 'mock' }));
 
@@ -124,7 +124,7 @@ describe('Runner — provider resolution', () => {
   });
 
   it('[PROV-RES-003] global settings used when no flag and no flow settings provider', async () => {
-    // Flow settings has no provider; global has 'mock'.
+    // Race settings has no provider; global has 'mock'.
     mockLoadGlobalSettings.mockResolvedValue(ok({ provider: 'mock' }));
     mockLoadFlowSettings.mockResolvedValue(ok(null));
 

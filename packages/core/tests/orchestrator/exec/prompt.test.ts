@@ -57,7 +57,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
     };
   }
 
-  it('[EXEC-PROMPT-001] loads prompt, loads handoffs, calls assemblePrompt, then provider.invoke', async () => {
+  it('[EXEC-PROMPT-001] loads prompt, loads batons, calls assemblePrompt, then provider.invoke', async () => {
     const batonStore = new BatonStore(tmp);
     await batonStore.write('prior', { note: 'ok' });
     const s = runner
@@ -82,7 +82,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(capturedPrompt).toContain('<c name="prior">');
-    // handoff written
+    // baton written
     const wrote = await batonStore.read('greeted');
     expect(wrote.isOk()).toBe(true);
   });

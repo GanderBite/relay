@@ -1,7 +1,7 @@
 /**
- * Minimal two-step flow used by the crash-resume integration test.
+ * Minimal two-runner race used by the crash-resume integration test.
  *
- * Exported as both default and named `flow` so importRace() finds it
+ * Exported as both default and named `race` so importRace() finds it
  * regardless of which export shape it checks first.
  *
  * This file is imported by:
@@ -14,7 +14,7 @@
 import { defineRace, runner, z } from '@relay/core';
 
 export const race = defineRace({
-  name: 'crash-test-flow',
+  name: 'crash-test-race',
   version: '0.1.0',
   input: z.object({}),
   runners: {

@@ -47,7 +47,7 @@ interface RawStepState extends RunnerState {
 }
 
 interface RawMetrics {
-  stepId: string;
+  runnerId: string;
   durationMs?: number;
   costUsd?: number;
   model?: string;
@@ -98,12 +98,12 @@ function stepDurationMs(stepState: RawStepState): number {
 // Step row renderer
 // ---------------------------------------------------------------------------
 
-function renderPausedStepRow(
-  stepId: string,
+function renderPausedRunnerRow(
+  runnerId: string,
   stepState: RawStepState,
   metric: RawMetrics | undefined,
 ): string {
-  const nameCol = stepId.padEnd(STEP_NAME_WIDTH);
+  const nameCol = runnerId.padEnd(STEP_NAME_WIDTH);
 
   if (stepState.status === 'succeeded') {
     const durationMs = metric?.durationMs ?? stepDurationMs(stepState);
@@ -155,8 +155,8 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
     const raw = await readFile(join(runDir, 'metrics.json'), 'utf8');
     const entries = JSON.parse(raw) as RawMetrics[];
     for (const entry of entries) {
-      if (typeof entry.stepId === 'string') {
-        map.set(entry.stepId, entry);
+      if (typeof entry.runnerId === 'string') {
+        map.set(entry.runnerId, entry);
       }
     }
   } catch {
@@ -176,7 +176,7 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
  * Falls back to a minimal banner if state cannot be loaded.
  */
 export async function renderPausedBanner(
-  flowName: string,
+  raceName: string,
   runId: string,
   runDir: string,
   stepOrder: readonly string[],
@@ -184,7 +184,7 @@ export async function renderPausedBanner(
   // Header: "^C" echo, blank, then the paused header line.
   process.stdout.write('^C\n');
   process.stdout.write('\n');
-  process.stdout.write(`${MARK}  ${flowName} ${SYMBOLS.dot} ${runId}  (paused)\n`);
+  process.stdout.write(`${MARK}  ${raceName} ${SYMBOLS.dot} ${runId}  (paused)\n`);
   process.stdout.write('\n');
 
   // Read state and metrics; on failure render minimal fallback.
@@ -199,12 +199,12 @@ export async function renderPausedBanner(
     return;
   }
 
-  // Step grid.
-  for (const stepId of stepOrder) {
-    const stepState = stateSteps[stepId];
+  // Runner grid.
+  for (const runnerId of stepOrder) {
+    const stepState = stateSteps[runnerId];
     if (stepState === undefined) continue;
-    const metric = metrics.get(stepId);
-    const row = renderPausedStepRow(stepId, stepState, metric);
+    const metric = metrics.get(runnerId);
+    const row = renderPausedRunnerRow(runnerId, stepState, metric);
     process.stdout.write(row + '\n');
   }
 

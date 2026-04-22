@@ -17,7 +17,7 @@ import {
   red,
   rule,
   kvLine,
-  flowHeader,
+  raceHeader,
 } from './visual.js';
 
 // ---------------------------------------------------------------------------
@@ -110,10 +110,10 @@ export interface FailureStepRow {
 // ---------------------------------------------------------------------------
 
 export interface StartBannerOptions {
-  /** Flow name, e.g. "codebase-discovery". */
-  flowName: string;
-  /** Flow version, e.g. "0.1.0". */
-  flowVersion: string;
+  /** Race name, e.g. "codebase-discovery". */
+  raceName: string;
+  /** Race version, e.g. "0.1.0". */
+  raceVersion: string;
   /** Short run id (6-hex), e.g. "f9c3a2". */
   runId: string;
   /** ISO timestamp the run started, e.g. new Date().toISOString(). */
@@ -133,7 +133,7 @@ export interface StartBannerOptions {
   auth: AuthState;
   /** Optional pre-run cost estimate. */
   costEstimate?: CostEstimate;
-  /** Number of steps in the flow. */
+  /** Number of runners in the race. */
   stepCount: number;
   /**
    * Estimated duration in minutes.
@@ -161,8 +161,8 @@ export interface StartBannerOptions {
  */
 export function renderStartBanner(opts: StartBannerOptions): string {
   const {
-    flowName,
-    flowVersion,
+    raceName,
+    raceVersion,
     runId,
     startedAt,
     inputPrimary,
@@ -174,7 +174,7 @@ export function renderStartBanner(opts: StartBannerOptions): string {
   } = opts;
 
   // race row
-  const flowValue = `${flowName} v${flowVersion}`;
+  const flowValue = `${raceName} v${raceVersion}`;
 
   // input row — "primary  (key=val, key=val)" or just "primary"
   const extras =
@@ -225,8 +225,8 @@ export function renderStartBanner(opts: StartBannerOptions): string {
 // ---------------------------------------------------------------------------
 
 export interface SuccessBannerOptions {
-  /** Flow name, e.g. "codebase-discovery". */
-  flowName: string;
+  /** Race name, e.g. "codebase-discovery". */
+  raceName: string;
   /** Short run id, e.g. "f9c3a2". */
   runId: string;
   /** One entry per step, in execution order. */
@@ -266,10 +266,10 @@ export interface SuccessBannerOptions {
  *       share with team        relay share f9c3a2   (coming v1.1)
  */
 export function renderSuccessBanner(opts: SuccessBannerOptions): string {
-  const { flowName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
+  const { raceName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓"
-  const header = green(flowHeader(flowName, runId, SYMBOLS.ok));
+  const header = green(raceHeader(raceName, runId, SYMBOLS.ok));
 
   // Per-step lines — " ✓ <name padded> <model padded> <dur padded> $cost"
   const stepLines = steps.map((s) => {
@@ -295,7 +295,7 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   const nextBlock = [
     'next:',
     `${nextIndent}${'open the report'.padEnd(nextActionWidth)} open ${outputPath}`,
-    `${nextIndent}${'run again fresh'.padEnd(nextActionWidth)} relay run ${flowName} . --fresh`,
+    `${nextIndent}${'run again fresh'.padEnd(nextActionWidth)} relay run ${raceName} . --fresh`,
     `${nextIndent}${'share with team'.padEnd(nextActionWidth)} relay share ${runId}   (coming v1.1)`,
   ].join('\n');
 
@@ -320,8 +320,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
 // ---------------------------------------------------------------------------
 
 export interface FailureBannerOptions {
-  /** Flow name, e.g. "codebase-discovery". */
-  flowName: string;
+  /** Race name, e.g. "codebase-discovery". */
+  raceName: string;
   /** Short run id, e.g. "f9c3a2". */
   runId: string;
   /** All steps in execution order (succeeded + failed + pending). */
@@ -350,10 +350,10 @@ export interface FailureBannerOptions {
  *    ✓ entities        sonnet     4.8s     $0.021
  *    ✓ services        sonnet     5.1s     $0.023
  *    ✕ designReview    exit 1     0.2s
- *         branch 'entities' raised HandoffSchemaError
- *         handoff 'entities' missing required field: entities[3].language
+ *         branch 'entities' raised BatonSchemaError
+ *         baton 'entities' missing required field: entities[3].language
  *
- *   3 of 5 steps succeeded · $0.049 spent · state saved
+ *   3 of 5 runners succeeded · $0.049 spent · state saved
  *
  *   to resume after fixing:
  *       relay resume f9c3a2
@@ -363,13 +363,13 @@ export interface FailureBannerOptions {
  *
  *   to inspect:
  *       relay logs f9c3a2                   full structured log
- *       cat ./.relay/runs/f9c3a2/handoffs/entities.json
+ *       cat ./.relay/runs/f9c3a2/batons/entities.json
  */
 export function renderFailureBanner(opts: FailureBannerOptions): string {
-  const { flowName, runId, steps, spentUsd, batonId } = opts;
+  const { raceName, runId, steps, spentUsd, batonId } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✕"
-  const header = red(flowHeader(flowName, runId, SYMBOLS.fail));
+  const header = red(raceHeader(raceName, runId, SYMBOLS.fail));
 
   // Per-step lines
   const stepLines: string[] = [];
@@ -415,7 +415,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   // "to restart from scratch:" block
   const restartBlock = [
     'to restart from scratch:',
-    `    relay run ${flowName} . --fresh`,
+    `    relay run ${raceName} . --fresh`,
   ].join('\n');
 
   // "to inspect:" block — conditionally append the cat hint

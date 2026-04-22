@@ -218,8 +218,8 @@ async function runProviderInvocation(args: {
 }
 
 /**
- * Schema-validation failures keep their class so the Runner (and tests) can
- * discriminate a handoff-shape bug from a provider/network failure. Every
+ * Schema-validation failures keep their class so the Orchestrator (and tests) can
+ * discriminate a baton-shape bug from a provider/network failure. Every
  * other non-StepFailureError cause is wrapped so the retry loop only has one
  * error type to dispatch on.
  */
@@ -240,11 +240,11 @@ function wrapFailure(
 }
 
 /**
- * Executes one prompt runner. Loads the template, injects declared handoffs,
- * invokes the provider, then routes the response to a handoff (validated via
+ * Executes one prompt runner. Loads the template, injects declared batons,
+ * invokes the provider, then routes the response to a baton (validated via
  * Zod when a schema is configured) and/or an artifact file. Cost metrics are
  * recorded on success; any upstream failure is wrapped in StepFailureError so
- * the Runner's retry loop sees a single error class.
+ * the Orchestrator's retry loop sees a single error class.
  */
 export async function executePrompt(
   runner: PromptRunnerSpec,
@@ -271,7 +271,7 @@ export async function executePrompt(
     const promptPath = resolvePromptPath(ctx.raceDir, runner.promptFile);
     const promptBody = await readFile(promptPath, 'utf8');
 
-    // 2. Load declared handoff values in declaration order.
+    // 2. Load declared baton values in declaration order.
     const contextFrom = runner.contextFrom ?? [];
     const batonsResult = await loadBatonValues(ctx.batonStore, contextFrom);
     if (batonsResult.isErr()) throw batonsResult.error;
@@ -289,8 +289,8 @@ export async function executePrompt(
     const schema = 'schema' in runner.output ? runner.output.schema : undefined;
     const jsonSchema = toJsonSchema(schema);
 
-    // Pre-flight finished — only now is the step actually invoking the
-    // provider. Writing 'running' before handoff load / prompt assembly would
+    // Pre-flight finished — only now is the runner actually invoking the
+    // provider. Writing 'running' before baton load / prompt assembly would
     // leave a zombie running file in live/ when those pre-flight steps fail
     // and the catch block rethrows without a terminal write-back.
     const liveStartResult = await writeLiveState(ctx.runDir, runnerId, {
@@ -346,7 +346,7 @@ export async function executePrompt(
     });
 
     // Record usage as soon as the provider returns so CostTracker captures
-    // tokens even if downstream handoff/artifact writes fail.
+    // tokens even if downstream baton/artifact writes fail.
     ctx.logger.info(
       {
         event: 'prompt.usage',

@@ -10,7 +10,7 @@
  * crash-resume.test.ts.
  *
  * Branch test:
- *   Flow: entry -> b1 -> b2 -> end (B path)
+ *   Race: entry -> b1 -> b2 -> end (B path)
  *         entry -> a1 -> a2      (A path, skipped because predicate selected B)
  *
  *   Injected state: entry=succeeded, b1=succeeded, b2=pending,
@@ -23,7 +23,7 @@
  *   never invoked; final status is 'succeeded'.
  *
  * Parallel test:
- *   Flow: entry -> parallel(c1, c2, c3) -> end
+ *   Race: entry -> parallel(c1, c2, c3) -> end
  *
  *   Injected state: entry=succeeded, parallel=succeeded, c1=succeeded,
  *                   c2=succeeded, c3=pending, end=pending.

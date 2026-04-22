@@ -138,7 +138,7 @@ export class SubscriptionTosLeakError extends ClaudeAuthError {
 }
 
 /**
- * Thrown when a handoff file fails Zod schema validation on read or write.
+ * Thrown when a baton file fails Zod schema validation on read or write.
  *
  * CLI exit code: 4
  */
@@ -163,7 +163,7 @@ export class BatonSchemaError extends PipelineError {
 }
 
 /**
- * Raised during handoff read or list operations when the underlying filesystem
+ * Raised during baton read or list operations when the underlying filesystem
  * call fails for a reason other than ENOENT or a schema validation failure.
  */
 export class BatonIoError extends PipelineError {
@@ -180,7 +180,7 @@ export class BatonIoError extends PipelineError {
 }
 
 /**
- * Raised when a handoff file is expected to exist but is absent on disk.
+ * Raised when a baton file is expected to exist but is absent on disk.
  */
 export class BatonNotFoundError extends PipelineError {
   readonly batonId: string;
@@ -196,7 +196,7 @@ export class BatonNotFoundError extends PipelineError {
 }
 
 /**
- * Raised when a handoff write (atomic or otherwise) fails with a filesystem error.
+ * Raised when a baton write (atomic or otherwise) fails with a filesystem error.
  */
 export class BatonWriteError extends PipelineError {
   readonly batonId: string;

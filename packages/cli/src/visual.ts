@@ -281,17 +281,20 @@ export const MODEL_WIDTH = 11;
 export const DURATION_WIDTH = 9;
 
 /**
- * Compose a banner header line from flow name, run id, and an optional status symbol.
- * Produces: `●─▶●─▶●─▶●  <flowName> · <runId>  <symbol>` (symbol omitted when absent).
+ * Compose a banner header line from race name, run id, and an optional status symbol.
+ * Produces: `●─▶●─▶●─▶●  <raceName> · <runId>  <symbol>` (symbol omitted when absent).
  *
- * Use this instead of string-replacing WORDMARK, which breaks when flow names
+ * Use this instead of string-replacing WORDMARK, which breaks when race names
  * contain "relay" or when WORDMARK changes.
  *
  * Examples (product spec §6.5, §6.6):
- *   flowHeader('codebase-discovery', 'f9c3a2', '✓')
+ *   raceHeader('codebase-discovery', 'f9c3a2', '✓')
  *   → '●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓'
  */
-export function flowHeader(flowName: string, runId: string, symbol?: string): string {
-  const base = `${MARK}  ${flowName} ${SYMBOLS.dot} ${runId}`;
+export function raceHeader(raceName: string, runId: string, symbol?: string): string {
+  const base = `${MARK}  ${raceName} ${SYMBOLS.dot} ${runId}`;
   return symbol !== undefined ? `${base}  ${symbol}` : base;
 }
+
+/** @deprecated Use raceHeader — renamed as part of race/runner/baton vocabulary. */
+export const flowHeader = raceHeader;

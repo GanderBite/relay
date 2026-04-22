@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { RaceStateMachine } from '../src/state.js';
 import type { RaceState } from '../src/race/types.js';
 
-const FLOW_NAME = 'serialize-flow';
-const FLOW_VERSION = '0.1.0';
+const RACE_NAME = 'serialize-race';
+const RACE_VERSION = '0.1.0';
 const RUN_ID = 'run-serialize';
 
 describe('RaceStateMachine — save() serialization', () => {
@@ -23,7 +23,7 @@ describe('RaceStateMachine — save() serialization', () => {
 
   it('[STATE-SERIALIZE-001] 20 concurrent save() calls all resolve ok and the final on-disk snapshot equals final in-memory state', async () => {
     const runnerIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
-    const sm = new RaceStateMachine(tmp, FLOW_NAME, FLOW_VERSION, RUN_ID);
+    const sm = new RaceStateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
     const initR = await sm.init(runnerIds);
     expect(initR.isOk()).toBe(true);
 
@@ -51,7 +51,7 @@ describe('RaceStateMachine — save() serialization', () => {
 
   it('[STATE-SERIALIZE-002] every intermediate snapshot read between concurrent saves is a monotonic prefix of in-memory history (succeeded count never goes backwards)', async () => {
     const runnerIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
-    const sm = new RaceStateMachine(tmp, FLOW_NAME, FLOW_VERSION, RUN_ID);
+    const sm = new RaceStateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
     const initR = await sm.init(runnerIds);
     expect(initR.isOk()).toBe(true);
 
@@ -110,8 +110,8 @@ describe('RaceStateMachine — save() serialization', () => {
     // failure rather than hanging forever on the rejected tail.
     const sm = new RaceStateMachine(
       join(tmp, 'definitely-not-a-dir.txt', 'nested'),
-      FLOW_NAME,
-      FLOW_VERSION,
+      RACE_NAME,
+      RACE_VERSION,
       RUN_ID,
     );
     // Seed in-memory state without going through init() — init() calls
@@ -119,8 +119,8 @@ describe('RaceStateMachine — save() serialization', () => {
     // to assert here.
     sm.hydrate({
       runId: RUN_ID,
-      raceName: FLOW_NAME,
-      raceVersion: FLOW_VERSION,
+      raceName: RACE_NAME,
+      raceVersion: RACE_VERSION,
       status: 'running',
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

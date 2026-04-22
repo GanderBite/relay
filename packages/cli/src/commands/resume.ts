@@ -96,14 +96,14 @@ function fmtUsd(usd: number): string {
  * Find the first runner in topoOrder that is not succeeded/skipped.
  * This is the "picking up from:" runner.
  */
-function firstPendingStepId(
+function firstPendingRunnerId(
   topoOrder: readonly string[],
   runners: Record<string, RunnerState>,
 ): string {
-  for (const stepId of topoOrder) {
-    const s = runners[stepId];
+  for (const runnerId of topoOrder) {
+    const s = runners[runnerId];
     if (s === undefined) continue;
-    if (s.status !== 'succeeded' && s.status !== 'skipped') return stepId;
+    if (s.status !== 'succeeded' && s.status !== 'skipped') return runnerId;
   }
   // Fallback: if all succeeded somehow, return the last in order.
   return topoOrder[topoOrder.length - 1] ?? '';
@@ -118,13 +118,13 @@ function firstPendingStepId(
  *     the first non-succeeded runner is shown as spinning "⠋ <name>    running"
  *     subsequent non-succeeded runners are "○ <name>    waiting on X, Y"
  */
-function renderPreResumeStepRow(
-  stepId: string,
+function renderPreResumeRunnerRow(
+  runnerId: string,
   stepState: RunnerState,
   isFirstPending: boolean,
   pendingPredecessors: string[],
 ): string {
-  const nameCol = stepId.padEnd(STEP_NAME_WIDTH);
+  const nameCol = runnerId.padEnd(STEP_NAME_WIDTH);
 
   if (stepState.status === 'succeeded') {
     const timeStr =
@@ -176,7 +176,7 @@ function printPreResumeBanner(
   predecessors: ReadonlyMap<string, ReadonlySet<string>> | undefined,
   spentUsd: number,
 ): void {
-  const pickingUpFrom = firstPendingStepId(topoOrder, state.runners);
+  const pickingUpFrom = firstPendingRunnerId(topoOrder, state.runners);
 
   // Header: "●─▶●─▶●─▶●  relay resume f9c3a2"
   process.stdout.write(`${MARK}  relay resume ${runId}\n`);
@@ -189,8 +189,8 @@ function printPreResumeBanner(
 
   // Runner grid.
   let foundFirstPending = false;
-  for (const stepId of topoOrder) {
-    const stepState = state.runners[stepId];
+  for (const runnerId of topoOrder) {
+    const stepState = state.runners[runnerId];
     if (stepState === undefined) continue;
 
     const isFirstPending =
@@ -206,7 +206,7 @@ function printPreResumeBanner(
     if (!isFirstPending && stepState.status !== 'succeeded' && stepState.status !== 'skipped') {
       if (predecessors !== undefined) {
         // Use actual graph edges — only direct parents that are not yet done.
-        const directParents = predecessors.get(stepId);
+        const directParents = predecessors.get(runnerId);
         if (directParents !== undefined) {
           pendingPredecessors = [...directParents].filter((predId) => {
             const predState = state.runners[predId];
@@ -219,7 +219,7 @@ function printPreResumeBanner(
         }
       } else {
         // Fallback: topoOrder heuristic when the graph does not expose predecessors.
-        const ownIndex = topoOrder.indexOf(stepId);
+        const ownIndex = topoOrder.indexOf(runnerId);
         pendingPredecessors = topoOrder.slice(0, ownIndex).filter((predId) => {
           const predState = state.runners[predId];
           return (
@@ -231,7 +231,7 @@ function printPreResumeBanner(
       }
     }
 
-    const row = renderPreResumeStepRow(stepId, stepState, isFirstPending, pendingPredecessors);
+    const row = renderPreResumeRunnerRow(runnerId, stepState, isFirstPending, pendingPredecessors);
     process.stdout.write(row + '\n');
   }
 
@@ -447,10 +447,10 @@ export default async function resumeCommand(
       const finalStateResult = await loadState(runDir);
       const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
 
-      const stepRows: SuccessStepRow[] = flow.graph.topoOrder.map((stepId) => {
-        const stepState = finalState.runners[stepId];
+      const stepRows: SuccessStepRow[] = flow.graph.topoOrder.map((runnerId) => {
+        const stepState = finalState.runners[runnerId];
         return {
-          name: stepId,
+          name: runnerId,
           model: 'sonnet',
           durationMs:
             stepState?.completedAt !== undefined && stepState.startedAt !== undefined
@@ -465,7 +465,7 @@ export default async function resumeCommand(
 
       process.stdout.write(
         renderSuccessBanner({
-          flowName: raceRef.raceName,
+          raceName: raceRef.raceName,
           runId,
           steps: stepRows,
           totalDurationMs: result.durationMs,
@@ -484,8 +484,8 @@ export default async function resumeCommand(
       const finalStateResult = await loadState(runDir);
       const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
 
-      const failureSteps: FailureStepRow[] = flow.graph.topoOrder.map((stepId) => {
-        const stepState = finalState.runners[stepId];
+      const failureSteps: FailureStepRow[] = flow.graph.topoOrder.map((runnerId) => {
+        const stepState = finalState.runners[runnerId];
         const stepStatus: FailureStepRow['status'] =
           stepState?.status === 'succeeded'
             ? 'succeeded'
@@ -493,7 +493,7 @@ export default async function resumeCommand(
               ? 'failed'
               : 'skipped';
         return {
-          name: stepId,
+          name: runnerId,
           status: stepStatus,
           model: 'sonnet',
           durationMs:
@@ -507,7 +507,7 @@ export default async function resumeCommand(
 
       process.stdout.write(
         renderFailureBanner({
-          flowName: raceRef.raceName,
+          raceName: raceRef.raceName,
           runId,
           steps: failureSteps,
           spentUsd: result.cost.totalUsd,

@@ -21,9 +21,9 @@ export type PromptRunnerOutput =
   | { baton: string; artifact: string; schema?: z.ZodType };
 
 /**
- * Specification for a step that invokes a Claude prompt via a provider.
+ * Specification for a runner that invokes a Claude prompt via a provider.
  * Supports retry, timeout, budget cap, context injection, and structured
- * output routing (handoff and/or artifact).
+ * output routing (baton and/or artifact).
  */
 export interface PromptRunnerSpec extends RunnerBase {
   kind: 'prompt';
@@ -40,7 +40,7 @@ export interface PromptRunnerSpec extends RunnerBase {
 }
 
 /**
- * Specification for a step that runs a shell command or script.
+ * Specification for a runner that runs a shell command or script.
  * Supports retry, timeout, exit-code routing, and optional artifact output.
  */
 export interface ScriptRunnerSpec extends RunnerBase {
@@ -56,9 +56,9 @@ export interface ScriptRunnerSpec extends RunnerBase {
 }
 
 /**
- * Specification for a step that runs a script and routes control flow based
+ * Specification for a runner that runs a script and routes control flow based
  * on its exit code. Shares all ScriptRunnerSpec fields except `output` (branch
- * steps produce no artifact or handoff) and requires a non-empty `onExit` map.
+ * runners produce no artifact or baton) and requires a non-empty `onExit` map.
  */
 export interface BranchRunnerSpec extends Omit<ScriptRunnerSpec, 'output' | 'kind'> {
   kind: 'branch';

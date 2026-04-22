@@ -90,7 +90,7 @@ export type Inventory = z.infer<typeof InventorySchema>;
 
 `z.input<typeof X>` and `z.output<typeof X>` are available for the rare case where a transform makes them differ. Use `z.infer` (= `z.output`) by default.
 
-## Issue handling — the `HandoffSchemaError` contract
+## Issue handling — the `BatonSchemaError` contract
 
 `safeParse` returns `{ success: false; error: z.ZodError }` on failure. `error.issues` is a `z.core.$ZodIssue[]`. Each issue is `{ code, path, message, input? }`.
 

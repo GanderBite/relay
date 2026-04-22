@@ -356,7 +356,7 @@ function validateContextFrom(
       if (writers === undefined) {
         return err(
           new RaceDefinitionError(
-            `runner "${key}" contextFrom references unknown handoff "${required}". Remove "${required}" from runner "${key}"'s contextFrom array or add an upstream prompt runner whose output declares handoff: "${required}" in defineRace(...).`,
+            `runner "${key}" contextFrom references unknown baton "${required}". Remove "${required}" from runner "${key}"'s contextFrom array or add an upstream prompt runner whose output declares baton: "${required}" in defineRace(...).`,
           ),
         );
       }
@@ -372,7 +372,7 @@ function validateContextFrom(
       if (!hasAncestorWriter) {
         return err(
           new RaceDefinitionError(
-            `runner "${key}" contextFrom references handoff "${required}" that is not produced by any upstream runner. Add a dependsOn link from runner "${key}" to the step that writes handoff "${required}" in defineRace(...).`,
+            `runner "${key}" contextFrom references baton "${required}" that is not produced by any upstream runner. Add a dependsOn link from runner "${key}" to the runner that writes baton "${required}" in defineRace(...).`,
           ),
         );
       }

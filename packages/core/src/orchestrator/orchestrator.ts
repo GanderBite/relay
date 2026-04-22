@@ -65,8 +65,8 @@ export interface RunOptions {
    */
   raceDir?: string;
   /**
-   * Absolute path to the race module that produced the supplied Flow. When
-   * present, persisted in `race-ref.json` so `Runner.resume(runDir)` can
+   * Absolute path to the race module that produced the supplied Race. When
+   * present, persisted in `race-ref.json` so `Orchestrator.resume(runDir)` can
    * re-import the race in a fresh process. When absent, run() still proceeds
    * — resume later rejects with an actionable message if the caller omitted
    * the path and the run crashes.
@@ -163,8 +163,8 @@ function isAbortLike(err: unknown): boolean {
 }
 
 /**
- * Runner orchestrates the execution of a compiled Flow. Construct via
- * `createOrchestrator` (preferred) or `new Orchestrator(opts)`. A single Runner instance
+ * Orchestrator drives the execution of a compiled Race. Construct via
+ * `createOrchestrator` (preferred) or `new Orchestrator(opts)`. A single Orchestrator instance
  * may serve multiple sequential `run()` calls; concurrent calls share state
  * and are not supported.
  */

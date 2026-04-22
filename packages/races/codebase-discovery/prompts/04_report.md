@@ -1,6 +1,6 @@
 You are rendering the final Codebase Discovery Report as a self-contained HTML document for a `{{input.audience}}` audience. The output of this step becomes `report.html` directly — your response must be the raw HTML string and nothing else.
 
-You have three context handoffs:
+You have three input batons:
 
 - `{{inventory}}` — the package inventory (see `inventory.packages`).
 - `{{entities}}` — the named constructs across packages (see `entities.entities`).

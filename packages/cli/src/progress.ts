@@ -28,7 +28,7 @@ import {
   MODEL_WIDTH,
   DURATION_WIDTH,
   yellow,
-  flowHeader,
+  raceHeader,
 } from './visual.js';
 
 // ---------------------------------------------------------------------------
@@ -36,10 +36,10 @@ import {
 // Defined locally because that module is not in the core package's exports map.
 // ---------------------------------------------------------------------------
 
-type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+type RunnerStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
 
 interface LiveStatePartial {
-  status: StepStatus;
+  status: RunnerStatus;
   attempt: number;
   startedAt: string;
   lastUpdateAt: string;
@@ -128,8 +128,8 @@ function logStructured(
  * Constructor: `new ProgressDisplay(runDir, flow, auth)`
  * Start:       `.start(runId)` — begins watching and rendering.
  * Stop:        `.stop()` — clears the live area and returns terminal control.
- * Metrics:     `.updateStepMetrics(stepId, { tokensIn, tokensOut, costUsd, durationMs, model })`
- *              — called by the run command after each step completes.
+ * Metrics:     `.updateRunnerMetrics(runnerId, { tokensIn, tokensOut, costUsd, durationMs, model })`
+ *              — called by the run command after each runner completes.
  * SIGINT:      `.onSigint(handler)` — register a ctrl-c handler; wired on
  *              start() and unwired on stop().
  */
@@ -172,10 +172,10 @@ export class ProgressDisplay<TInput = any> {
     this.#runId = runId;
     this.#runStartedAt = new Date().toISOString();
 
-    for (const stepId of this.#flow.runnerOrder) {
-      const step = this.#flow.runners[stepId];
-      this.#steps.set(stepId, {
-        id: stepId,
+    for (const runnerId of this.#flow.runnerOrder) {
+      const step = this.#flow.runners[runnerId];
+      this.#steps.set(runnerId, {
+        id: runnerId,
         dependsOn: step?.dependsOn ?? [],
         live: null,
         runningStartedAt: null,
@@ -228,8 +228,8 @@ export class ProgressDisplay<TInput = any> {
    * The live state file carries only in-flight data; final token breakdown and
    * cost are available only from the CostTracker, which the caller reads.
    */
-  updateStepMetrics(
-    stepId: string,
+  updateRunnerMetrics(
+    runnerId: string,
     metrics: {
       tokensIn: number;
       tokensOut: number;
@@ -238,7 +238,7 @@ export class ProgressDisplay<TInput = any> {
       model: string;
     },
   ): void {
-    const state = this.#steps.get(stepId);
+    const state = this.#steps.get(runnerId);
     if (state === undefined) return;
     state.finalTokensIn = metrics.tokensIn;
     state.finalTokensOut = metrics.tokensOut;
@@ -279,8 +279,8 @@ export class ProgressDisplay<TInput = any> {
 
   async #loadLiveFile(filePath: string): Promise<void> {
     const basename = (filePath.split('/').at(-1) ?? filePath.split('\\').at(-1)) ?? '';
-    const stepId = basename.replace(/\.json$/, '');
-    const state = this.#steps.get(stepId);
+    const runnerId = basename.replace(/\.json$/, '');
+    const state = this.#steps.get(runnerId);
     if (state === undefined) return;
 
     let parsed: LiveStatePartial;
@@ -301,7 +301,7 @@ export class ProgressDisplay<TInput = any> {
     if (parsed.status === 'running' && state.runningStartedAt === null) {
       state.runningStartedAt = parsed.startedAt;
       if (!this.#isTTY) {
-        logStructured('step.start', { stepId, model: parsed.model });
+        logStructured('runner.start', { runnerId, model: parsed.model });
       }
     }
 
@@ -309,7 +309,7 @@ export class ProgressDisplay<TInput = any> {
       const started = state.runningStartedAt ?? parsed.startedAt;
       state.finalDurationMs = Date.now() - new Date(started).getTime();
       if (!this.#isTTY) {
-        logStructured('step.end', { stepId, durMs: state.finalDurationMs });
+        logStructured('runner.end', { runnerId, durMs: state.finalDurationMs });
       }
     }
 
@@ -327,7 +327,7 @@ export class ProgressDisplay<TInput = any> {
     const lines: string[] = [];
 
     // Zone 1 — Header (static, never changes during the run)
-    lines.push(flowHeader(this.#flow.name, this.#runId));
+    lines.push(raceHeader(this.#flow.name, this.#runId));
     lines.push('');
 
     // Zone 2 — Step grid (one row per step)
@@ -351,7 +351,7 @@ export class ProgressDisplay<TInput = any> {
 
   #stepRow(state: StepDisplayState): string {
     const live = state.live;
-    const status: StepStatus = live?.status ?? 'pending';
+    const status: RunnerStatus = live?.status ?? 'pending';
 
     // Status symbol
     let sym: string;

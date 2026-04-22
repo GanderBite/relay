@@ -1,18 +1,18 @@
 # Async Testing
 
-Most of the Relay test surface is async — the Runner, Provider, HandoffStore, atomic writes. Getting async testing right matters more than getting any other test pattern right.
+Most of the Relay test surface is async — the Runner, Provider, BatonStore, atomic writes. Getting async testing right matters more than getting any other test pattern right.
 
 ## Always `await`
 
 ```ts
 // ✅
-it('writes a handoff', async () => {
+it('writes a baton', async () => {
   const result = await store.write('inv', { ok: true });
   expect(result).toBeUndefined();
 });
 
 // ❌ Returns a promise that's never awaited — test passes even if write throws
-it('writes a handoff', () => {
+it('writes a baton', () => {
   store.write('inv', { ok: true });
   expect(true).toBe(true);
 });
@@ -25,7 +25,7 @@ Vitest will warn about un-awaited promises in some cases, but not all. Don't rel
 ```ts
 // ✅ Both forms — pick the one that reads cleaner
 await expect(store.write('inv', { ok: true })).resolves.toBeUndefined();
-await expect(inspectClaudeAuth({})).rejects.toThrow(ClaudeAuthError);
+await expect(inspectClaudeAuth({})).rejects.toThrow(SubscriptionAuthError);
 
 // ❌ Forgot to await — passes even if the promise rejects
 expect(store.write('inv', { ok: true })).resolves.toBeUndefined();
@@ -91,20 +91,20 @@ For testing concurrency-sensitive code (parallel step executor, state machine wr
 
 ```ts
 it('serializes concurrent state writes', async () => {
-  const sm = new StateMachine(runDir, 'flow', '0.1.0', 'run1', {});
+  const sm = new RaceStateMachine(runDir, 'my-race', '0.1.0', 'run1', {});
   await sm.init(['a', 'b', 'c']);
 
   // Fire all three completions simultaneously
   await Promise.all([
-    sm.completeStep('a'),
-    sm.completeStep('b'),
-    sm.completeStep('c'),
+    sm.completeRunner('a'),
+    sm.completeRunner('b'),
+    sm.completeRunner('c'),
   ]);
 
   const state = await loadState(runDir);
-  expect(state.steps.a.status).toBe('succeeded');
-  expect(state.steps.b.status).toBe('succeeded');
-  expect(state.steps.c.status).toBe('succeeded');
+  expect(state.runners.a.status).toBe('succeeded');
+  expect(state.runners.b.status).toBe('succeeded');
+  expect(state.runners.c.status).toBe('succeeded');
 });
 ```
 
@@ -130,7 +130,7 @@ Always drain the iterator. Breaking out early can leave subprocess handles dangl
 The default test timeout is 10 seconds (set in `vitest.config.ts`). For inherently long tests, override per-test:
 
 ```ts
-it('runs a 5-step flow', { timeout: 30_000 }, async () => {
+it('runs a 5-runner race', { timeout: 30_000 }, async () => {
   // ...
 });
 ```

@@ -8,7 +8,7 @@ import { BatonStore } from '../src/batons.js';
 import { RaceDefinitionError, BatonNotFoundError } from '../src/errors.js';
 
 describe('assemblePrompt', () => {
-  it('[CTX-001] wraps handoffs in <c name="id"> blocks in requested order', () => {
+  it('[CTX-001] wraps batons in <c name="id"> blocks in requested order', () => {
     const r = assemblePrompt({
       promptBody: 'body',
       batons: { alpha: { a: 1 }, beta: { b: 2 } },
@@ -26,20 +26,20 @@ describe('assemblePrompt', () => {
     expect(out).toContain('body');
   });
 
-  it('[CTX-002] variable precedence — runnerVars > handoffs > inputVars', () => {
+  it('[CTX-002] variable precedence — runnerVars > batons > inputVars', () => {
     const r = assemblePrompt({
       promptBody: '{{who}}',
       inputVars: { who: 'input' },
       batons: { who: 'baton' },
-      runnerVars: { who: 'step' },
+      runnerVars: { who: 'runner' },
     });
     expect(r.isOk()).toBe(true);
     const out = r._unsafeUnwrap();
-    expect(out).toContain('step');
+    expect(out).toContain('runner');
     expect(out).not.toContain('>input<');
   });
 
-  it('[CTX-005] emits no <context> when handoffs is empty', () => {
+  it('[CTX-005] emits no <context> when batons is empty', () => {
     const r = assemblePrompt({
       promptBody: 'body',
       batons: {},
@@ -77,7 +77,7 @@ describe('loadBatonValues', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('[CTX-003] fails fast on the first missing handoff', async () => {
+  it('[CTX-003] fails fast on the first missing baton', async () => {
     await store.write('alpha', { a: 1 });
     const r = await loadBatonValues(store, ['alpha', 'beta', 'gamma']);
     expect(r.isErr()).toBe(true);

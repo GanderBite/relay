@@ -4,7 +4,7 @@
 return `Result<T, E>` (sync) or `ResultAsync<T, E>` (async). Every failure mode is encoded in
 the return type — callers cannot accidentally ignore errors.
 
-`@relay/core` re-exports neverthrow primitives so flow authors and CLI code import from
+`@relay/core` re-exports neverthrow primitives so race authors and CLI code import from
 one place:
 
 ```ts
@@ -26,8 +26,8 @@ type ResultAsync<T, E>;
 Use the existing Relay error classes as `E` — never plain strings:
 
 ```ts
-Result<Flow, FlowDefinitionError>
-Result<string, HandoffSchemaError>
+Result<Race, RaceDefinitionError>
+Result<string, BatonSchemaError>
 ResultAsync<void, Error>
 ```
 
@@ -39,9 +39,9 @@ ResultAsync<void, Error>
 import { ok, err, okAsync, errAsync } from '@relay/core';
 
 // Sync
-function parse(raw: unknown): Result<Config, FlowDefinitionError> {
+function parse(raw: unknown): Result<Config, RaceDefinitionError> {
   const r = ConfigSchema.safeParse(raw);
-  if (!r.success) return err(toFlowDefError(r.error, 'invalid config'));
+  if (!r.success) return err(toRaceDefError(r.error, 'invalid config'));
   return ok(r.data);
 }
 
@@ -80,41 +80,41 @@ const result = fromPromise(fetch('/api/data'), (e) => toNetworkError(e));
 ### `.map()` — transform Ok value, pass Err through
 
 ```ts
-const upper: Result<string, FlowDefinitionError> = parse(raw).map((cfg) => cfg.name.toUpperCase());
+const upper: Result<string, RaceDefinitionError> = parse(raw).map((cfg) => cfg.name.toUpperCase());
 ```
 
 ### `.mapErr()` — transform Err value, pass Ok through
 
 ```ts
-const result = buildGraph(steps).mapErr((e) => ({ code: e.code, message: e.message }));
+const result = buildGraph(runners).mapErr((e) => ({ code: e.code, message: e.message }));
 ```
 
 ### `.andThen()` — chain a fallible operation (short-circuits on Err)
 
 ```ts
-function loadFlow(path: string): Result<Flow, FlowDefinitionError> {
-  return readConfig(path).andThen((cfg) => defineFlow(cfg));
+function loadRace(path: string): Result<Race, RaceDefinitionError> {
+  return readConfig(path).andThen((cfg) => defineRace(cfg));
 }
 ```
 
 Error types union automatically: if `readConfig` returns `Result<Config, ReadError>` and
-`defineFlow` returns `Result<Flow, FlowDefinitionError>`, the chain returns
-`Result<Flow, ReadError | FlowDefinitionError>`.
+`defineRace` returns `Result<Race, RaceDefinitionError>`, the chain returns
+`Result<Race, ReadError | RaceDefinitionError>`.
 
 ### `.orElse()` — recover from Err or replace it
 
 ```ts
-const result = buildGraph(steps).orElse((e) =>
-  e.code === ERROR_CODES.FLOW_DEFINITION ? ok(defaultGraph) : err(e),
+const result = buildGraph(runners).orElse((e) =>
+  e.code === ERROR_CODES.RACE_DEFINITION ? ok(defaultGraph) : err(e),
 );
 ```
 
 ### `.andTee()` — run side effect on Ok without consuming the value
 
 ```ts
-defineFlow(spec)
-  .andTee((flow) => logger.info({ flowId: flow.id }, 'flow loaded'))
-  .match(startRunner, reportError);
+defineRace(spec)
+  .andTee((race) => logger.info({ raceId: race.id }, 'race loaded'))
+  .match(startOrchestrator, reportError);
 ```
 
 ---
@@ -124,9 +124,9 @@ defineFlow(spec)
 `.match()` is the canonical extraction point — it forces you to handle both paths:
 
 ```ts
-const exitCode = defineFlow(spec).match(
-  (flow) => { startRunner(flow); return 0; },
-  (e) => { logger.error(e.message); return e.code === ERROR_CODES.FLOW_DEFINITION ? 2 : 1; },
+const exitCode = defineRace(spec).match(
+  (race) => { startOrchestrator(race); return 0; },
+  (e) => { logger.error(e.message); return e.code === ERROR_CODES.RACE_DEFINITION ? 2 : 1; },
 );
 ```
 
@@ -138,12 +138,12 @@ Inside complex sequential logic, the guard + early-return pattern is more readab
 nested `.andThen`:
 
 ```ts
-function buildGraph(steps: Record<string, Step>): Result<FlowGraph, FlowDefinitionError> {
+function buildGraph(runners: Record<string, Runner>): Result<RaceGraph, RaceDefinitionError> {
   const topoResult = kahnTopoSort(keys, predecessors, successors);
   if (topoResult.isErr()) return err(topoResult.error);  // re-wrap to match return type
   const topoOrder = topoResult.value;
 
-  const entryResult = resolveEntry(stepMap, rootSteps, start);
+  const entryResult = resolveEntry(runnerMap, rootRunners, start);
   if (entryResult.isErr()) return err(entryResult.error);
   const entry = entryResult.value;
 
@@ -205,11 +205,11 @@ const combined = ResultAsync.combine([fetchUser(id), fetchRoles(id)]);
 Use `error.code` (the `ErrorCode` constant) to discriminate without `instanceof`:
 
 ```ts
-defineFlow(spec).match(
+defineRace(spec).match(
   startRunner,
   (e) => {
     switch (e.code) {
-      case ERROR_CODES.FLOW_DEFINITION:  // FlowDefinitionError or ProviderCapabilityError
+      case ERROR_CODES.RACE_DEFINITION:  // RaceDefinitionError or ProviderCapabilityError
         process.exit(2);
       case ERROR_CODES.CLAUDE_AUTH:
         process.exit(3);
@@ -222,15 +222,15 @@ defineFlow(spec).match(
 
 ---
 
-## The `toFlowDefError` helper
+## The `toRaceDefError` helper
 
-Converts a Zod `$ZodError` into a `FlowDefinitionError` value (does not throw):
+Converts a Zod `$ZodError` into a `RaceDefinitionError` value (does not throw):
 
 ```ts
-import { toFlowDefError } from '@relay/core';
+import { toRaceDefError } from '@relay/core';
 
 const r = mySchema.safeParse(input);
-if (!r.success) return err(toFlowDefError(r.error, 'invalid step spec'));
+if (!r.success) return err(toRaceDefError(r.error, 'invalid runner spec'));
 ```
 
 ---

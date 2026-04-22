@@ -13,8 +13,8 @@ import { z } from '../../src/zod.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
 
 const CANNED: InvocationResponse = {
-  // Prompt executor expects valid JSON in text when the step output uses a
-  // handoff. An empty object satisfies any optional Zod schema and the
+  // Prompt executor expects valid JSON in text when the runner output uses a
+  // baton. An empty object satisfies any optional Zod schema and the
   // BatonStore write without additional configuration.
   text: '{}',
   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
@@ -95,8 +95,8 @@ describe('Runner — ready queue O(1) membership', () => {
     const elapsed = Date.now() - start;
 
     expect(result.status).toBe('succeeded');
-    // 30 000 ms accommodates real disk I/O (atomic state.json writes, handoff
-    // writes) across 200 serial steps even on slow CI machines. The O(N^2)
+    // 30 000 ms accommodates real disk I/O (atomic state.json writes, baton
+    // writes) across 200 serial runners even on slow CI machines. The O(N^2)
     // pathology from a linear queue.includes() scan would add quadratic
     // overhead on top of this baseline — catastrophic at N=200, visible as
     // multi-second blowup well within the 30 s cap.

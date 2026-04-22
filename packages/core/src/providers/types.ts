@@ -113,7 +113,7 @@ export interface NormalizedUsage {
  * Every provider translates this to its own wire format internally.
  */
 export interface InvocationRequest {
-  /** Already-rendered prompt, with handoff context blocks interpolated. */
+  /** Already-rendered prompt, with baton context blocks interpolated. */
   prompt: string;
 
   /** Provider-specific model identifier; provider validates. */

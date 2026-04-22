@@ -2,11 +2,11 @@
 
 Zod is the only mandatory runtime dep beyond Node built-ins for `@relay/core`. It's used for:
 
-- Flow `input` schemas (parsed by the CLI from positional args / flags).
-- Handoff schemas (validated on read AND write).
-- Step-level prompt output schemas (forwarded as JSON Schema to the Claude SDK).
+- Race `input` schemas (parsed by the CLI from positional args / flags).
+- Baton schemas (validated on read AND write).
+- Runner-level prompt output schemas (forwarded as JSON Schema to the Claude SDK).
 
-The library re-exports `z` so flow authors don't pin a mismatched version: `import { z } from '@relay/core'`.
+The library re-exports `z` so race authors don't pin a mismatched version: `import { z } from '@relay/core'`.
 
 ## Schema + inferred type, always paired
 
@@ -47,14 +47,14 @@ function summarizePackages(inv: Inventory): string {
 ## `safeParse` when you want to handle errors gracefully
 
 ```ts
-const result = HandoffSchema.safeParse(json);
+const result = BatonSchema.safeParse(json);
 if (!result.success) {
-  throw new HandoffSchemaError(handoffId, result.error.issues);
+  throw new BatonSchemaError(batonId, result.error.issues);
 }
 return result.data;
 ```
 
-The HandoffStore (sprint 3) uses this pattern — it wraps Zod's issues in Relay's typed error.
+The BatonStore uses this pattern — it wraps Zod's issues in Relay's typed error.
 
 ## Schemas with defaults
 
@@ -108,10 +108,10 @@ Useful at CLI boundaries where strings need to become typed values.
 ## Discriminated unions in Zod
 
 ```ts
-export const StepOutputSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('handoff'),  handoff: z.string(), schema: z.any().optional() }),
+export const RunnerOutputSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('baton'),    baton: z.string(), schema: z.any().optional() }),
   z.object({ kind: z.literal('artifact'), artifact: z.string() }),
-  z.object({ kind: z.literal('both'),     handoff: z.string(), artifact: z.string(), schema: z.any().optional() }),
+  z.object({ kind: z.literal('both'),     baton: z.string(), artifact: z.string(), schema: z.any().optional() }),
 ]);
 ```
 
@@ -120,14 +120,14 @@ export const StepOutputSchema = z.discriminatedUnion('kind', [
 ## Composing schemas
 
 ```ts
-const BaseStepSpec = z.object({
+const BaseRunnerSpec = z.object({
   dependsOn: z.array(z.string()).optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
-export const PromptStepSpec = BaseStepSpec.extend({
+export const PromptRunnerSpec = BaseRunnerSpec.extend({
   promptFile: z.string(),
-  output: StepOutputSchema,
+  output: RunnerOutputSchema,
   maxRetries: z.number().int().nonnegative().default(0),
 });
 ```
@@ -154,5 +154,5 @@ Caveats:
 
 - **Don't define a TypeScript type AND a Zod schema separately.** Always derive the type via `z.infer`.
 - **Don't `.parse()` in hot loops.** Parse once at the boundary; use the typed value internally.
-- **Don't catch ZodError silently.** Wrap it in a typed Relay error (`HandoffSchemaError`, `FlowDefinitionError`) with context.
+- **Don't catch ZodError silently.** Wrap it in a typed Relay error (`BatonSchemaError`, `RaceDefinitionError`) with context.
 - **Don't use `z.any()` casually.** It defeats the system. Use `z.unknown()` and narrow.

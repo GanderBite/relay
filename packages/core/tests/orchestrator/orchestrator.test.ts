@@ -239,7 +239,7 @@ describe('Runner — DAG walker', () => {
     await expect(orchestrator.run(race, { repoPath: 123 }, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })).rejects.toBeInstanceOf(RaceDefinitionError);
   });
 
-  it('[RUNNER-006] writes handoffs + state.json between steps (observable mid-run)', async () => {
+  it('[RUNNER-006] writes batons + state.json between runners (observable mid-run)', async () => {
     let stateMidRun: unknown;
     const provider = new MockProvider({
       responses: {

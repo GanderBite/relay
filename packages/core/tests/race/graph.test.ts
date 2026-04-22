@@ -183,7 +183,7 @@ describe('buildGraph — DAG construction', () => {
   });
 
   describe('contextFrom validation', () => {
-    it('[DAG-010] contextFrom referencing an ancestor handoff is accepted', () => {
+    it('[DAG-010] contextFrom referencing an ancestor baton is accepted', () => {
       const runners: Record<string, Runner> = {
         a: promptStep('a', { output: { baton: 'inventory' } }),
         b: promptStep('b', {
@@ -201,7 +201,7 @@ describe('buildGraph — DAG construction', () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it('[DAG-011] contextFrom referencing a non-ancestor (sibling) handoff is rejected', () => {
+    it('[DAG-011] contextFrom referencing a non-ancestor (sibling) baton is rejected', () => {
       const runners: Record<string, Runner> = {
         r: terminalStep('r'),
         a: promptStep('a', { dependsOn: ['r'], output: { baton: 'alpha' } }),
@@ -219,12 +219,12 @@ describe('buildGraph — DAG construction', () => {
       expect(msg).toMatch(/dependsOn|upstream|ancestor|not produced/i);
     });
 
-    it('[DAG-012] contextFrom referencing an unknown handoff is rejected', () => {
+    it('[DAG-012] contextFrom referencing an unknown baton is rejected', () => {
       const runners: Record<string, Runner> = {
         a: promptStep('a', { output: { artifact: 'foo.html' } }),
         b: promptStep('b', {
           dependsOn: ['a'],
-          contextFrom: ['ghostHandoff'],
+          contextFrom: ['ghostBaton'],
           output: { baton: 'b-out' },
         }),
       };
@@ -232,7 +232,7 @@ describe('buildGraph — DAG construction', () => {
       expect(result.isErr()).toBe(true);
       const msg = result._unsafeUnwrapErr().message;
       expect(msg).toContain('b');
-      expect(msg).toContain('ghostHandoff');
+      expect(msg).toContain('ghostBaton');
       expect(msg).toContain('contextFrom');
     });
   });

@@ -58,7 +58,7 @@ A sprint task block tagged `risk: high` or `risk: medium` and pointing at one of
 
 ## What you watch for
 
-- **Race conditions in parallel.** `Promise.all` over branches is fine, but state mutations from concurrent step completions must serialize through the StateMachine's queue.
+- **Race conditions in parallel.** `Promise.all` over branches is fine, but state mutations from concurrent runner completions must serialize through the RaceStateMachine's queue.
 - **Listener leaks.** SIGINT/SIGTERM handlers go in a `finally` cleanup.
 - **Hidden retries.** The Runner owns retries at the step level. Don't add provider-level retries — the SDK's network retries are kept.
 - **Missing await.** Async fire-and-forget kills observability. Every promise is awaited or stored on the run state.

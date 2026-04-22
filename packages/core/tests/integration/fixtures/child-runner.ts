@@ -5,7 +5,7 @@
  * Receives the run directory as the first command-line argument.
  *
  * Behavior:
- *   - Runner "a": completes immediately with a valid JSON handoff response.
+ *   - Runner "a": completes immediately with a valid JSON baton response.
  *   - Runner "b": sends process.send({ type: 'live-state-observed' }) to the
  *     parent once its stream() is invoked (which happens after the live-state
  *     file for "b" is written to disk), then hangs forever. The parent SIGKILL

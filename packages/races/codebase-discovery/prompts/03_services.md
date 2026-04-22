@@ -8,7 +8,7 @@ The package inventory is available as `{{inventory}}`. Walk `{{inventory.package
 - Database access, ORMs, or schema migrations.
 - Caching, queues, job scheduling, or background workers.
 - HTTP clients, API gateways, or inter-service transport.
-- State persistence (checkpoints, handoffs, atomic writes).
+- State persistence (checkpoints, batons, atomic writes).
 - Testing infrastructure (mocks, fixtures, harnesses shared across packages).
 - Build, bundling, or code generation pipelines.
 

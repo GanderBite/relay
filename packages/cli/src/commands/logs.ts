@@ -3,13 +3,13 @@
  *
  * Log source: <cwd>/.relay/runs/<runId>/run.log
  * Each line is a JSON object with shape:
- *   { ts, level, event, stepId?, data?, ...rest }
+ *   { ts, level, event, runnerId?, data?, ...rest }
  *
  * Output format per event:
  *   <HH:MM:SS>  <level colored>  <event>  <key=value pairs>
  *
  * Flags (parsed from process.argv directly — same pattern as runs.ts):
- *   --step <id>    filter to events with matching stepId
+ *   --step <id>    filter to events with matching runnerId
  *   --follow / -f  tail mode: print existing lines then watch for new ones
  *   --level <lvl>  filter to minimum level (debug < info < warn < error)
  *
@@ -83,7 +83,7 @@ interface LogEvent {
   ts?: string;
   level?: string;
   event?: string;
-  stepId?: string;
+  runnerId?: string;
   data?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -121,16 +121,16 @@ function formatTime(ts: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Render a LogEvent's fields (excluding ts, level, event, stepId, flowName,
+ * Render a LogEvent's fields (excluding ts, level, event, runnerId, raceName,
  * runId) as space-separated key=value pairs. Nested data object fields are
  * flattened one level.
  */
 function renderExtras(evt: LogEvent): string {
-  const SKIP = new Set(['ts', 'level', 'event', 'stepId', 'flowName', 'runId', 'data']);
+  const SKIP = new Set(['ts', 'level', 'event', 'runnerId', 'raceName', 'runId', 'data']);
   const pairs: string[] = [];
 
-  if (evt.stepId !== undefined) {
-    pairs.push(`stepId=${String(evt.stepId)}`);
+  if (evt.runnerId !== undefined) {
+    pairs.push(`runnerId=${String(evt.runnerId)}`);
   }
 
   for (const [k, v] of Object.entries(evt)) {
@@ -177,8 +177,8 @@ function shouldShow(
   const rank = levelRank(String(evt.level ?? 'info'));
   if (rank < levelRank(flags.minLevel)) return false;
 
-  // Step filter
-  if (flags.step !== undefined && evt.stepId !== flags.step) return false;
+  // Runner filter
+  if (flags.step !== undefined && evt.runnerId !== flags.step) return false;
 
   return true;
 }
@@ -202,14 +202,14 @@ function parseLine(line: string): LogEvent | null {
 }
 
 // ---------------------------------------------------------------------------
-// State file reader — for flowName in header
+// State file reader — for raceName in header
 // ---------------------------------------------------------------------------
 
 interface MinimalState {
-  flowName?: string;
+  raceName?: string;
 }
 
-async function readFlowName(runDir: string): Promise<string> {
+async function readRaceName(runDir: string): Promise<string> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), { encoding: 'utf8' });
     const parsed: unknown = JSON.parse(raw);
@@ -217,9 +217,9 @@ async function readFlowName(runDir: string): Promise<string> {
       parsed !== null &&
       typeof parsed === 'object' &&
       !Array.isArray(parsed) &&
-      typeof (parsed as MinimalState).flowName === 'string'
+      typeof (parsed as MinimalState).raceName === 'string'
     ) {
-      return (parsed as MinimalState).flowName as string;
+      return (parsed as MinimalState).raceName as string;
     }
   } catch {
     // fall through
@@ -338,11 +338,11 @@ export default async function logsCommand(args: unknown[], _opts: unknown): Prom
     process.exit(1);
   }
 
-  // Read flowName from state.json (best-effort).
-  const flowName = await readFlowName(runDir);
+  // Read raceName from state.json (best-effort).
+  const raceName = await readRaceName(runDir);
 
   // Print header.
-  process.stdout.write(`${MARK}  logs for ${runId}  ${SYMBOLS.dot}  ${flowName}\n`);
+  process.stdout.write(`${MARK}  logs for ${runId}  ${SYMBOLS.dot}  ${raceName}\n`);
   process.stdout.write('\n');
 
   const logPath = join(runDir, 'run.log');

@@ -51,7 +51,7 @@ Precedence: explicit `--no-color` > `NO_COLOR` env > config file > auto-TTY dete
 
 ### Banner header
 ```
-●─▶●─▶●─▶●  <verb or flow name>[  ·  <runId>][  <status symbol>]
+●─▶●─▶●─▶●  <verb or race name>[  ·  <runId>][  <status symbol>]
 ```
 Two spaces between mark and the next token. ` · ` separator with a space on each side.
 
@@ -61,18 +61,18 @@ Two spaces between mark and the next token. ` · ` separator with a space on eac
 ```
 Examples:
 ```
-flow     codebase-discovery v0.1.0
+race     codebase-discovery v0.1.0
 bill     subscription (max)  ·  no api charges
-est      $0.40  ·  5 steps  ·  ~12 min
+est      $0.40  ·  5 runners  ·  ~12 min
 ```
-Keep the label width consistent across rows in the same block. 8 chars handles "flow", "input", "run", "bill", "est", "cost", "output". For `doctor` and `runs` the labels can be longer; pick the smallest width that fits all labels in the block.
+Keep the label width consistent across rows in the same block. 8 chars handles "race", "input", "run", "bill", "est", "cost", "output". For `doctor` and `runs` the labels can be longer; pick the smallest width that fits all labels in the block.
 
-### Step row
+### Runner row
 ```
-<sym> <stepName padded to 16> <model padded to 8>  <progress>  <tokensIn>K→<tokensOut>K    [~]$<cost>
+<sym> <runnerName padded to 16> <model padded to 8>  <progress>  <tokensIn>K→<tokensOut>K    [~]$<cost>
 ```
 - `sym`: 1 char (`✓ ✕ ⠋ ○ ⊘`) followed by 1 space.
-- Step name: padded to 16 chars (use the longest in the flow, with a 16 floor).
+- Runner name: padded to 16 chars (use the longest in the race, with a 16 floor).
 - Model: padded to 8 chars (`sonnet`, `haiku`, `opus`).
 - Progress: `X.Ys` for completed, `turn N` for in-flight, `waiting on X, Y` for pending.
 - Token counts: `<thousands>K→<thousands>K` (omit when not yet known).
@@ -124,8 +124,8 @@ Always restore cursor visibility in a `finally` block — a crashed display that
 When `process.stdout.isTTY` is false, do NOT render the live display. Emit one structured line per state transition:
 
 ```
-2026-04-17T14:32:01Z info  step.start   stepId=inventory  model=sonnet
-2026-04-17T14:32:03Z info  step.end     stepId=inventory  durMs=2104  costUsd=0.005
+2026-04-17T14:32:01Z info  runner.start   runnerId=inventory  model=sonnet
+2026-04-17T14:32:03Z info  runner.end     runnerId=inventory  durMs=2104  costUsd=0.005
 ```
 
 Format: `<ISO-8601> <level> <event> <key=value pairs>`. One line per event. No color.

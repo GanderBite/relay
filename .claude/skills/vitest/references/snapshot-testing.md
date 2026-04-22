@@ -10,7 +10,7 @@ Snapshots are the right tool for CLI output that has to match a spec example byt
 
 ## When NOT to use
 
-- **Internal data structures** — RunState, StepMetrics shape. Use explicit `expect(x.field).toBe(...)` so the test names what matters.
+- **Internal data structures** — RaceState, RunnerMetrics shape. Use explicit `expect(x.field).toBe(...)` so the test names what matters.
 - **Anything with a timestamp / runId / cost / duration** — they change every run. Either inject deterministic values, or assert structurally.
 - **Multi-line files where you don't care about exact bytes.** Use `expect(text).toContain(...)` or parse and assert.
 
@@ -21,12 +21,12 @@ import { renderStartBanner } from '../src/banner.js';
 
 it('matches the §6.3 pre-run banner format', () => {
   const out = renderStartBanner({
-    flow: { name: 'codebase-discovery', version: '0.1.0' },
+    race: { name: 'codebase-discovery', version: '0.1.0' },
     runId: 'f9c3a2',
     auth: { ok: true, billingSource: 'subscription', detail: 'max via OAuth' },
     input: { repoPath: '.', audience: 'both' },
     costEstimate: { min: 0.30, max: 0.50 },
-    stepCount: 5,
+    runnerCount: 5,
     etaMin: 12,
     nowIso: '2026-04-17T14:32:00Z',   // injected for determinism
   });
@@ -34,13 +34,13 @@ it('matches the §6.3 pre-run banner format', () => {
   expect(out).toMatchInlineSnapshot(`
     "●─▶●─▶●─▶●  relay
 
-    flow     codebase-discovery v0.1.0
+    race     codebase-discovery v0.1.0
     input    .  (audience=both)
     run      f9c3a2  ·  2026-04-17 14:32
     bill     subscription (max)  ·  no api charges
-    est      $0.40  ·  5 steps  ·  ~12 min
+    est      $0.40  ·  5 runners  ·  ~12 min
 
-    press ctrl-c any time — state is saved after every step.
+    press ctrl-c any time — state is saved after every runner.
     ───────────────────────────────────────────────────────"
   `);
 });

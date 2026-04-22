@@ -12,8 +12,8 @@ import {
 } from '../src/errors.js';
 import type { RaceState } from '../src/race/types.js';
 
-const FLOW_NAME = 'test-flow';
-const FLOW_VERSION = '0.1.0';
+const RACE_NAME = 'test-race';
+const RACE_VERSION = '0.1.0';
 const RUN_ID = 'run-1';
 
 describe('RaceStateMachine — transitions + persistence', () => {
@@ -28,7 +28,7 @@ describe('RaceStateMachine — transitions + persistence', () => {
   });
 
   async function freshInit(runnerIds: string[] = ['a', 'b']): Promise<RaceStateMachine> {
-    const sm = new RaceStateMachine(tmp, FLOW_NAME, FLOW_VERSION, RUN_ID);
+    const sm = new RaceStateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
     const r = await sm.init(runnerIds);
     expect(r.isOk()).toBe(true);
     return sm;
@@ -39,8 +39,8 @@ describe('RaceStateMachine — transitions + persistence', () => {
     const raw = await readFile(join(tmp, 'state.json'), 'utf8');
     const parsed = JSON.parse(raw) as RaceState;
     expect(parsed.runId).toBe(RUN_ID);
-    expect(parsed.raceName).toBe(FLOW_NAME);
-    expect(parsed.raceVersion).toBe(FLOW_VERSION);
+    expect(parsed.raceName).toBe(RACE_NAME);
+    expect(parsed.raceVersion).toBe(RACE_VERSION);
     expect(parsed.status).toBe('running');
     expect(parsed.runners.a.status).toBe('pending');
     expect(parsed.runners.a.attempts).toBe(0);
@@ -72,12 +72,12 @@ describe('RaceStateMachine — transitions + persistence', () => {
     expect(err.details?.attempted).toBe('start');
   });
 
-  it('[STATE-004] completeRunner with artifacts records handoffs + artifacts arrays in insertion order', async () => {
+  it('[STATE-004] completeRunner with artifacts records batons + artifacts arrays in insertion order', async () => {
     const sm = await freshInit();
     sm.startRunner('a');
     const artifacts = {
-      inventory: '/runs/r1/handoffs/inventory.json',
-      services: '/runs/r1/handoffs/services.json',
+      inventory: '/runs/r1/batons/inventory.json',
+      services: '/runs/r1/batons/services.json',
     };
     const r = sm.completeRunner('a', {
       batons: ['inventory', 'services'],
@@ -190,8 +190,8 @@ describe('RaceStateMachine — transitions + persistence', () => {
     expect(loadR.isOk()).toBe(true);
     const loaded = loadR._unsafeUnwrap();
     expect(loaded.runId).toBe(RUN_ID);
-    expect(loaded.raceName).toBe(FLOW_NAME);
-    expect(loaded.raceVersion).toBe(FLOW_VERSION);
+    expect(loaded.raceName).toBe(RACE_NAME);
+    expect(loaded.raceVersion).toBe(RACE_VERSION);
     expect(loaded.runners.a.status).toBe('succeeded');
     expect(loaded.runners.b.status).toBe('running');
   });

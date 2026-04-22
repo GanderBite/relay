@@ -52,7 +52,7 @@ import { extractSdkResultSummary, mergeUsage, translateSdkMessage } from './tran
 export interface ClaudeAgentSdkProviderOptions {
   /**
    * Per-run env overrides merged on top of the filtered host env before
-   * handoff to the SDK. Keys here always win over anything in process.env.
+   * passing to the SDK. Keys here always win over anything in process.env.
    */
   extraEnv?: Record<string, string>;
 

@@ -8,7 +8,7 @@ The single SDK entry point Relay uses. The `query()` function takes `{ prompt, o
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const stream = query({
-  prompt: string,    // already-rendered prompt with handoff context blocks
+  prompt: string,    // already-rendered prompt with baton context blocks
   options: {
     // Model selection
     model?: 'sonnet' | 'haiku' | 'opus' | string,  // shortname or fully-qualified id
@@ -115,7 +115,7 @@ The SDK throws on:
 - Auth failure surfaced from the binary.
 - Abort signal fired (throws an AbortError-like).
 
-Wrap each `for await` in a try/catch. On abort, exit cleanly (don't propagate AbortError as a step failure — the runner already knows). On other errors, wrap in `StepFailureError` with the step ID and re-throw.
+Wrap each `for await` in a try/catch. On abort, exit cleanly (don't propagate AbortError as a runner failure — the Orchestrator already knows). On other errors, wrap in `StepFailureError` with the runner ID and re-throw.
 
 ## Don't do
 

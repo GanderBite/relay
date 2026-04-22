@@ -6,7 +6,7 @@
  * are swallowed silently — telemetry must never affect the run's exit code.
  *
  * No flow input data, no prompt content, no path strings are sent. The only
- * fields that tie a run to the catalog are flowName and flowVersion.
+ * fields that tie a run to the catalog are raceName and raceVersion.
  */
 
 import { readFileSync } from 'node:fs';
@@ -30,8 +30,8 @@ const CONFIG_PATH = join(homedir(), '.relay', 'config.json');
  * No input data, no prompts, no file paths.
  */
 export interface RunEvent {
-  flowName: string;
-  flowVersion: string;
+  raceName: string;
+  raceVersion: string;
   status: 'success' | 'failure' | 'aborted';
   durationMs: number;
   stepsCount: number;

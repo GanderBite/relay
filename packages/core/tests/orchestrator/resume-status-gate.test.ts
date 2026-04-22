@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { ok, type Result } from 'neverthrow';
 
 // Hoisted shared state so the vi.mock factory for ./resume.js can hand the
-// Runner a real Flow object without touching disk. Tests set `flowFixture` to
-// the Flow they want resumed and `flowRefOverride` to the race-ref payload
+// Orchestrator a real Race object without touching disk. Tests set `flowFixture` to
+// the Race they want resumed and `flowRefOverride` to the race-ref payload
 // that load path should surface. Mocking avoids writing a compiled race
 // module to /tmp just to exercise the status-gate branches.
 const mocks = vi.hoisted(() => ({
@@ -63,8 +63,8 @@ const DEFAULT_CAPS: ProviderCapabilities = {
 };
 
 const canned: InvocationResponse = {
-  // Handoff outputs parse text as JSON; keep the canned body syntactically
-  // valid so the re-dispatch path settles with handoff persistence rather
+  // Baton outputs parse text as JSON; keep the canned body syntactically
+  // valid so the re-dispatch path settles with baton persistence rather
   // than tripping BatonSchemaError before any state transition lands.
   text: '{"ok":true}',
   usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },

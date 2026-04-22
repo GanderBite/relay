@@ -114,7 +114,7 @@ When the parent AbortController fires (Ctrl-C, timeout, parent step failure), th
 
 ## Live state writes
 
-For each `usage` event during streaming, write a partial state file at `<runDir>/live/<stepId>.json`. The CLI's `ProgressDisplay` polls these to render the live cost / token deltas. Keep writes cheap — debounce to ~100ms if usage events are very frequent.
+For each `usage` event during streaming, write a partial state file at `<runDir>/live/<runnerId>.json`. The CLI's `ProgressDisplay` polls these to render the live cost / token deltas. Keep writes cheap — debounce to ~100ms if usage events are very frequent.
 
 ## Defensive translation
 

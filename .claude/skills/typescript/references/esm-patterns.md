@@ -23,15 +23,15 @@ The compiler erases the `.js` to nothing during emit; the compiled code becomes 
 
 ```ts
 // ✅
-import type { Flow, FlowSpec } from './flow/types.js';
-import { defineFlow } from './flow/define.js';
+import type { Race, RaceSpec } from './race/types.js';
+import { defineRace } from './race/define.js';
 
 // ❌ Won't compile under verbatimModuleSyntax
-import { type Flow, defineFlow } from './flow/define.js';
+import { type Race, defineRace } from './race/define.js';
 
 // ✅ For mixed value+type imports, split into two statements
-import { defineFlow } from './flow/define.js';
-import type { Flow } from './flow/types.js';
+import { defineRace } from './race/define.js';
+import type { Race } from './race/types.js';
 ```
 
 ## Replacing `__dirname` and `__filename`
@@ -58,8 +58,8 @@ The `new URL('./templates', import.meta.url)` form is idiomatic for asset paths 
 import { ClaudeProvider } from './providers/claude/provider.js';
 
 // Dynamic (when path is computed)
-const flowModule = await import(`file://${flowPath}/dist/flow.js`);
-const flow = flowModule.default;
+const raceModule = await import(`file://${racePath}/dist/race.js`);
+const race = raceModule.default;
 ```
 
 When importing from a dynamic absolute path on disk, use the `file://` URL prefix — Node's ESM resolver requires it for absolute paths.

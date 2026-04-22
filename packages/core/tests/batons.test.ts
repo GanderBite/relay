@@ -46,7 +46,7 @@ describe('BatonStore', () => {
     expect(JSON.parse(raw)).toEqual(value);
   });
 
-  it('[HANDOFF-002] path traversal via ".." in handoff id is rejected', async () => {
+  it('[HANDOFF-002] path traversal via ".." in baton id is rejected', async () => {
     const r = await store.write('../../etc/passwd', { x: 1 });
     expect(r.isErr()).toBe(true);
     const err = r._unsafeUnwrapErr();
@@ -55,7 +55,7 @@ describe('BatonStore', () => {
     expect(await batonsDirContents()).toEqual([]);
   });
 
-  it('[HANDOFF-003] handoff id with slashes is rejected', async () => {
+  it('[HANDOFF-003] baton id with slashes is rejected', async () => {
     for (const bad of ['a/b', 'a\\b', 'foo/']) {
       const r = await store.write(bad, {});
       expect(r.isErr()).toBe(true);
@@ -65,14 +65,14 @@ describe('BatonStore', () => {
     expect(await batonsDirContents()).toEqual([]);
   });
 
-  it('[HANDOFF-004] handoff id starting with dot is rejected', async () => {
+  it('[HANDOFF-004] baton id starting with dot is rejected', async () => {
     const r = await store.write('.hidden', {});
     expect(r.isErr()).toBe(true);
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(RaceDefinitionError);
     expect(r._unsafeUnwrapErr().message).toContain('invalid baton id');
   });
 
-  it('[HANDOFF-005] handoff id with control chars is rejected', async () => {
+  it('[HANDOFF-005] baton id with control chars is rejected', async () => {
     for (const ch of ['\x00', '\x1f', '\x7f']) {
       const r = await store.write(`x${ch}y`, {});
       expect(r.isErr()).toBe(true);
@@ -80,7 +80,7 @@ describe('BatonStore', () => {
     }
   });
 
-  it('[HANDOFF-006] empty handoff id is rejected', async () => {
+  it('[HANDOFF-006] empty baton id is rejected', async () => {
     const r = await store.write('', {});
     expect(r.isErr()).toBe(true);
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(RaceDefinitionError);
@@ -113,7 +113,7 @@ describe('BatonStore', () => {
     expect(r._unsafeUnwrap()).toEqual({ name: 'alice' });
   });
 
-  it('[HANDOFF-009] read on missing handoff returns BatonNotFoundError', async () => {
+  it('[HANDOFF-009] read on missing baton returns BatonNotFoundError', async () => {
     const r = await store.read('never-written');
     expect(r.isErr()).toBe(true);
     const err = r._unsafeUnwrapErr();

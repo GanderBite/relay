@@ -1,5 +1,5 @@
 /**
- * Flow fixture for branch-topology resume tests.
+ * Race fixture for branch-topology resume tests.
  *
  * Topology: entry -> b1 -> b2 -> end
  *                    ^

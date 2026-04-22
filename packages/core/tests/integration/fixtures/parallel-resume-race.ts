@@ -1,5 +1,5 @@
 /**
- * Flow fixture for parallel-topology resume tests.
+ * Race fixture for parallel-topology resume tests.
  *
  * Topology: entry -> parallel(c1, c2, c3) -> end
  *
