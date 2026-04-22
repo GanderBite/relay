@@ -44,6 +44,7 @@ export {
   StateVersionMismatchError,
   StateWriteError,
   StepFailureError,
+  SubscriptionTosLeakError,
   TimeoutError,
   toFlowDefError,
 } from './errors.js';

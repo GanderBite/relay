@@ -1,29 +1,34 @@
 /**
- * Environment allowlist for ClaudeProvider subprocess invocations.
+ * Per-provider environment allowlist for Claude-backed subprocess calls.
  *
- * The `claude` binary inherits whatever env the parent process had, which may
- * include `ANTHROPIC_API_KEY`. The claude-agent-sdk merges its `options.env`
- * on top of `process.env` rather than using it as the authoritative spawn env.
- * That means a naive keep-list leaves every unlisted parent var in place — the
- * billing-safety guard in auth.ts would be silently defeated and any secret
- * in the caller's environment would leak to the subprocess.
+ * Both providers spawn the `claude` binary (directly via `claude -p` or
+ * indirectly via the Agent SDK's child process). The binary inherits the
+ * parent process env unless we replace it. The Agent SDK in particular
+ * merges its `options.env` on top of `process.env` rather than using it as
+ * the authoritative spawn env, which means a naive keep-list would leave
+ * every unlisted parent var in place — secrets included.
  *
  * To get true containment we must both:
  *   - include: copy every allowlisted host env var at its real value, and
  *   - suppress: set every non-allowlisted host env var to `undefined`.
  *
  * The SDK documents `undefined` values as the way to remove an inherited var
- * during the merge. The returned object is therefore `Record<string, string
- * | undefined>` — a patch, not a standalone env.
+ * during the merge. The returned object is therefore `Record<string, string |
+ * undefined>` — a patch, not a standalone env.
  *
- * The two-phase allowlist (exact names + prefixes) reflects two different
- * requirements:
+ * Per-provider TOS surfaces:
  *
- *   Exact names: a fixed set of POSIX/system variables the binary needs to
- *   function correctly (path resolution, locale, timezone, temp files, shell).
- *   Prefix sweep: captures every variable in a family (e.g., all CLAUDE_*)
- *   without enumerating them one-by-one — the family can grow without this
- *   file changing.
+ *   claude-agent-sdk → forwards `ANTHROPIC_*` (so the SDK sees the API key),
+ *     and EXPLICITLY suppresses `CLAUDE_CODE_OAUTH_TOKEN` even if the host
+ *     has it set. The subscription token must never reach this subprocess.
+ *
+ *   claude-cli → forwards `CLAUDE_*` (so the binary sees the OAuth token and
+ *     subscription credentials), and EXPLICITLY suppresses
+ *     `ANTHROPIC_API_KEY` even if the host has it set. The API key must
+ *     never reach this subprocess — the user picked the subscription path.
+ *
+ * Cloud-routing exact keys (`CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY`) are
+ * forwarded under both providers — they pre-empt either token at runtime.
  *
  * Caller-supplied `extra` values are merged last, so per-step env overrides
  * always win over host env and are never suppressed.
@@ -49,66 +54,97 @@ export const ALLOWLIST_EXACT: readonly string[] = [
 ] as const;
 
 /**
- * Prefix list forwarded when API-key opt-in is NOT active.
- * Captures the entire CLAUDE_ family (CLAUDE_CODE_OAUTH_TOKEN,
- * CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX, CLAUDE_CODE_USE_FOUNDRY,
- * and any future CLAUDE_* variables the SDK adds).
+ * Cloud-routing exact-match keys. Forwarded under every provider — the
+ * presence of any one of these tells the binary to bill the cloud account
+ * instead of either Anthropic surface.
  */
-export const ALLOWLIST_PREFIX_BASE: readonly string[] = ['CLAUDE_'] as const;
+export const ALLOWLIST_CLOUD_ROUTING: readonly string[] = [
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'ANTHROPIC_FOUNDRY_URL',
+] as const;
 
 /**
- * Prefix list forwarded when `allowApiKey` is true.
- * Extends the base list with ANTHROPIC_*, which covers ANTHROPIC_API_KEY,
- * ANTHROPIC_BASE_URL, ANTHROPIC_FOUNDRY_URL, and any future ANTHROPIC_* vars.
+ * Prefix list forwarded under the claude-agent-sdk provider.
+ * Captures ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, and any future ANTHROPIC_*
+ * vars the SDK adds. CLAUDE_CODE_OAUTH_TOKEN is explicitly suppressed below.
  */
-export const ALLOWLIST_PREFIX_WITH_API: readonly string[] = [
-  ...ALLOWLIST_PREFIX_BASE,
-  'ANTHROPIC_',
-] as const;
+export const ALLOWLIST_PREFIX_AGENT_SDK: readonly string[] = ['ANTHROPIC_'] as const;
+
+/**
+ * Prefix list forwarded under the claude-cli provider.
+ * Captures CLAUDE_CODE_OAUTH_TOKEN and any future CLAUDE_* vars.
+ * ANTHROPIC_API_KEY is explicitly suppressed below.
+ */
+export const ALLOWLIST_PREFIX_CLI: readonly string[] = ['CLAUDE_'] as const;
+
+/**
+ * Keys explicitly suppressed (mapped to `undefined`) under each provider,
+ * even if they would otherwise be matched by a prefix or are present in the
+ * host env. These are the TOS-leak surfaces.
+ */
+const SUPPRESS_AGENT_SDK: readonly string[] = ['CLAUDE_CODE_OAUTH_TOKEN'] as const;
+const SUPPRESS_CLI: readonly string[] = ['ANTHROPIC_API_KEY'] as const;
 
 // ---------------------------------------------------------------------------
 // buildEnvAllowlist
 // ---------------------------------------------------------------------------
 
+/** Provider identifiers accepted by `buildEnvAllowlist`. */
+export type ClaudeProviderKind = 'claude-agent-sdk' | 'claude-cli';
+
 export interface BuildEnvAllowlistOptions {
-  /**
-   * When true, ANTHROPIC_* variables (including ANTHROPIC_API_KEY) are
-   * forwarded to the subprocess. Must only be set when the user has
-   * explicitly opted into API-account billing.
-   */
-  allowApiKey?: boolean;
+  /** Which Claude-backed provider is asking. Determines which prefix family is forwarded and which key is force-suppressed. */
+  providerKind: ClaudeProviderKind;
 
   /**
    * Per-step or per-run env overrides merged on top of the filtered host env.
-   * Keys here take precedence over anything in process.env and are never
-   * suppressed.
+   * Keys here take precedence over anything in process.env and over the
+   * forced suppression list.
    */
   extra?: Record<string, string>;
 }
 
 /**
- * Build a safe env patch for a ClaudeProvider subprocess invocation.
+ * Build a safe env patch for a Claude-backed subprocess invocation.
  *
  * Walks process.env once and for each key either:
  *   - copies the real value (allowlisted via exact match or prefix), or
  *   - emits `undefined` (instructs the SDK merge to strip the inherited var).
+ *
+ * Always-suppressed keys for the chosen provider are then force-set to
+ * `undefined` regardless of whether the host had them, so the patch is
+ * complete on its own and downstream code does not have to introspect
+ * process.env to decide what is safe.
  *
  * Caller-supplied extras are merged last and always carry a string value.
  *
  * Never mutates process.env. Always returns a fresh plain object.
  */
 export function buildEnvAllowlist(
-  opts: BuildEnvAllowlistOptions = {},
+  opts: BuildEnvAllowlistOptions,
 ): Record<string, string | undefined> {
   const prefixes =
-    opts.allowApiKey === true ? ALLOWLIST_PREFIX_WITH_API : ALLOWLIST_PREFIX_BASE;
-  const exact = new Set<string>(ALLOWLIST_EXACT);
+    opts.providerKind === 'claude-agent-sdk'
+      ? ALLOWLIST_PREFIX_AGENT_SDK
+      : ALLOWLIST_PREFIX_CLI;
+  const suppress =
+    opts.providerKind === 'claude-agent-sdk' ? SUPPRESS_AGENT_SDK : SUPPRESS_CLI;
+  const exact = new Set<string>([...ALLOWLIST_EXACT, ...ALLOWLIST_CLOUD_ROUTING]);
+  const suppressSet = new Set<string>(suppress);
   const result: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
     // Skip keys the host never actually set — there is nothing to suppress
     // and no value to forward.
     if (value === undefined) {
+      continue;
+    }
+
+    // Force-suppress wins over any allowlist match for this provider.
+    if (suppressSet.has(key)) {
+      result[key] = undefined;
       continue;
     }
 
@@ -120,6 +156,15 @@ export function buildEnvAllowlist(
       result[key] = value;
     } else {
       // Suppress: tell the SDK merge to drop this inherited var.
+      result[key] = undefined;
+    }
+  }
+
+  // Make the suppression patch complete: even if the host did not have the
+  // key set, emit the undefined sentinel so downstream code reading the
+  // returned object does not have to know which keys could leak.
+  for (const key of suppressSet) {
+    if (!(key in result)) {
       result[key] = undefined;
     }
   }

@@ -21,6 +21,7 @@ export const ERROR_CODES = {
   STATE_WRITE: 'relay_STATE_WRITE',
   STEP_FAILURE: 'relay_STEP_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
+  TOS_LEAK_BLOCKED: 'E_TOS_LEAK_BLOCKED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -98,9 +99,37 @@ export class StepFailureError extends PipelineError {
  * CLI exit code: 3
  */
 export class ClaudeAuthError extends PipelineError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, ERROR_CODES.CLAUDE_AUTH, details);
+  constructor(
+    message: string,
+    details?: Record<string, unknown>,
+    /** Override the code for subclasses that extend ClaudeAuthError. */
+    code: ErrorCode = ERROR_CODES.CLAUDE_AUTH,
+  ) {
+    super(message, code, details);
     this.name = 'ClaudeAuthError';
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Thrown when a subscription OAuth token would otherwise be routed to a
+ * provider whose terms forbid subscription credentials. Carries a distinct
+ * code so the CLI and tests can branch on the TOS-leak case specifically
+ * rather than the generic auth-misconfiguration case.
+ *
+ * Example: `CLAUDE_CODE_OAUTH_TOKEN` is present in the environment but the
+ * caller selected the API-billed claude-agent-sdk provider — Anthropic's
+ * commercial terms do not permit subscription tokens to be used through
+ * the SDK, so the run is blocked before any subprocess is launched.
+ *
+ * CLI exit code: 3 (shares the auth-error exit code with `ClaudeAuthError`).
+ */
+export class SubscriptionTosLeakError extends ClaudeAuthError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, details, ERROR_CODES.TOS_LEAK_BLOCKED);
+    this.name = 'SubscriptionTosLeakError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
