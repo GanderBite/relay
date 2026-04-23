@@ -1,15 +1,15 @@
 # @relay/generator
 
-The Claude Code skill and scaffold engine that generates new race packages.
+The Claude Code skill and scaffold engine that generates new flow packages.
 
 ---
 
 ## What it does
 
-`@relay/generator` creates a well-formed race package directory from a layout name
-and a race name. It produces `race.ts`, a `prompts/` directory, a `package.json`
+`@relay/generator` creates a well-formed flow package directory from a layout name
+and a flow name. It produces `flow.ts`, a `prompts/` directory, a `package.json`
 with the `relay` metadata block, a `tsconfig.json`, and a `README.md` that matches
-the mandatory sections in `docs/race-package-format.md`.
+the mandatory sections in `docs/flow-package-format.md`.
 
 The generator runs as a Claude Code skill (invocable from within the CLI via
 `relay new`) or as a standalone binary (`relay-generator`).
@@ -29,17 +29,17 @@ npm install -g @relay/cli
 ## Usage via CLI
 
 ```bash
-relay new <race-name>
-relay new <race-name> --layout=linear
-relay new <race-name> --layout=fan-out
-relay new <race-name> --layout=discovery
+relay new <flow-name>
+relay new <flow-name> --layout=linear
+relay new <flow-name> --layout=fan-out
+relay new <flow-name> --layout=discovery
 ```
 
 Available layouts: `blank`, `linear`, `fan-out`, `discovery`.
 
-The `blank` layout produces a single-runner race with one prompt file.
-`linear` produces three runners in sequence. `fan-out` produces one upstream
-runner and two parallel downstream runners. `discovery` mirrors the
+The `blank` layout produces a single-step flow with one prompt file.
+`linear` produces three steps in sequence. `fan-out` produces one upstream
+step and two parallel downstream steps. `discovery` mirrors the
 `codebase-discovery` shape: one upstream, two parallel, one synthesis.
 
 ---
@@ -47,14 +47,14 @@ runner and two parallel downstream runners. `discovery` mirrors the
 ## Usage as a standalone binary
 
 ```bash
-relay-generator --name=my-audit --layout=linear --out=./packages/races/my-audit
+relay-generator --name=my-audit --layout=linear --out=./packages/flows/my-audit
 ```
 
 Flags:
 
 | Flag | Required | Default | Notes |
 |---|---|---|---|
-| `--name` | yes | — | The race name, used as the `name` field in `defineRace` and `package.json`. |
+| `--name` | yes | — | The flow name, used as the `name` field in `defineFlow` and `package.json`. |
 | `--layout` | yes | — | One of `blank`, `linear`, `fan-out`, `discovery`. |
 | `--out` | no | `./<name>` | Output directory. Created if it does not exist. |
 
@@ -65,16 +65,16 @@ Flags:
 The generator writes a directory that passes catalog lint:
 
 ```
-<race-name>/
-├── package.json      # @ganderbite/race-<name>, relay metadata block
-├── race.ts           # defineRace() default export
-├── prompts/          # one .md file per runner
+<flow-name>/
+├── package.json      # @ganderbite/flow-<name>, relay metadata block
+├── flow.ts           # defineFlow() default export
+├── prompts/          # one .md file per step
 ├── schemas/          # placeholder for Zod schema files
 ├── README.md         # mandatory sections pre-filled
 └── tsconfig.json     # extends @relay/core/tsconfig
 ```
 
-See `docs/race-package-format.md` for the full format reference.
+See `docs/flow-package-format.md` for the full format reference.
 
 ---
 

@@ -33,7 +33,7 @@ relay install {{pkgName}}
 relay run {{pkgName}} <repo-path> [--audience=pm|dev|both]
 ```
 
-The most common invocation, pointing the race at the current directory:
+The most common invocation, pointing the flow at the current directory:
 
 ```bash
 relay run {{pkgName}} .
@@ -41,24 +41,24 @@ relay run {{pkgName}} .
 
 ## Configuration
 
-The race accepts these inputs:
+The flow accepts these inputs:
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `repoPath` | `string` | (required) | Absolute path to the repository. |
 | `audience` | `enum` | `both` | One of `pm`, `dev`, `both`. Tunes the report prose. |
 
-The race runs four runners: `inventory`, then `entities` and `services`
-in parallel, then `report`. Each runner uses the default provider
+The flow runs four steps: `inventory`, then `entities` and `services`
+in parallel, then `report`. Each step uses the default provider
 (`sonnet` when Claude is installed).
 
 ## Customization
 
-Fork the race:
+Fork the flow:
 
 ```bash
 relay install {{pkgName}}
-mv ./.relay/races/{{pkgName}} ./my-discovery
+mv ./.relay/flows/{{pkgName}} ./my-discovery
 cd ./my-discovery
 relay run .
 ```
@@ -68,7 +68,7 @@ Common customizations:
 - **Tighten the schema.** Edit `schemas/inventory.ts` or
   `schemas/entities.ts` to require or optionalize fields.
 - **Swap the model.** Pass `--model.report=opus` on the command line,
-  or edit `race.ts` to set `model` per runner.
+  or edit `flow.ts` to set `model` per step.
 - **Change the report layout.** Edit `prompts/04_report.md`. The
   section list at the top of the prompt controls what ships.
 

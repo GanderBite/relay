@@ -5,6 +5,6 @@
     "rootDir": "./",
     "noEmit": false
   },
-  "include": ["race.ts"],
+  "include": ["flow.ts"],
   "exclude": ["node_modules", "dist"]
 }

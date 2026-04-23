@@ -72,7 +72,7 @@ While orchestrating, ensure the dispatched agent invokes the right sub-skill for
 
 - Any user-visible string → `relay-brand-grammar`
 - `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, auth, env allowlist, doctor → `billing-safety`
-- A race package (examples/, packages/races/, generator templates) → `race-package-format`
+- A flow package (examples/, packages/flows/, generator templates) → `flow-package-format`
 - `@anthropic-ai/claude-agent-sdk` wiring → `claude-agent-sdk`
 - Any `.ts` file write or refactor → `typescript`
 - Any Vitest test → `vitest`
@@ -85,7 +85,7 @@ Dispatch every task via the Agent tool with the subagent_type matching one of th
 
 - `@systems-engineer (agent)` — `risk: high` in `core.runner` / `core.providers.claude` / `core.flow` / `core.state`
 - `@cli-ux-engineer (agent)` — any module starting with `cli.` (wins over risk level)
-- `@race-author (agent)` — target path includes `prompts/`, `race.ts`, or `packages/generator/templates/`
+- `@flow-author (agent)` — target path includes `prompts/`, `flow.ts`, or `packages/generator/templates/`
 - `@test-engineer (agent)` — target path under `tests/` or task name starts with "Test "
 - `@doc-writer (agent)` — target path under `docs/` or root `README.md`
 - `@catalog-builder (agent)` — target path under `catalog/`, or task touches `lint.ts` / `registry.ts` / `.github/workflows/catalog-deploy.yml`

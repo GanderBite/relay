@@ -44,44 +44,44 @@ function row35(verb: string, desc: string): string {
 export function renderSplash(): void {
   const lines: string[] = [
     // Header — mark + wordmark tagline
-    `${MARK}  relay · Claude pipelines you can run twice`,
+    `${MARK}  relay · Claude flows you can run twice`,
     '',
 
     // USAGE — relay init added as first row per spec amendment
     'USAGE',
-    row ('relay init',               'configure your race-running provider'),
-    row35('relay <race> [input]',    'run a race (shorthand)'),
-    row35('relay run <race> [input]','same, explicit form'),
-    row ('relay resume <runId>',     'continue a failed or stopped run'),
-    row ('relay doctor',             'check your environment before running'),
+    row('relay init', 'configure your flow-running provider'),
+    row35('relay <flow> [input]', 'run a flow (shorthand)'),
+    row35('relay run <flow> [input]', 'same, explicit form'),
+    row('relay resume <runId>', 'continue a failed or stopped run'),
+    row('relay doctor', 'check your environment before running'),
     '',
 
     // CATALOG
     'CATALOG',
-    row('relay list',               'races installed in this project'),
-    row('relay search <query>',     'find races in the public catalog'),
-    row('relay install <race>',     'add a race to this project'),
-    row('relay upgrade [<race>]',   'fetch the latest version'),
+    row('relay list', 'flows installed in this project'),
+    row('relay search <query>', 'find flows in the public catalog'),
+    row('relay install <flow>', 'add a flow to this project'),
+    row('relay upgrade [<flow>]', 'fetch the latest version'),
     '',
 
     // AUTHORING
     'AUTHORING',
-    row('relay new <name>',         'scaffold a new race'),
-    row('relay test [<race>]',      "run a race's snapshot tests"),
-    row('relay publish',            'lint + publish a race to npm'),
+    row('relay new <name>', 'scaffold a new flow'),
+    row('relay test [<flow>]', "run a flow's snapshot tests"),
+    row('relay publish', 'lint + publish a flow to npm'),
     '',
 
     // DIAGNOSTICS
     'DIAGNOSTICS',
-    row('relay runs',               'recent runs in this directory'),
-    row('relay logs <runId>',       'structured run log'),
-    row('relay --help <command>',   'help for a specific command'),
+    row('relay runs', 'recent runs in this directory'),
+    row('relay logs <runId>', 'structured run log'),
+    row('relay --help <command>', 'help for a specific command'),
     '',
 
     // LEARN — MARK prefix with 3 spaces, verbatim from §6.1
     'LEARN',
     `${INDENT}${MARK}   relay.dev                    the catalog`,
-    `${INDENT}${MARK}   relay.dev/docs/first-race    scaffold one in 5 minutes`,
+    `${INDENT}${MARK}   relay.dev/docs/first-flow    scaffold one in 5 minutes`,
   ];
 
   process.stdout.write(lines.join('\n') + '\n');

@@ -7,17 +7,17 @@
 
 import type { AuthState, CostEstimate } from '@relay/core';
 import {
-  WORDMARK,
-  SYMBOLS,
-  STEP_NAME_WIDTH,
-  MODEL_WIDTH,
   DURATION_WIDTH,
   gray,
   green,
+  kvLine,
+  MODEL_WIDTH,
+  raceHeader,
   red,
   rule,
-  kvLine,
-  raceHeader,
+  STEP_NAME_WIDTH,
+  SYMBOLS,
+  WORDMARK,
 } from './visual.js';
 
 // ---------------------------------------------------------------------------
@@ -96,11 +96,11 @@ export interface FailureStepRow {
    */
   exitCode?: number;
   /**
-   * Only present on the failed runner. The first line names the error class
-   * and branch; the second names the specific field or baton.
+   * Only present on the failed step. The first line names the error class
+   * and branch; the second names the specific field or handoff.
    * Example:
-   *   "branch 'entities' raised BatonSchemaError"
-   *   "baton 'entities' missing required field: entities[3].language"
+   *   "branch 'entities' raised HandoffSchemaError"
+   *   "handoff 'entities' missing required field: entities[3].language"
    */
   errorLines?: [string, string];
 }
@@ -110,10 +110,10 @@ export interface FailureStepRow {
 // ---------------------------------------------------------------------------
 
 export interface StartBannerOptions {
-  /** Race name, e.g. "codebase-discovery". */
-  raceName: string;
-  /** Race version, e.g. "0.1.0". */
-  raceVersion: string;
+  /** Flow name, e.g. "codebase-discovery". */
+  flowName: string;
+  /** Flow version string, e.g. "0.1.0". */
+  flowVersion: string;
   /** Short run id (6-hex), e.g. "f9c3a2". */
   runId: string;
   /** ISO timestamp the run started, e.g. new Date().toISOString(). */
@@ -150,19 +150,19 @@ export interface StartBannerOptions {
  *
  *   ●─▶●─▶●─▶●  relay
  *
- *   race     codebase-discovery v0.1.0
+ *   flow     codebase-discovery v0.1.0
  *   input    .  (audience=both)
  *   run      f9c3a2  ·  2026-04-17 14:32Z
  *   bill     subscription (max)  ·  no api charges
- *   est      $0.40  ·  5 runners  ·  ~12 min
+ *   est      $0.40  ·  5 steps  ·  ~12 min
  *
- *   press ctrl-c any time — state is saved after every runner.
+ *   press ctrl-c any time — state is saved after every step.
  *   ───────────────────────────────────────────────────────
  */
 export function renderStartBanner(opts: StartBannerOptions): string {
   const {
-    raceName,
-    raceVersion,
+    flowName,
+    flowVersion,
     runId,
     startedAt,
     inputPrimary,
@@ -173,14 +173,12 @@ export function renderStartBanner(opts: StartBannerOptions): string {
     etaMin,
   } = opts;
 
-  // race row
-  const flowValue = `${raceName} v${raceVersion}`;
+  // flow row — "codebase-discovery v0.1.0"
+  const flowValue = `${flowName} v${flowVersion}`;
 
   // input row — "primary  (key=val, key=val)" or just "primary"
   const extras =
-    inputExtras !== undefined && inputExtras.length > 0
-      ? `  (${inputExtras.join(', ')})`
-      : '';
+    inputExtras !== undefined && inputExtras.length > 0 ? `  (${inputExtras.join(', ')})` : '';
   const inputValue = `${inputPrimary}${extras}`;
 
   // run row — "<runId>  ·  YYYY-MM-DD HH:mmZ"
@@ -200,20 +198,20 @@ export function renderStartBanner(opts: StartBannerOptions): string {
     costEstimate !== undefined
       ? kvLine(
           'est',
-          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} runners  ${SYMBOLS.dot}  ~${etaMin} min`,
+          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`,
         )
       : undefined;
 
   const lines: string[] = [
     WORDMARK,
     '',
-    kvLine('race', flowValue),
+    kvLine('flow', flowValue),
     kvLine('input', inputValue),
     kvLine('run', runValue),
     kvLine('bill', billValue),
     ...(estLine !== undefined ? [estLine] : []),
     '',
-    gray('press ctrl-c any time — state is saved after every runner.'),
+    gray('press ctrl-c any time — state is saved after every step.'),
     rule(55),
   ];
 
@@ -225,8 +223,8 @@ export function renderStartBanner(opts: StartBannerOptions): string {
 // ---------------------------------------------------------------------------
 
 export interface SuccessBannerOptions {
-  /** Race name, e.g. "codebase-discovery". */
-  raceName: string;
+  /** Flow name, e.g. "codebase-discovery". */
+  flowName: string;
   /** Short run id, e.g. "f9c3a2". */
   runId: string;
   /** One entry per step, in execution order. */
@@ -266,10 +264,10 @@ export interface SuccessBannerOptions {
  *       share with team        relay share f9c3a2   (coming v1.1)
  */
 export function renderSuccessBanner(opts: SuccessBannerOptions): string {
-  const { raceName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
+  const { flowName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓"
-  const header = green(raceHeader(raceName, runId, SYMBOLS.ok));
+  const header = green(raceHeader(flowName, runId, SYMBOLS.ok));
 
   // Per-step lines — " ✓ <name padded> <model padded> <dur padded> $cost"
   const stepLines = steps.map((s) => {
@@ -280,8 +278,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
     return green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`);
   });
 
-  // Summary line: "all 5 runners succeeded in 11m 42s"
-  const summary = `all ${steps.length} runners succeeded in ${fmtDuration(totalDurationMs)}`;
+  // Summary line: "all 5 steps succeeded in 11m 42s"
+  const summary = `all ${steps.length} steps succeeded in ${fmtDuration(totalDurationMs)}`;
 
   // cost row label depends on billing source
   const costLabel =
@@ -295,7 +293,7 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   const nextBlock = [
     'next:',
     `${nextIndent}${'open the report'.padEnd(nextActionWidth)} open ${outputPath}`,
-    `${nextIndent}${'run again fresh'.padEnd(nextActionWidth)} relay run ${raceName} . --fresh`,
+    `${nextIndent}${'run again fresh'.padEnd(nextActionWidth)} relay run ${flowName} . --fresh`,
     `${nextIndent}${'share with team'.padEnd(nextActionWidth)} relay share ${runId}   (coming v1.1)`,
   ].join('\n');
 
@@ -320,8 +318,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
 // ---------------------------------------------------------------------------
 
 export interface FailureBannerOptions {
-  /** Race name, e.g. "codebase-discovery". */
-  raceName: string;
+  /** Flow name, e.g. "codebase-discovery". */
+  flowName: string;
   /** Short run id, e.g. "f9c3a2". */
   runId: string;
   /** All steps in execution order (succeeded + failed + pending). */
@@ -332,10 +330,10 @@ export interface FailureBannerOptions {
    */
   spentUsd: number;
   /**
-   * If the failing runner's error names a baton, provide the baton id here
+   * If the failing step's error names a handoff, provide the handoff id here
    * so the banner appends a `cat` hint in the "to inspect:" block.
    */
-  batonId?: string;
+  handoffId?: string;
 }
 
 /**
@@ -350,10 +348,10 @@ export interface FailureBannerOptions {
  *    ✓ entities        sonnet     4.8s     $0.021
  *    ✓ services        sonnet     5.1s     $0.023
  *    ✕ designReview    exit 1     0.2s
- *         branch 'entities' raised BatonSchemaError
- *         baton 'entities' missing required field: entities[3].language
+ *         branch 'entities' raised HandoffSchemaError
+ *         handoff 'entities' missing required field: entities[3].language
  *
- *   3 of 5 runners succeeded · $0.049 spent · state saved
+ *   3 of 5 steps succeeded · $0.049 spent · state saved
  *
  *   to resume after fixing:
  *       relay resume f9c3a2
@@ -363,13 +361,13 @@ export interface FailureBannerOptions {
  *
  *   to inspect:
  *       relay logs f9c3a2                   full structured log
- *       cat ./.relay/runs/f9c3a2/batons/entities.json
+ *       cat ./.relay/runs/f9c3a2/handoffs/entities.json
  */
 export function renderFailureBanner(opts: FailureBannerOptions): string {
-  const { raceName, runId, steps, spentUsd, batonId } = opts;
+  const { flowName, runId, steps, spentUsd, handoffId } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✕"
-  const header = red(raceHeader(raceName, runId, SYMBOLS.fail));
+  const header = red(raceHeader(flowName, runId, SYMBOLS.fail));
 
   // Per-step lines
   const stepLines: string[] = [];
@@ -403,30 +401,23 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const succeededCount = steps.filter((s) => s.status === 'succeeded').length;
   const totalCount = steps.length;
 
-  // Summary line: "3 of 5 runners succeeded · $0.049 spent · state saved"
-  const summary = `${succeededCount} of ${totalCount} runners succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
+  // Summary line: "3 of 5 steps succeeded · $0.049 spent · state saved"
+  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
 
   // "to resume after fixing:" block
-  const resumeBlock = [
-    'to resume after fixing:',
-    `    relay resume ${runId}`,
-  ].join('\n');
+  const resumeBlock = ['to resume after fixing:', `    relay resume ${runId}`].join('\n');
 
   // "to restart from scratch:" block
-  const restartBlock = [
-    'to restart from scratch:',
-    `    relay run ${raceName} . --fresh`,
-  ].join('\n');
+  const restartBlock = ['to restart from scratch:', `    relay run ${flowName} . --fresh`].join(
+    '\n',
+  );
 
   // "to inspect:" block — conditionally append the cat hint
   const logsLine = `    relay logs ${runId}`;
   const logsAnnotation = '                   full structured log';
-  const inspectLines: string[] = [
-    'to inspect:',
-    `${logsLine}${logsAnnotation}`,
-  ];
-  if (batonId !== undefined) {
-    inspectLines.push(`    cat ./.relay/runs/${runId}/batons/${batonId}.json`);
+  const inspectLines: string[] = ['to inspect:', `${logsLine}${logsAnnotation}`];
+  if (handoffId !== undefined) {
+    inspectLines.push(`    cat ./.relay/runs/${runId}/handoffs/${handoffId}.json`);
   }
   const inspectBlock = inspectLines.join('\n');
 

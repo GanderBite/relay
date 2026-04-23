@@ -1,6 +1,6 @@
 ---
 name: zod-v4
-description: Zod v4 idioms for the Relay codebase — the v3 → v4 symbol table, the `z.ZodType<T>` pattern that replaces `ZodSchema<T>`, the `z.core.$ZodIssue` type used in `BatonSchemaError`, the unchanged `instanceof z.ZodType` runtime check, and the v4-only error helpers like `z.treeifyError`. Trigger this skill whenever you write or refactor a `.ts` file that imports from `'zod'` or `'../zod.js'`, or that exposes a Zod type in a public signature (e.g. `RaceSpec.input`, a baton schema, a runner `output.schema`). Pair with the `typescript` skill.
+description: Zod v4 idioms for the Relay codebase — the v3 → v4 symbol table, the `z.ZodType<T>` pattern that replaces `ZodSchema<T>`, the `z.core.$ZodIssue` type used in `HandoffSchemaError`, the unchanged `instanceof z.ZodType` runtime check, and the v4-only error helpers like `z.treeifyError`. Trigger this skill whenever you write or refactor a `.ts` file that imports from `'zod'` or `'../zod.js'`, or that exposes a Zod type in a public signature (e.g. `FlowSpec.input`, a handoff schema, a step `output.schema`). Pair with the `typescript` skill.
 ---
 
 # Zod v4 for Relay
@@ -34,7 +34,7 @@ Never import named type aliases from `'zod'` directly. Reach for them through `z
 |---|---|---|
 | `ZodSchema<T>` | `z.ZodType<T>` | 1-arg form is the direct replacement |
 | `ZodTypeAny` | `z.ZodType` | no generic = wildcard |
-| `ZodIssue` | `z.core.$ZodIssue` | library-author convention |
+| `ZodIssue` | `z.core.$ZodIssue` | library-author convention, used in `HandoffSchemaError` |
 | `infer as Infer` | `z.infer<typeof X>` | `z.infer` stays canonical in v4 |
 | `z` (value) | `z` | unchanged |
 | `instanceof z.ZodType` | `instanceof z.ZodType` | `ZodType` is both an interface and a class in v4 |
@@ -47,7 +47,7 @@ If you find yourself typing `ZodSchema`, `ZodTypeAny`, `ZodIssue`, or top-level 
 One-arg, for typed schemas:
 
 ```ts
-export interface RaceSpec<TInput> {
+export interface FlowSpec<TInput> {
   input: z.ZodType<TInput>;                // v3: ZodSchema<TInput>
   ...
 }
@@ -56,10 +56,10 @@ export interface RaceSpec<TInput> {
 No-arg, for "any schema" wildcards:
 
 ```ts
-export type PromptRunnerOutput =
-  | { baton: string; schema?: z.ZodType }   // any schema accepted
+export type PromptStepOutput =
+  | { handoff: string; schema?: z.ZodType }   // any schema accepted
   | { artifact: string }
-  | { baton: string; artifact: string; schema?: z.ZodType };
+  | { handoff: string; artifact: string; schema?: z.ZodType };
 ```
 
 Two-arg, only when a `z.transform()` makes input and output diverge:
@@ -90,24 +90,24 @@ export type Inventory = z.infer<typeof InventorySchema>;
 
 `z.input<typeof X>` and `z.output<typeof X>` are available for the rare case where a transform makes them differ. Use `z.infer` (= `z.output`) by default.
 
-## Issue handling — the `BatonSchemaError` contract
+## Issue handling — the `HandoffSchemaError` contract
 
 `safeParse` returns `{ success: false; error: z.ZodError }` on failure. `error.issues` is a `z.core.$ZodIssue[]`. Each issue is `{ code, path, message, input? }`.
 
 ```ts
 import type { z } from '../zod.js';
-import { BatonSchemaError } from '../errors.js';
+import { HandoffSchemaError } from '../errors.js';
 
-function parseBaton<T>(
+function parseHandoff<T>(
   schema: z.ZodType<T>,
-  batonId: string,
+  handoffId: string,
   raw: unknown,
 ): T {
   const result = schema.safeParse(raw);
   if (!result.success) {
-    throw new BatonSchemaError(
-      `baton "${batonId}" failed schema validation`,
-      batonId,
+    throw new HandoffSchemaError(
+      `handoff "${handoffId}" failed schema validation`,
+      handoffId,
       result.error.issues,            // z.core.$ZodIssue[]
     );
   }
@@ -125,7 +125,7 @@ function parseBaton<T>(
 
 ```ts
 if (!(spec.input instanceof z.ZodType)) {
-  throw new RaceDefinitionError('race "input" must be a Zod schema');
+  throw new FlowDefinitionError('flow "input" must be a Zod schema');
 }
 ```
 

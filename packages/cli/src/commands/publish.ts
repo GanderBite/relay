@@ -19,12 +19,11 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
-
-import { lintRacePackage } from '../lint.js';
 import type { LintFinding } from '../lint.js';
-import { generateRegistryJson } from '../registry.js';
+import { lintRacePackage } from '../lint.js';
 import type { RegistryEntry } from '../registry.js';
-import { MARK, SYMBOLS, green, yellow, red, gray } from '../visual.js';
+import { generateRegistryJson } from '../registry.js';
+import { gray, green, MARK, red, SYMBOLS, yellow } from '../visual.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -105,19 +104,14 @@ function registryDiff(_next: RegistryEntry): string[] {
 /**
  * Entry point for `relay publish <path> [--dry-run]`.
  */
-export default async function publishCommand(
-  args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function publishCommand(args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as PublishCommandOptions;
   const dryRun = options.dryRun === true;
 
   const rawPath = typeof args[0] === 'string' ? args[0].trim() : '';
 
   if (rawPath === '') {
-    process.stderr.write(
-      red(`${SYMBOLS.fail} usage: relay publish <path> [--dry-run]`) + '\n',
-    );
+    process.stderr.write(red(`${SYMBOLS.fail} usage: relay publish <path> [--dry-run]`) + '\n');
     process.exit(1);
   }
 
@@ -138,9 +132,7 @@ export default async function publishCommand(
   const lintResult = await lintRacePackage(dir);
 
   if (lintResult.isErr()) {
-    process.stderr.write(
-      red(` ${SYMBOLS.fail} lint failed: ${lintResult.error.message}`) + '\n',
-    );
+    process.stderr.write(red(` ${SYMBOLS.fail} lint failed: ${lintResult.error.message}`) + '\n');
     process.stderr.write('\n');
     process.stderr.write(`  → check the directory exists: relay publish <path>\n`);
     process.exit(1);
@@ -200,9 +192,7 @@ export default async function publishCommand(
             ? buildErr.message
             : String(buildErr);
 
-      process.stderr.write(
-        red(` ${SYMBOLS.fail} build failed`) + '\n',
-      );
+      process.stderr.write(red(` ${SYMBOLS.fail} build failed`) + '\n');
       if (stderr.trim().length > 0) {
         process.stderr.write(gray(stderr.trim()) + '\n');
       }
@@ -289,12 +279,10 @@ export default async function publishCommand(
     process.stdout.write('\n');
   } else {
     const doc = regResult.value;
-    const nextEntry = doc.races.find((f) => f.name === (meta?.name ?? dir));
+    const nextEntry = doc.flows.find((f) => f.name === (meta?.name ?? dir));
 
     if (nextEntry === undefined) {
-      process.stdout.write(
-        gray(`registry    no entry found for ${meta?.name ?? dir}`) + '\n',
-      );
+      process.stdout.write(gray(`registry    no entry found for ${meta?.name ?? dir}`) + '\n');
     } else {
       process.stdout.write('registry diff:\n');
       const diffLines = registryDiff(nextEntry);

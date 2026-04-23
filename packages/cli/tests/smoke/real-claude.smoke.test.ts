@@ -20,11 +20,11 @@
  * `pnpm install` from the workspace root first so node_modules is populated.
  */
 
-import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Environment gate — every test in this file skips unless RELAY_SMOKE_REAL=1.
@@ -99,17 +99,13 @@ describe('relay run (real Claude)', () => {
     // remove the key on all Node versions; we must use delete.
     delete childEnv['ANTHROPIC_API_KEY'];
 
-    const result = spawnSync(
-      process.execPath,
-      [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'],
-      {
-        encoding: 'utf8',
-        timeout: 120_000,
-        env: childEnv,
-        // Run from the workspace root so .relay/runs/ lands in a predictable spot.
-        cwd: process.cwd(),
-      },
-    );
+    const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
+      encoding: 'utf8',
+      timeout: 120_000,
+      env: childEnv,
+      // Run from the workspace root so .relay/runs/ lands in a predictable spot.
+      cwd: process.cwd(),
+    });
 
     // --- 1. exit code ---
     expect(
@@ -171,17 +167,13 @@ describe('relay run (real Claude)', () => {
     // Explicitly delete the key — same pattern as the primary smoke test above.
     delete childEnv['RELAY_ALLOW_API_KEY'];
 
-    const result = spawnSync(
-      process.execPath,
-      [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'],
-      {
-        encoding: 'utf8',
-        // Short timeout — the guard fires before any SDK call.
-        timeout: 10_000,
-        env: childEnv,
-        cwd: process.cwd(),
-      },
-    );
+    const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
+      encoding: 'utf8',
+      // Short timeout — the guard fires before any SDK call.
+      timeout: 10_000,
+      env: childEnv,
+      cwd: process.cwd(),
+    });
 
     // Exit code 3 is ClaudeAuthError (see packages/cli/src/exit-codes.ts).
     expect(
@@ -243,9 +235,9 @@ describe('relay run (real Claude)', () => {
 
       // Step 4 — status must still be 'succeeded'.
       expect(secondRun.status).toBe(0);
-      const stateJson = JSON.parse(
-        readFileSync(join(runDirFor(runId!), 'state.json'), 'utf8'),
-      ) as { status: string };
+      const stateJson = JSON.parse(readFileSync(join(runDirFor(runId!), 'state.json'), 'utf8')) as {
+        status: string;
+      };
       expect(stateJson.status).toBe('succeeded');
     },
   );

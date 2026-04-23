@@ -11,24 +11,22 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-
+import type { Flow } from '@relay/core';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
 
-import type { Race } from '@relay/core';
-
 import {
+  DURATION_WIDTH,
   gray,
   green,
   MARK,
-  red,
-  SYMBOLS,
-  STEP_NAME_WIDTH,
   MODEL_WIDTH,
-  DURATION_WIDTH,
-  yellow,
   raceHeader,
+  red,
+  STEP_NAME_WIDTH,
+  SYMBOLS,
+  yellow,
 } from './visual.js';
 
 // ---------------------------------------------------------------------------
@@ -107,10 +105,7 @@ interface StepDisplayState {
 // Non-TTY structured log
 // ---------------------------------------------------------------------------
 
-function logStructured(
-  event: string,
-  fields: Record<string, string | number | undefined>,
-): void {
+function logStructured(event: string, fields: Record<string, string | number | undefined>): void {
   const iso = new Date().toISOString();
   const cols = Object.entries(fields)
     .filter(([, v]) => v !== undefined)
@@ -133,10 +128,9 @@ function logStructured(
  * SIGINT:      `.onSigint(handler)` — register a ctrl-c handler; wired on
  *              start() and unwired on stop().
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class ProgressDisplay<TInput = any> {
+export class ProgressDisplay<TInput = unknown> {
   readonly #runDir: string;
-  readonly #flow: Race<TInput>;
+  readonly #flow: Flow<TInput>;
   readonly #auth: AuthInfo;
 
   #runId = '';
@@ -149,7 +143,7 @@ export class ProgressDisplay<TInput = any> {
   readonly #sigintHandlers: Array<() => void> = [];
   readonly #steps: Map<string, StepDisplayState> = new Map();
 
-  constructor(runDir: string, flow: Race<TInput>, auth: AuthInfo) {
+  constructor(runDir: string, flow: Flow<TInput>, auth: AuthInfo) {
     this.#runDir = runDir;
     this.#flow = flow;
     this.#auth = auth;
@@ -172,8 +166,8 @@ export class ProgressDisplay<TInput = any> {
     this.#runId = runId;
     this.#runStartedAt = new Date().toISOString();
 
-    for (const runnerId of this.#flow.runnerOrder) {
-      const step = this.#flow.runners[runnerId];
+    for (const runnerId of this.#flow.stepOrder) {
+      const step = this.#flow.steps[runnerId];
       this.#steps.set(runnerId, {
         id: runnerId,
         dependsOn: step?.dependsOn ?? [],
@@ -278,7 +272,7 @@ export class ProgressDisplay<TInput = any> {
   }
 
   async #loadLiveFile(filePath: string): Promise<void> {
-    const basename = (filePath.split('/').at(-1) ?? filePath.split('\\').at(-1)) ?? '';
+    const basename = filePath.split('/').at(-1) ?? filePath.split('\\').at(-1) ?? '';
     const runnerId = basename.replace(/\.json$/, '');
     const state = this.#steps.get(runnerId);
     if (state === undefined) return;
@@ -294,14 +288,12 @@ export class ProgressDisplay<TInput = any> {
 
     const wasRunning = state.live?.status === 'running';
     const nowDone =
-      parsed.status === 'succeeded' ||
-      parsed.status === 'failed' ||
-      parsed.status === 'skipped';
+      parsed.status === 'succeeded' || parsed.status === 'failed' || parsed.status === 'skipped';
 
     if (parsed.status === 'running' && state.runningStartedAt === null) {
       state.runningStartedAt = parsed.startedAt;
       if (!this.#isTTY) {
-        logStructured('runner.start', { runnerId, model: parsed.model });
+        logStructured('step.start', { runnerId, model: parsed.model });
       }
     }
 
@@ -309,7 +301,7 @@ export class ProgressDisplay<TInput = any> {
       const started = state.runningStartedAt ?? parsed.startedAt;
       state.finalDurationMs = Date.now() - new Date(started).getTime();
       if (!this.#isTTY) {
-        logStructured('runner.end', { runnerId, durMs: state.finalDurationMs });
+        logStructured('step.end', { runnerId, durMs: state.finalDurationMs });
       }
     }
 
@@ -357,7 +349,8 @@ export class ProgressDisplay<TInput = any> {
     let sym: string;
     switch (status) {
       case 'running': {
-        const frame = SYMBOLS.spinner[this.#spinnerFrame % SYMBOLS.spinner.length] ?? SYMBOLS.spinner[0]!;
+        const frame =
+          SYMBOLS.spinner[this.#spinnerFrame % SYMBOLS.spinner.length] ?? SYMBOLS.spinner[0]!;
         sym = yellow(frame);
         break;
       }
@@ -382,9 +375,8 @@ export class ProgressDisplay<TInput = any> {
         const dep = this.#steps.get(depId);
         return dep?.live?.status !== 'succeeded';
       });
-      const detail = unfinished.length > 0
-        ? `waiting on ${unfinished.join(', ')}`
-        : gray('not started');
+      const detail =
+        unfinished.length > 0 ? `waiting on ${unfinished.join(', ')}` : gray('not started');
       return ` ${sym} ${nameCol} ${detail}`;
     }
 
@@ -401,10 +393,12 @@ export class ProgressDisplay<TInput = any> {
     }
 
     // Succeeded / failed / skipped — show frozen metrics
-    const model = ((live.model ?? state.finalModel) ?? '-').padEnd(MODEL_WIDTH);
+    const model = (live.model ?? state.finalModel ?? '-').padEnd(MODEL_WIDTH);
     const durationMs = state.finalDurationMs ?? 0;
     const durSec = durationMs / 1000;
-    const durStr = (durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`).padEnd(DURATION_WIDTH);
+    const durStr = (durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`).padEnd(
+      DURATION_WIDTH,
+    );
     const tokIn = state.finalTokensIn ?? 0;
     const tokOut = state.finalTokensOut ?? 0;
     const tokensCol = `${fmtK(tokIn)}→${fmtK(tokOut)}`.padEnd(13);

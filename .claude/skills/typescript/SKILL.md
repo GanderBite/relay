@@ -5,7 +5,7 @@ description: TypeScript 5.4+ patterns for the Relay codebase — strict mode dis
 
 # TypeScript Patterns for Relay
 
-The Relay codebase is **strict TypeScript 5.4+, ESM-only, Node ≥20.10**. Strict means strict — `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` all on. The type system is load-bearing; flow authors get autocomplete and refactor safety from it, not from documentation.
+The Relay codebase is **strict TypeScript 5.4+, ESM-only, Node ≥20.10**. Strict means strict — `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` all on. The type system is load-bearing; step authors get autocomplete and refactor safety from it, not from documentation.
 
 ## Hard rules
 
@@ -39,24 +39,24 @@ const __dirname = dirname(__filename);
 
 ## Discriminated unions (the workhorse pattern)
 
-Relay's `Runner`, `PromptRunnerOutput`, `InvocationEvent`, and error class hierarchy all use discriminated unions. The pattern:
+Relay's `Step`, `PromptStepOutput`, `InvocationEvent`, and error class hierarchy all use discriminated unions. The pattern:
 
 ```ts
-type Runner =
-  | { kind: 'prompt';   id: string; spec: PromptRunnerSpec   }
-  | { kind: 'script';   id: string; spec: ScriptRunnerSpec   }
-  | { kind: 'branch';   id: string; spec: BranchRunnerSpec   }
-  | { kind: 'parallel'; id: string; spec: ParallelRunnerSpec }
-  | { kind: 'terminal'; id: string; spec: TerminalRunnerSpec };
+type Step =
+  | { kind: 'prompt';   id: string; spec: PromptStepSpec   }
+  | { kind: 'script';   id: string; spec: ScriptStepSpec   }
+  | { kind: 'branch';   id: string; spec: BranchStepSpec   }
+  | { kind: 'parallel'; id: string; spec: ParallelStepSpec }
+  | { kind: 'terminal'; id: string; spec: TerminalStepSpec };
 
-function execute(runner: Runner) {
-  switch (runner.kind) {
-    case 'prompt':   return executePrompt(runner);    // runner.spec is PromptRunnerSpec
-    case 'script':   return executeScript(runner);    // runner.spec is ScriptRunnerSpec
-    case 'branch':   return executeBranch(runner);
-    case 'parallel': return executeParallel(runner);
-    case 'terminal': return executeTerminal(runner);
-    default: assertNever(runner);                     // exhaustiveness check
+function execute(step: Step) {
+  switch (step.kind) {
+    case 'prompt':   return executePrompt(step);    // step.spec is PromptStepSpec
+    case 'script':   return executeScript(step);    // step.spec is ScriptStepSpec
+    case 'branch':   return executeBranch(step);
+    case 'parallel': return executeParallel(step);
+    case 'terminal': return executeTerminal(step);
+    default: assertNever(step);                     // exhaustiveness check
   }
 }
 
@@ -73,22 +73,22 @@ Prefer the type system's narrowing over `as`:
 
 ```ts
 // ✅ Type guard
-function isPromptRunner(s: Runner): s is Extract<Runner, { kind: 'prompt' }> {
+function isPromptStep(s: Step): s is Extract<Step, { kind: 'prompt' }> {
   return s.kind === 'prompt';
 }
 
 // ✅ instanceof
-if (err instanceof RunnerFailureError) {
-  console.log(err.runnerId);   // narrowed
+if (err instanceof StepFailureError) {
+  console.log(err.stepId);   // narrowed
 }
 
 // ✅ in operator
-if ('schema' in runner.spec.output) {
+if ('schema' in step.spec.output) {
   // narrowed to the output variant that has schema
 }
 
 // ❌ Don't do this
-const promptRunner = runner as Extract<Runner, { kind: 'prompt' }>;
+const promptStep = step as Extract<Step, { kind: 'prompt' }>;
 ```
 
 ## Zod inference
@@ -116,22 +116,22 @@ Now `Inventory` and `InventorySchema` can never drift. If you change one, the co
 Array and record access returns `T | undefined`:
 
 ```ts
-const runners: Record<string, Runner> = { ... };
+const steps: Record<string, Step> = { ... };
 
 // ❌ Won't compile — could be undefined
-const r = runners['inventory'];
-r.spec;
+const s = steps['inventory'];
+s.spec;
 
 // ✅ Narrow first
-const r = runners['inventory'];
-if (r === undefined) throw new Error('missing runner');
-r.spec;
+const s = steps['inventory'];
+if (s === undefined) throw new Error('missing step');
+s.spec;
 
 // ✅ Or use a guarded accessor
-function requireRunner(runners: Record<string, Runner>, id: string): Runner {
-  const r = runners[id];
-  if (!r) throw new RaceDefinitionError(`unknown runner: ${id}`);
-  return r;
+function requireStep(steps: Record<string, Step>, id: string): Step {
+  const s = steps[id];
+  if (!s) throw new FlowDefinitionError(`unknown step: ${id}`);
+  return s;
 }
 ```
 
@@ -156,7 +156,7 @@ Now `function loadRun(id: RunId)` won't accept a `RunnerId` by mistake. (Use spa
 const config = await loadConfig();
 
 // ✅ Always await — no fire-and-forget in production code
-await orchestrator.run(race, input);
+await orchestrator.run(flow, input);
 
 // ❌ Promise.then chain when async/await is clearer
 fetch(url).then(r => r.json()).then(processData);

@@ -21,8 +21,8 @@ import { promisify } from 'node:util';
 
 import {
   defaultRegistry,
+  loadFlowSettings,
   loadGlobalSettings,
-  loadRaceSettings,
   NoProviderConfiguredError,
   type Provider,
   type ProviderRegistry,
@@ -231,11 +231,11 @@ async function authProbeRow(provider: Provider): Promise<CheckResult> {
  */
 function resolverSource(args: {
   flagProvider: string | undefined;
-  raceSettings: RelaySettingsType | null;
+  flowSettings: RelaySettingsType | null;
   globalSettings: RelaySettingsType | null;
 }): 'flag' | 'flow-settings' | 'global-settings' | null {
   if (args.flagProvider !== undefined) return 'flag';
-  if (args.raceSettings?.provider !== undefined) return 'flow-settings';
+  if (args.flowSettings?.provider !== undefined) return 'flow-settings';
   if (args.globalSettings?.provider !== undefined) return 'global-settings';
   return null;
 }
@@ -251,7 +251,7 @@ async function checkResolver(
 ): Promise<ResolverOutcome> {
   const flowDir = process.cwd();
   const globalResult = await loadGlobalSettings();
-  const flowResult = await loadRaceSettings(flowDir);
+  const flowSettingsResult = await loadFlowSettings(flowDir);
 
   if (globalResult.isErr()) {
     return {
@@ -259,16 +259,16 @@ async function checkResolver(
       blocked: true,
     };
   }
-  if (flowResult.isErr()) {
+  if (flowSettingsResult.isErr()) {
     return {
-      lines: [red(`  ${SYMBOLS.fail} ${flowResult.error.message}`)],
+      lines: [red(`  ${SYMBOLS.fail} ${flowSettingsResult.error.message}`)],
       blocked: true,
     };
   }
 
   const resolved = resolveProvider({
     flagProvider,
-    raceSettings: flowResult.value,
+    flowSettings: flowSettingsResult.value,
     globalSettings: globalResult.value,
     registry,
   });
@@ -290,7 +290,7 @@ async function checkResolver(
   const source =
     resolverSource({
       flagProvider,
-      raceSettings: flowResult.value,
+      flowSettings: flowSettingsResult.value,
       globalSettings: globalResult.value,
     }) ?? 'global-settings';
 

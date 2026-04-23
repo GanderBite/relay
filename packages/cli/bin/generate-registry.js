@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node bin/generate-registry.js --input packages.json --output catalog/registry.json
- *   node bin/generate-registry.js @relay/races-codebase-discovery ./my-local-race
+ *   node bin/generate-registry.js @relay/flows-codebase-discovery ./my-local-race
  *
  * --input <file>    JSON file containing an array of package names / local paths.
  *                   Merged with any positional arguments.
@@ -12,7 +12,7 @@
  *                   Default: catalog/registry.json (relative to cwd).
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 async function main() {
@@ -64,9 +64,7 @@ async function main() {
     }
 
     if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === 'string')) {
-      process.stderr.write(
-        'generate-registry: input file must be a JSON array of strings\n',
-      );
+      process.stderr.write('generate-registry: input file must be a JSON array of strings\n');
       process.exit(1);
     }
 
@@ -76,7 +74,7 @@ async function main() {
   if (packages.length === 0) {
     process.stderr.write(
       'generate-registry: no packages specified\n' +
-      'Usage: generate-registry [--input packages.json] [--output out.json] [pkg...]\n',
+        'Usage: generate-registry [--input packages.json] [--output out.json] [pkg...]\n',
     );
     process.exit(1);
   }
@@ -94,7 +92,7 @@ async function main() {
   } catch (importErr) {
     process.stderr.write(
       `generate-registry: failed to load registry module: ${importErr?.message ?? importErr}\n` +
-      'Make sure you have run "pnpm -F @relay/cli build" first.\n',
+        'Make sure you have run "pnpm -F @relay/cli build" first.\n',
     );
     process.exit(1);
   }
@@ -102,9 +100,7 @@ async function main() {
   const result = await generateRegistryJson(packages);
 
   if (result.isErr()) {
-    process.stderr.write(
-      `generate-registry: ${result.error.message}\n`,
-    );
+    process.stderr.write(`generate-registry: ${result.error.message}\n`);
     process.exit(1);
   }
 

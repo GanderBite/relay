@@ -1,8 +1,8 @@
 import { z } from '@relay/core';
 
 /**
- * The shape of the `entities` baton written by the `entities` branch.
- * The report runner receives this alongside `inventory` and `services`.
+ * The shape of the `entities` handoff written by the `entities` branch.
+ * The report step receives this alongside `inventory` and `services`.
  */
 export const EntitiesSchema = z.object({
   entities: z.array(

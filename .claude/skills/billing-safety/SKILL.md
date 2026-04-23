@@ -9,13 +9,13 @@ Relay's most important non-functional requirement: **the library MUST NOT cause 
 
 ## The threat (tech spec §8.1.1)
 
-A user has a subscription. They install Relay and run a race. Several environments can silently route their tokens to the API and bill them:
+A user has a subscription. They install Relay and run a flow. Several environments can silently route their tokens to the API and bill them:
 
 - `ANTHROPIC_API_KEY` set in their shell rc (a leftover from earlier API experimentation).
 - A parent process exported `ANTHROPIC_API_KEY` for some other tool.
 - A CI runner has `ANTHROPIC_API_KEY` injected by the platform.
 
-The Claude Agent SDK (and the underlying `claude` binary) puts `ANTHROPIC_API_KEY` AHEAD of subscription credentials in its auth precedence. Without intervention, a long-running flow can silently rack up tens or hundreds of dollars on the API account before the user notices ([Claude Code #37686](https://github.com/anthropics/claude-code/issues/37686)).
+The Claude Agent SDK (and the underlying `claude` binary) puts `ANTHROPIC_API_KEY` AHEAD of subscription credentials in its auth precedence. Without intervention, a long-running flow run can silently rack up tens or hundreds of dollars on the API account before the user notices ([Claude Code #37686](https://github.com/anthropics/claude-code/issues/37686)).
 
 ## The contract (tech spec §8.1.2)
 
@@ -61,14 +61,14 @@ When `ClaudeAuthError` fires for the API-key conflict:
 
 ```
 ANTHROPIC_API_KEY is set; relay defaults to subscription billing.
-Unset it, or call runner.allowApiKey(), or set RELAY_ALLOW_API_KEY=1.
+Unset it, or call step.allowApiKey(), or set RELAY_ALLOW_API_KEY=1.
 ```
 
 The CLI's `formatError` (sprint 6 task_46) renders this in the §6.2 doctor block format:
 
 ```
 ✕ env  ANTHROPIC_API_KEY is set in your environment
-       running a race now would bill your API account,
+       running a flow now would bill your API account,
        not your Max subscription.
 
        fix:      unset ANTHROPIC_API_KEY
@@ -132,7 +132,7 @@ See `references/auth-threat-model.md` for the full attack surface.
 2. **Don't pass `process.env` to anything that spawns a subprocess.** Always use the allowlist builder.
 3. **Don't catch `ClaudeAuthError` and continue.** Always propagate. The CLI maps it to exit 3.
 4. **Don't make the `bill` row conditional in the pre-run banner.** Every banner names the billing source. Silence implies safety; we don't get to imply.
-5. **Don't add a "shortcut" to skip the auth check.** There is no shortcut. If a test needs to skip auth, use MockProvider.
+5. **Don't add a "shortcut" to skip the auth check.** There is no shortcut. If a test needs to bypass auth, use MockProvider.
 
 ## CI usage
 

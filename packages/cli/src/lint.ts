@@ -11,10 +11,10 @@
  * All fallible operations return Result<T, E> via neverthrow. No throws.
  */
 
-import { readFile, access, readdir } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ok, err } from '@relay/core';
 import type { Result } from '@relay/core';
+import { err, ok } from '@relay/core';
 import semver from 'semver';
 
 // ---------------------------------------------------------------------------
@@ -74,17 +74,17 @@ export type LintIssue = LintFinding;
 // ---------------------------------------------------------------------------
 
 const README_ERROR_SECTIONS: ReadonlyArray<{ heading: string; code: string }> = [
-  { heading: 'What it does',               code: 'README_MISSING_WHAT_IT_DOES' },
-  { heading: 'Sample output',              code: 'README_MISSING_SAMPLE_OUTPUT' },
+  { heading: 'What it does', code: 'README_MISSING_WHAT_IT_DOES' },
+  { heading: 'Sample output', code: 'README_MISSING_SAMPLE_OUTPUT' },
   { heading: 'Estimated cost and duration', code: 'README_MISSING_COST_DURATION' },
-  { heading: 'Install',                    code: 'README_MISSING_INSTALL' },
-  { heading: 'Run',                        code: 'README_MISSING_RUN' },
+  { heading: 'Install', code: 'README_MISSING_INSTALL' },
+  { heading: 'Run', code: 'README_MISSING_RUN' },
 ];
 
 const README_WARN_SECTIONS: ReadonlyArray<{ heading: string; code: string }> = [
-  { heading: 'Configuration',  code: 'README_MISSING_CONFIGURATION' },
-  { heading: 'Customization',  code: 'README_MISSING_CUSTOMIZATION' },
-  { heading: 'License',        code: 'README_MISSING_LICENSE' },
+  { heading: 'Configuration', code: 'README_MISSING_CONFIGURATION' },
+  { heading: 'Customization', code: 'README_MISSING_CUSTOMIZATION' },
+  { heading: 'License', code: 'README_MISSING_LICENSE' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -218,12 +218,12 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
     return findings;
   }
 
-  // raceName — machine-readable identifier for the race
-  const raceName = prop(relayBlock, 'raceName');
-  if (typeof raceName !== 'string' || raceName.trim() === '') {
+  // flowName — machine-readable identifier for the flow
+  const flowName = prop(relayBlock, 'flowName');
+  if (typeof flowName !== 'string' || flowName.trim() === '') {
     findings.push({
-      code: 'PKG_MISSING_RACE_NAME',
-      message: 'relay metadata block missing or empty: raceName',
+      code: 'PKG_MISSING_FLOW_NAME',
+      message: 'relay metadata block missing or empty: flowName',
       path: 'package.json',
     });
   }
@@ -240,11 +240,7 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
 
   // tags — must be a non-empty array of strings
   const tags = prop(relayBlock, 'tags');
-  if (
-    !Array.isArray(tags) ||
-    tags.length === 0 ||
-    tags.some((t) => typeof t !== 'string')
-  ) {
+  if (!Array.isArray(tags) || tags.length === 0 || tags.some((t) => typeof t !== 'string')) {
     findings.push({
       code: 'PKG_MISSING_TAGS',
       message: 'relay metadata block missing or invalid: tags (must be a non-empty string array)',
@@ -262,7 +258,8 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
   ) {
     findings.push({
       code: 'PKG_MISSING_COST',
-      message: 'relay metadata block missing or invalid: estimatedCostUsd (requires { min, max } numbers)',
+      message:
+        'relay metadata block missing or invalid: estimatedCostUsd (requires { min, max } numbers)',
       path: 'package.json',
     });
   }
@@ -277,7 +274,8 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
   ) {
     findings.push({
       code: 'PKG_MISSING_DURATION',
-      message: 'relay metadata block missing or invalid: estimatedDurationMin (requires { min, max } numbers)',
+      message:
+        'relay metadata block missing or invalid: estimatedDurationMin (requires { min, max } numbers)',
       path: 'package.json',
     });
   }
@@ -291,7 +289,8 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
   ) {
     findings.push({
       code: 'PKG_MISSING_AUDIENCE',
-      message: 'relay metadata block missing or invalid: audience (must be a non-empty string array)',
+      message:
+        'relay metadata block missing or invalid: audience (must be a non-empty string array)',
       path: 'package.json',
     });
   }
@@ -300,7 +299,7 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
 }
 
 /**
- * Check (2): race.ts OR dist/race.js is present and has a default export.
+ * Check (2): flow.ts OR dist/flow.js is present and has a default export.
  *
  * We do not dynamic-import user code; we check existence and grep for the
  * `export default` token syntactically.
@@ -308,23 +307,23 @@ async function checkPackageJson(dir: string): Promise<LintFinding[]> {
 async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
   const findings: LintFinding[] = [];
 
-  const raceTs = join(dir, 'race.ts');
-  const distRaceJs = join(dir, 'dist', 'race.js');
+  const flowTs = join(dir, 'flow.ts');
+  const distFlowJs = join(dir, 'dist', 'flow.js');
 
-  const hasRaceTs = await pathExists(raceTs);
-  const hasDistRaceJs = await pathExists(distRaceJs);
+  const hasFlowTs = await pathExists(flowTs);
+  const hasDistFlowJs = await pathExists(distFlowJs);
 
-  if (!hasRaceTs && !hasDistRaceJs) {
+  if (!hasFlowTs && !hasDistFlowJs) {
     findings.push({
       code: 'ENTRY_MISSING',
-      message: 'neither race.ts nor dist/race.js found — one must be present',
+      message: 'neither flow.ts nor dist/flow.js found — one must be present',
     });
     return findings;
   }
 
-  // Prefer race.ts for the source check; fall back to dist/race.js.
-  const candidate = hasRaceTs ? raceTs : distRaceJs;
-  const relativePath = hasRaceTs ? 'race.ts' : 'dist/race.js';
+  // Prefer flow.ts for the source check; fall back to dist/flow.js.
+  const candidate = hasFlowTs ? flowTs : distFlowJs;
+  const relativePath = hasFlowTs ? 'flow.ts' : 'dist/flow.js';
 
   const source = await readTextFile(candidate);
   if (source === null) {
@@ -340,13 +339,12 @@ async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
   //   export default ...
   //   export { something as default }
   const hasDefaultExport =
-    /\bexport\s+default\b/.test(source) ||
-    /\bexport\s*\{[^}]*\bas\s+default\b[^}]*\}/.test(source);
+    /\bexport\s+default\b/.test(source) || /\bexport\s*\{[^}]*\bas\s+default\b[^}]*\}/.test(source);
 
   if (!hasDefaultExport) {
     findings.push({
       code: 'ENTRY_NO_DEFAULT_EXPORT',
-      message: `${relativePath} does not contain a default export — race.ts must "export default defineRace(...)"`,
+      message: `${relativePath} does not contain a default export — flow.ts must "export default defineFlow(...)"`,
       path: relativePath,
     });
   }
@@ -363,7 +361,9 @@ async function checkEntryPoint(dir: string): Promise<LintFinding[]> {
  * Matching is case-insensitive against any line that starts with a markdown
  * heading marker (`#`) followed by optional whitespace and the section title.
  */
-async function checkReadme(dir: string): Promise<{ errors: LintFinding[]; warnings: LintFinding[] }> {
+async function checkReadme(
+  dir: string,
+): Promise<{ errors: LintFinding[]; warnings: LintFinding[] }> {
   const errors: LintFinding[] = [];
   const warnings: LintFinding[] = [];
   const readmePath = join(dir, 'README.md');
@@ -390,11 +390,12 @@ async function checkReadme(dir: string): Promise<{ errors: LintFinding[]; warnin
   // Build a set of heading text found in the README (lowercase, trimmed).
   const headingPattern = /^#{1,6}\s+(.+)$/gm;
   const foundHeadings = new Set<string>();
-  let match: RegExpExecArray | null;
-  while ((match = headingPattern.exec(content)) !== null) {
+  let match = headingPattern.exec(content);
+  while (match !== null) {
     if (match[1] !== undefined) {
       foundHeadings.add(match[1].trim().toLowerCase());
     }
+    match = headingPattern.exec(content);
   }
 
   for (const section of README_ERROR_SECTIONS) {
@@ -421,27 +422,27 @@ async function checkReadme(dir: string): Promise<{ errors: LintFinding[]; warnin
 }
 
 /**
- * Check (4): prompts/ directory exists when any runner uses promptFile.
+ * Check (4): prompts/ directory exists when any step uses promptFile.
  *
- * We scan race.ts (or dist/race.js) for the string `promptFile` to detect
- * whether any runner references prompt files, then verify prompts/ exists.
+ * We scan flow.ts (or dist/flow.js) for the string `promptFile` to detect
+ * whether any step references prompt files, then verify prompts/ exists.
  */
 async function checkPromptsDirectory(dir: string): Promise<LintFinding[]> {
   const findings: LintFinding[] = [];
 
   // Determine which file to scan for promptFile references.
-  const raceTs = join(dir, 'race.ts');
-  const distRaceJs = join(dir, 'dist', 'race.js');
+  const flowTs = join(dir, 'flow.ts');
+  const distFlowJs = join(dir, 'dist', 'flow.js');
 
-  const hasRaceTs = await pathExists(raceTs);
-  const hasDistRaceJs = await pathExists(distRaceJs);
+  const hasFlowTs = await pathExists(flowTs);
+  const hasDistFlowJs = await pathExists(distFlowJs);
 
-  if (!hasRaceTs && !hasDistRaceJs) {
+  if (!hasFlowTs && !hasDistFlowJs) {
     // Entry point absence is already reported by checkEntryPoint — skip here.
     return findings;
   }
 
-  const candidate = hasRaceTs ? raceTs : distRaceJs;
+  const candidate = hasFlowTs ? flowTs : distFlowJs;
   const source = await readTextFile(candidate);
 
   if (source === null) return findings;
@@ -454,7 +455,7 @@ async function checkPromptsDirectory(dir: string): Promise<LintFinding[]> {
   if (!(await pathExists(promptsDir))) {
     findings.push({
       code: 'PROMPTS_DIR_MISSING',
-      message: 'race references promptFile but prompts/ directory does not exist',
+      message: 'flow references promptFile but prompts/ directory does not exist',
       path: 'prompts',
     });
   }
@@ -515,21 +516,19 @@ async function checkSchemas(dir: string): Promise<LintFinding[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * Lint a race package directory against the §7 contract.
+ * Lint a flow package directory against the §7 contract.
  *
  * Returns ok(LintReport) when the linter ran to completion — even if the
  * report contains errors and warnings. Returns err(LintError) only when an
  * unexpected internal failure (e.g., the directory is not accessible at all)
  * prevented the linter from running.
  *
- * @param dir  Absolute path to the race package root.
+ * @param dir  Absolute path to the flow package root.
  */
-export async function lintRacePackage(
-  dir: string,
-): Promise<Result<LintReport, LintError>> {
+export async function lintRacePackage(dir: string): Promise<Result<LintReport, LintError>> {
   // Guard: the directory must be accessible before we start any checks.
   if (!(await pathExists(dir))) {
-    return err(new LintError(`race package directory not found: ${dir}`));
+    return err(new LintError(`flow package directory not found: ${dir}`));
   }
 
   // Run all checks. Errors from individual checks are accumulated into the
@@ -541,14 +540,13 @@ export async function lintRacePackage(
   let schemaErrors: LintFinding[];
 
   try {
-    [pkgErrors, entryErrors, readmeResult, promptsErrors, schemaErrors] =
-      await Promise.all([
-        checkPackageJson(dir),
-        checkEntryPoint(dir),
-        checkReadme(dir),
-        checkPromptsDirectory(dir),
-        checkSchemas(dir),
-      ]);
+    [pkgErrors, entryErrors, readmeResult, promptsErrors, schemaErrors] = await Promise.all([
+      checkPackageJson(dir),
+      checkEntryPoint(dir),
+      checkReadme(dir),
+      checkPromptsDirectory(dir),
+      checkSchemas(dir),
+    ]);
   } catch (caught) {
     const detail = caught instanceof Error ? caught.message : String(caught);
     return err(new LintError(`linter encountered an unexpected internal error: ${detail}`));

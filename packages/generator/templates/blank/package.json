@@ -1,9 +1,9 @@
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "A Relay race.",
+  "description": "A Relay flow.",
   "type": "module",
-  "main": "./dist/race.js",
+  "main": "./dist/flow.js",
   "files": [
     "dist",
     "prompts",
@@ -20,10 +20,19 @@
     "@relay/core": "^1.0.0"
   },
   "relay": {
+    "flowName": "{{pkgName}}",
     "displayName": "{{pkgName}}",
     "tags": [],
-    "estimatedCostUsd": { "min": 0.0, "max": 0.0 },
-    "estimatedDurationMin": { "min": 1, "max": 5 },
-    "audience": ["dev"]
+    "estimatedCostUsd": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "estimatedDurationMin": {
+      "min": 1,
+      "max": 5
+    },
+    "audience": [
+      "dev"
+    ]
   }
 }

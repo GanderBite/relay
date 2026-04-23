@@ -27,13 +27,13 @@ import { join } from 'node:path';
 import {
   type AuthState,
   defaultRegistry,
+  loadFlowSettings,
   loadGlobalSettings,
-  loadRaceSettings,
   Orchestrator,
-  type RunnerState,
   type RunResult,
   registerDefaultProviders,
   resolveProvider,
+  type StepState,
 } from '@relay/core';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
@@ -142,17 +142,17 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   registerDefaultProviders();
 
   // Load settings in parallel; failures are non-fatal — treat as null.
-  const [globalSettingsResult, raceSettingsResult] = await Promise.all([
+  const [globalSettingsResult, flowSettingsResult] = await Promise.all([
     loadGlobalSettings(),
-    loadRaceSettings(flowDir),
+    loadFlowSettings(flowDir),
   ]);
 
   const globalSettings = globalSettingsResult.isOk() ? globalSettingsResult.value : null;
-  const raceSettings = raceSettingsResult.isOk() ? raceSettingsResult.value : null;
+  const flowSettings = flowSettingsResult.isOk() ? flowSettingsResult.value : null;
 
   const resolveResult = resolveProvider({
     flagProvider: options.provider,
-    raceSettings: raceSettings ?? null,
+    flowSettings: flowSettings ?? null,
     globalSettings: globalSettings ?? null,
     registry: defaultRegistry,
   });
@@ -180,7 +180,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const flowPath = join(flowDir, 'dist', 'flow.js');
 
   // Derive runner count and ETA from race metadata.
-  const stepCount = flow.runnerOrder.length;
+  const stepCount = flow.stepOrder.length;
   const flowMeta = flow as unknown as Record<string, unknown>;
   const etaMin =
     typeof flowMeta['etaMin'] === 'number' ? (flowMeta['etaMin'] as number) : stepCount * 2;
@@ -238,8 +238,8 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const inputExtras = namedExtras;
 
   const startBanner = renderStartBanner({
-    raceName: flow.name,
-    raceVersion: flow.version,
+    flowName: flow.name,
+    flowVersion: flow.version,
     runId,
     startedAt: new Date().toISOString(),
     inputPrimary,
@@ -319,8 +319,8 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     // The Orchestrator generates a fresh runId on every invocation so this flag is currently a no-op;
     // it is forwarded for future stale-runDir purge behavior and so the banner's next: block is truthful.
     const runOpts: Parameters<typeof orchestrator.run>[2] & { fresh?: boolean } = {
-      raceDir: flowDir,
-      racePath: flowPath,
+      flowDir: flowDir,
+      flowPath: flowPath,
     };
     if (options.provider !== undefined) {
       runOpts.flagProvider = options.provider;
@@ -339,11 +339,11 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     process.removeListener('SIGINT', sigintHandler);
     progress.stop();
     maybeSendRunEvent({
-      raceName: flow.name,
-      raceVersion: flow.version,
+      flowName: flow.name,
+      flowVersion: flow.version,
       status: 'failure',
       durationMs: Date.now() - startMs,
-      stepsCount: flow.runnerOrder.length,
+      stepsCount: flow.stepOrder.length,
       totalCostUsd: 0,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -364,14 +364,14 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // ---------------------------------------------------------------------------
 
   if (result.status === 'succeeded') {
-    const stepRows = await buildSuccessStepRows(result.runDir, flow.runnerOrder);
+    const stepRows = await buildSuccessStepRows(result.runDir, flow.stepOrder);
     const outputPath =
       result.artifacts.length > 0
         ? (result.artifacts[0] ?? `./.relay/runs/${result.runId}`)
         : `./.relay/runs/${result.runId}`;
 
     const successBanner = renderSuccessBanner({
-      raceName: flow.name,
+      flowName: flow.name,
       runId: result.runId,
       steps: stepRows,
       totalDurationMs: result.durationMs,
@@ -388,11 +388,11 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     }
 
     maybeSendRunEvent({
-      raceName: flow.name,
-      raceVersion: flow.version,
+      flowName: flow.name,
+      flowVersion: flow.version,
       status: 'success',
       durationMs: result.durationMs,
-      stepsCount: flow.runnerOrder.length,
+      stepsCount: flow.stepOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -403,14 +403,14 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   } else if (result.status === 'aborted' && wasInterrupted) {
     // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
     // This is not an error: state is saved, the run can be resumed.
-    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.runnerOrder);
+    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.stepOrder);
 
     maybeSendRunEvent({
-      raceName: flow.name,
-      raceVersion: flow.version,
+      flowName: flow.name,
+      flowVersion: flow.version,
       status: 'aborted',
       durationMs: result.durationMs,
-      stepsCount: flow.runnerOrder.length,
+      stepsCount: flow.stepOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -420,9 +420,9 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     process.exit(130);
   } else {
     // failed or aborted (non-interactive)
-    const failureRows = await buildFailureStepRows(result.runDir, flow.runnerOrder);
+    const failureRows = await buildFailureStepRows(result.runDir, flow.stepOrder);
     const failureBanner = renderFailureBanner({
-      raceName: flow.name,
+      flowName: flow.name,
       runId: result.runId,
       steps: failureRows,
       spentUsd: result.cost.totalUsd,
@@ -431,11 +431,11 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     process.stdout.write(failureBanner);
 
     maybeSendRunEvent({
-      raceName: flow.name,
-      raceVersion: flow.version,
+      flowName: flow.name,
+      flowVersion: flow.version,
       status: result.status === 'aborted' ? 'aborted' : 'failure',
       durationMs: result.durationMs,
-      stepsCount: flow.runnerOrder.length,
+      stepsCount: flow.stepOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -449,12 +449,12 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
 // ---------------------------------------------------------------------------
 // Per-step data builders
 //
-// After the run, runner timing comes from state.json (RunnerState.startedAt /
+// After the run, step timing comes from state.json (StepState.startedAt /
 // completedAt) and per-runner cost from metrics.json (RunnerMetrics.costUsd).
 // Both are read once here; missing data falls back to safe zero values.
 // ---------------------------------------------------------------------------
 
-interface RawStepState extends RunnerState {
+interface RawStepState extends StepState {
   model?: string;
 }
 
@@ -468,8 +468,8 @@ interface RawMetrics {
 async function readStateSteps(runDir: string): Promise<Record<string, RawStepState>> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
-    const parsed = JSON.parse(raw) as { runners?: Record<string, RawStepState> };
-    return parsed.runners ?? {};
+    const parsed = JSON.parse(raw) as { steps?: Record<string, RawStepState> };
+    return parsed.steps ?? {};
   } catch {
     return {};
   }
@@ -567,7 +567,7 @@ function buildCostTable(rows: SuccessStepRow[]): string {
   const COST_W = 10;
 
   const header =
-    'runner'.padEnd(NAME_W) + 'model'.padEnd(MODEL_W) + 'duration'.padEnd(DUR_W) + 'cost';
+    'step'.padEnd(NAME_W) + 'model'.padEnd(MODEL_W) + 'duration'.padEnd(DUR_W) + 'cost';
   const divider = '─'.repeat(NAME_W + MODEL_W + DUR_W + COST_W);
 
   const dataLines = rows.map((r) => {

@@ -1,8 +1,8 @@
-import { defineRace, runner, z } from '@relay/core';
-import { InventorySchema } from './schemas/inventory.js';
+import { defineFlow, step, z } from '@relay/core';
 import { EntitiesSchema } from './schemas/entities.js';
+import { InventorySchema } from './schemas/inventory.js';
 
-export default defineRace({
+export default defineFlow({
   name: '{{pkgName}}',
   version: '0.1.0',
   description: 'Explores a codebase and produces an HTML report.',
@@ -13,29 +13,29 @@ export default defineRace({
       .default('both')
       .describe('Who the report is written for.'),
   }),
-  runners: {
-    inventory: runner.prompt({
+  steps: {
+    inventory: step.prompt({
       promptFile: 'prompts/01_inventory.md',
       tools: ['Read', 'Glob', 'Grep'],
-      output: { baton: 'inventory', schema: InventorySchema },
+      output: { handoff: 'inventory', schema: InventorySchema },
       maxRetries: 1,
     }),
 
-    entities: runner.prompt({
+    entities: step.prompt({
       promptFile: 'prompts/02_entities.md',
       dependsOn: ['inventory'],
       contextFrom: ['inventory'],
-      output: { baton: 'entities', schema: EntitiesSchema },
+      output: { handoff: 'entities', schema: EntitiesSchema },
     }),
 
-    services: runner.prompt({
+    services: step.prompt({
       promptFile: 'prompts/03_services.md',
       dependsOn: ['inventory'],
       contextFrom: ['inventory'],
-      output: { baton: 'services' },
+      output: { handoff: 'services' },
     }),
 
-    report: runner.prompt({
+    report: step.prompt({
       promptFile: 'prompts/04_report.md',
       dependsOn: ['entities', 'services'],
       contextFrom: ['inventory', 'entities', 'services'],

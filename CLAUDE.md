@@ -15,10 +15,10 @@ Relay is a TypeScript monorepo (pnpm workspaces) that ships a CLI + library for 
 ```
 relay/
 ├── packages/
-│   ├── core/        # @relay/core — library (defineRace, Runner, Provider, ...)
+│   ├── core/        # @relay/core — library (defineFlow, Step, Provider, ...)
 │   ├── cli/         # @relay/cli — the `relay` binary
-│   ├── generator/   # @relay/generator — Claude Code skill that scaffolds new races
-│   └── races/       # reference race packages (codebase-discovery)
+│   ├── generator/   # @relay/generator — Claude Code skill that scaffolds new flows
+│   └── flows/       # reference flow packages (codebase-discovery)
 ├── examples/        # hello-world + hello-world-mocked
 ├── catalog/         # static catalog site (M4)
 └── docs/            # copy-kit, naming-conventions, etc.
@@ -35,7 +35,7 @@ One sprint per session. The user invokes the `sprint-workflow` skill (or just sa
 | `task-implementer` | Default workhorse — low/medium-risk implementation tasks |
 | `systems-engineer` | High-risk core: Runner, ClaudeProvider, DAG/cycles, retry, abort |
 | `cli-ux-engineer` | Any CLI command — output must match product spec verbatim |
-| `race-author` | Prompt files + race.ts for examples and reference races |
+| `flow-author` | Prompt files + flow.ts for examples and reference flows |
 | `test-engineer` | Vitest tests using MockProvider |
 | `code-reviewer` | Post-implementation review against spec sections |
 | `doc-writer` | README hero, copy-kit, glossary, naming conventions |
@@ -48,7 +48,7 @@ One sprint per session. The user invokes the `sprint-workflow` skill (or just sa
 | `sprint-workflow` | Dispatching a sprint's tasks across agents |
 | `relay-brand-grammar` | Touching any user-visible string |
 | `relay-monorepo` | Configuring pnpm / tsconfig / tsup / vitest at the workspace level |
-| `race-package-format` | Building or validating a race package (§7) |
+| `flow-package-format` | Building or validating a flow package (§7) |
 | `billing-safety` | Anything that touches `ANTHROPIC_API_KEY`, auth, env |
 | `typescript` | Writing or refactoring `.ts` — strict mode, ESM, discriminated unions, Zod inference |
 | `javascript` | Editing the small JS surface — bin shims, catalog browser JS, GitHub Actions |

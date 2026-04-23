@@ -25,24 +25,24 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { RunnerState } from '@relay/core';
+import type { StepState } from '@relay/core';
 
 import {
-  MARK,
-  SYMBOLS,
-  STEP_NAME_WIDTH,
-  MODEL_WIDTH,
   DURATION_WIDTH,
   gray,
   green,
+  MARK,
+  MODEL_WIDTH,
   red,
+  STEP_NAME_WIDTH,
+  SYMBOLS,
 } from './visual.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface RawStepState extends RunnerState {
+interface RawStepState extends StepState {
   model?: string;
 }
 
@@ -54,7 +54,7 @@ interface RawMetrics {
 }
 
 interface RawState {
-  runners?: Record<string, RawStepState>;
+  steps?: Record<string, RawStepState>;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,10 +83,7 @@ function fmtTotalCost(usd: number): string {
 }
 
 function stepDurationMs(stepState: RawStepState): number {
-  if (
-    typeof stepState.startedAt === 'string' &&
-    typeof stepState.completedAt === 'string'
-  ) {
+  if (typeof stepState.startedAt === 'string' && typeof stepState.completedAt === 'string') {
     const start = Date.parse(stepState.startedAt);
     const end = Date.parse(stepState.completedAt);
     if (Number.isFinite(start) && Number.isFinite(end)) return Math.max(0, end - start);
@@ -125,9 +122,10 @@ function renderPausedRunnerRow(
 
   if (stepState.status === 'running') {
     // Mid-flight when abort fired — show as cancelled.
-    const annotation = stepState.attempts > 0
-      ? `cancelled mid-step (turn ${stepState.attempts})`
-      : 'cancelled mid-step';
+    const annotation =
+      stepState.attempts > 0
+        ? `cancelled mid-step (turn ${stepState.attempts})`
+        : 'cancelled mid-step';
     return gray(` ${SYMBOLS.cancelled} ${nameCol}${annotation}`);
   }
 
@@ -143,7 +141,7 @@ async function readStateSteps(runDir: string): Promise<Record<string, RawStepSta
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
     const parsed = JSON.parse(raw) as RawState;
-    return parsed.runners ?? {};
+    return parsed.steps ?? {};
   } catch {
     return {};
   }

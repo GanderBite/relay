@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Explores a codebase and produces an HTML report.",
   "type": "module",
-  "main": "./dist/race.js",
+  "main": "./dist/flow.js",
   "files": [
     "dist",
     "prompts",
@@ -20,10 +20,24 @@
     "@relay/core": "^1.0.0"
   },
   "relay": {
+    "flowName": "{{pkgName}}",
     "displayName": "{{pkgName}}",
-    "tags": ["discovery", "documentation", "audit"],
-    "estimatedCostUsd": { "min": 0.20, "max": 0.80 },
-    "estimatedDurationMin": { "min": 5, "max": 20 },
-    "audience": ["pm", "dev"]
+    "tags": [
+      "discovery",
+      "documentation",
+      "audit"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.2,
+      "max": 0.8
+    },
+    "estimatedDurationMin": {
+      "min": 5,
+      "max": 20
+    },
+    "audience": [
+      "pm",
+      "dev"
+    ]
   }
 }

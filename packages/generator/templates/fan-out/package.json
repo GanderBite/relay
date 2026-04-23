@@ -1,9 +1,9 @@
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "A Relay race with a fan-out / fan-in topology.",
+  "description": "A Relay flow with a fan-out / fan-in topology.",
   "type": "module",
-  "main": "./dist/race.js",
+  "main": "./dist/flow.js",
   "files": [
     "dist",
     "prompts",
@@ -20,10 +20,22 @@
     "@relay/core": "^1.0.0"
   },
   "relay": {
+    "flowName": "{{pkgName}}",
     "displayName": "{{pkgName}}",
-    "tags": ["fan-out", "parallel"],
-    "estimatedCostUsd": { "min": 0.05, "max": 0.25 },
-    "estimatedDurationMin": { "min": 3, "max": 10 },
-    "audience": ["dev"]
+    "tags": [
+      "fan-out",
+      "parallel"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.05,
+      "max": 0.25
+    },
+    "estimatedDurationMin": {
+      "min": 3,
+      "max": 10
+    },
+    "audience": [
+      "dev"
+    ]
   }
 }

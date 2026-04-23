@@ -1,0 +1,54 @@
+{
+  "name": "@relay/flows-codebase-discovery",
+  "version": "0.1.0",
+  "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": {
+      "import": "./dist/flow.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "@types/node": "25.6.0",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "flowName": "codebase-discovery",
+    "displayName": "Codebase Discovery",
+    "tags": [
+      "analysis",
+      "documentation",
+      "architecture"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.2,
+      "max": 0.8
+    },
+    "estimatedDurationMin": {
+      "min": 5,
+      "max": 20
+    },
+    "audience": [
+      "pm",
+      "dev"
+    ]
+  }
+}

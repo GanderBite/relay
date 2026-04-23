@@ -21,26 +21,21 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-
-import { MockProvider } from '@relay/core/testing';
-import {
-  Orchestrator,
-  ProviderRegistry,
-  z,
-} from '@relay/core';
 import type {
-  Race,
+  Flow,
   InvocationContext,
   InvocationRequest,
   InvocationResponse,
   Provider,
   ProviderCapabilities,
 } from '@relay/core';
+import { Orchestrator, ProviderRegistry, z } from '@relay/core';
+import { MockProvider } from '@relay/core/testing';
 
 import { EXIT_CODES, formatError } from '../exit-codes.js';
-import { loadFlow } from '../flow-loader.js';
 import type { LoadedFlow } from '../flow-loader.js';
-import { MARK, SYMBOLS, green, red, gray, STEP_NAME_WIDTH } from '../visual.js';
+import { loadFlow } from '../flow-loader.js';
+import { gray, green, MARK, red, STEP_NAME_WIDTH, SYMBOLS } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Fixture schema (Zod v4)
@@ -104,7 +99,10 @@ class NamedMockProvider implements Provider {
     return this.inner.invoke(req, ctx);
   }
 
-  stream(req: InvocationRequest, ctx: InvocationContext): ReturnType<NonNullable<MockProvider['stream']>> {
+  stream(
+    req: InvocationRequest,
+    ctx: InvocationContext,
+  ): ReturnType<NonNullable<MockProvider['stream']>> {
     return this.inner.stream(req, ctx);
   }
 }
@@ -113,7 +111,7 @@ class NamedMockProvider implements Provider {
 // Build a ProviderRegistry covering all providers the flow references
 // ---------------------------------------------------------------------------
 
-function buildRegistry(_flow: Race<unknown>): ProviderRegistry {
+function buildRegistry(_flow: Flow<unknown>): ProviderRegistry {
   const registry = new ProviderRegistry();
   const mock = new NamedMockProvider('mock');
   const regResult = registry.register(mock);
@@ -131,10 +129,7 @@ interface FixtureResult {
   reason?: string;
 }
 
-async function runFixture(
-  fixturePath: string,
-  loadedFlow: LoadedFlow,
-): Promise<FixtureResult> {
+async function runFixture(fixturePath: string, loadedFlow: LoadedFlow): Promise<FixtureResult> {
   const fixtureName = path.basename(fixturePath, '.json');
 
   // Parse fixture JSON
@@ -178,7 +173,7 @@ async function runFixture(
       runDir: tempDir,
     });
     runResult = await orchestrator.run(flow, fixture.input, {
-      raceDir: loadedFlow.dir,
+      flowDir: loadedFlow.dir,
       authTimeoutMs: 5000,
       flagProvider: 'mock',
     });

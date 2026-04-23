@@ -18,10 +18,10 @@
  * Fetch endpoint: https://relay.dev/registry.json, 5-second timeout.
  */
 
-import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { MARK, SYMBOLS, gray, yellow } from '../visual.js';
+import { join } from 'node:path';
+import { gray, MARK, SYMBOLS, yellow } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Column widths — derived from the spec §6.8 example
@@ -31,9 +31,9 @@ import { MARK, SYMBOLS, gray, yellow } from '../visual.js';
 // ---------------------------------------------------------------------------
 
 const NAME_COL_MIN = 27; // minimum name padEnd — matches spec's longest example
-const VER_COL      = 10; // "v0.3.0" + 4 trailing spaces
-const DUR_COL      =  5; // "25m" + 2 trailing spaces
-const COST_COL     =  9; // "$0.60" + 4 trailing spaces
+const VER_COL = 10; // "v0.3.0" + 4 trailing spaces
+const DUR_COL = 5; // "25m" + 2 trailing spaces
+const COST_COL = 9; // "$0.60" + 4 trailing spaces
 
 // ---------------------------------------------------------------------------
 // Registry entry shape
@@ -60,7 +60,7 @@ interface RegistryEntry {
 // ---------------------------------------------------------------------------
 
 const CACHE_TTL_MS = 3_600_000; // 1 hour
-const CACHE_PATH   = join(homedir(), '.relay', 'registry.json');
+const CACHE_PATH = join(homedir(), '.relay', 'registry.json');
 const REGISTRY_URL = 'https://relay.dev/registry.json';
 const FETCH_TIMEOUT_MS = 5_000;
 
@@ -140,7 +140,9 @@ async function writeCache(entries: RegistryEntry[]): Promise<void> {
  */
 async function fetchRegistry(): Promise<RegistryEntry[] | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => { controller.abort(); }, FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
 
   let json: unknown;
   try {
@@ -291,11 +293,11 @@ function nameColWidth(entries: RegistryEntry[]): number {
  */
 function renderRow(entry: RegistryEntry, namePad: number): string {
   const displayName = entry.displayName ?? entry.name;
-  const name     = displayName.padEnd(namePad);
-  const version  = `v${entry.version}`.padEnd(VER_COL);
+  const name = displayName.padEnd(namePad);
+  const version = `v${entry.version}`.padEnd(VER_COL);
   const duration = extractDuration(entry).padEnd(DUR_COL);
-  const cost     = extractCost(entry).padEnd(COST_COL);
-  const tier     = gray(entry.tier);
+  const cost = extractCost(entry).padEnd(COST_COL);
+  const tier = gray(entry.tier);
   return ` ${name}${version}${duration}${cost}${tier}`;
 }
 

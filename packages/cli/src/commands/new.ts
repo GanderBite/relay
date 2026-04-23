@@ -6,7 +6,7 @@ import path from 'node:path';
 import { type ScaffoldReport, scaffoldFlow, type TemplateId } from '@relay/generator/scaffold';
 
 import { EXIT_CODES } from '../exit-codes.js';
-import { MARK, SYMBOLS, green, red } from '../visual.js';
+import { green, MARK, red, SYMBOLS } from '../visual.js';
 
 export interface NewCommandOptions {
   template?: string;
@@ -32,30 +32,35 @@ async function skillIsInstalled(): Promise<boolean> {
 function printModeA(): void {
   process.stdout.write(
     `${MARK}  relay new\n` +
-    '\n' +
-    'the relay generator skill is installed in claude code.\n' +
-    '\n' +
-    'open a new claude code session in this directory and say:\n' +
-    '\n' +
-    '    scaffold a new relay flow\n' +
-    '\n' +
-    'or, to skip the skill and start from a blank template:\n' +
-    '\n' +
-    '    relay new my-flow --template blank\n',
+      '\n' +
+      'the relay generator skill is installed in claude code.\n' +
+      '\n' +
+      'open a new claude code session in this directory and say:\n' +
+      '\n' +
+      '    scaffold a new relay flow\n' +
+      '\n' +
+      'or, to skip the skill and start from a blank template:\n' +
+      '\n' +
+      '    relay new my-flow --template blank\n',
   );
 }
 
 function printInvalidName(name: string): void {
   process.stderr.write(
     `${red(`${SYMBOLS.fail} invalid flow name: "${name}"`)}\n` +
-    '\n' +
-    '  flow names must be lowercase kebab-case (e.g. my-flow, codebase-discovery).\n' +
-    '\n' +
-    '  \u2192 relay new my-flow\n',
+      '\n' +
+      '  flow names must be lowercase kebab-case (e.g. my-flow, codebase-discovery).\n' +
+      '\n' +
+      '  \u2192 relay new my-flow\n',
   );
 }
 
-function printModeB(name: string, template: TemplateId, report: ScaffoldReport, installed: boolean): void {
+function printModeB(
+  name: string,
+  template: TemplateId,
+  report: ScaffoldReport,
+  installed: boolean,
+): void {
   const lines: string[] = [];
 
   lines.push(`${MARK}  relay new ${name} (${template} template)`);
@@ -106,10 +111,10 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
   if (!isTemplateId(templateRaw)) {
     process.stderr.write(
       `${red(`${SYMBOLS.fail} unknown template: "${templateRaw}"`)}\n` +
-      '\n' +
-      '  valid templates: blank, linear, fan-out, discovery.\n' +
-      '\n' +
-      `  \u2192 relay new ${name} --template blank\n`,
+        '\n' +
+        '  valid templates: blank, linear, fan-out, discovery.\n' +
+        '\n' +
+        `  \u2192 relay new ${name} --template blank\n`,
     );
     process.exit(EXIT_CODES.definition_error);
   }
@@ -129,23 +134,21 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
     if (e.kind === 'file-exists') {
       process.stderr.write(
         `${red(`${SYMBOLS.fail} directory already exists: ${e.path}`)}\n` +
-        '\n' +
-        '  pass --force to overwrite.\n' +
-        '\n' +
-        `  \u2192 relay new ${name} --force\n`,
+          '\n' +
+          '  pass --force to overwrite.\n' +
+          '\n' +
+          `  \u2192 relay new ${name} --force\n`,
       );
       process.exit(EXIT_CODES.runner_failure);
     } else if (e.kind === 'template-not-found') {
       process.stderr.write(
         `${red(`${SYMBOLS.fail} template not found: "${e.template}"`)}\n` +
-        '\n' +
-        `  \u2192 relay new ${name} --template blank\n`,
+          '\n' +
+          `  \u2192 relay new ${name} --template blank\n`,
       );
       process.exit(EXIT_CODES.definition_error);
     } else if (e.kind === 'missing-token') {
-      process.stderr.write(
-        `${red(`${SYMBOLS.fail} missing token ${e.token} in ${e.path}`)}\n`,
-      );
+      process.stderr.write(`${red(`${SYMBOLS.fail} missing token ${e.token} in ${e.path}`)}\n`);
       process.exit(EXIT_CODES.definition_error);
     } else {
       // e.kind === 'io-error'

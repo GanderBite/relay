@@ -51,7 +51,7 @@ Print a sprint summary: tasks done, files touched, anything flagged by the revie
 | Tag includes `scaffolding`, `foundation`, `util`, `templates`; risk: low | `task-implementer` |
 | `risk: high` AND module starts with `core.runner`, `core.providers.claude`, `core.flow` | `systems-engineer` |
 | Module starts with `cli.` (commands, banner, progress, visual, help) | `cli-ux-engineer` |
-| Path includes `prompts/`, `race.ts` in `examples/` or `packages/races/`, or `packages/generator/templates/` | `race-author` |
+| Path includes `prompts/`, `flow.ts` in `examples/` or `packages/flows/`, or `packages/generator/templates/` | `flow-author` |
 | Path includes `tests/`, or task name starts with "Test" | `test-engineer` |
 | Path starts with `docs/` or is the root `README.md` | `doc-writer` |
 | Path starts with `catalog/` or is `packages/cli/src/lint.ts` / `registry.ts` | `catalog-builder` |

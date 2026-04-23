@@ -1,20 +1,20 @@
 # @relay/core
 
-The TypeScript library that powers Relay. Defines races, validates runner DAGs,
+The TypeScript library that powers Relay. Defines flows, validates step DAGs,
 manages run state, and invokes Claude through pluggable providers.
 
 ---
 
 ## What it does
 
-`@relay/core` gives you two things: a compiler (`defineRace`) that turns a typed
-TypeScript object into a validated race graph, and a `Runner` that executes that
+`@relay/core` gives you two things: a compiler (`defineFlow`) that turns a typed
+TypeScript object into a validated flow graph, and a `Runner` that executes that
 graph with checkpoint/resume, cost tracking, and billing-safe provider dispatch.
 
-Races are directed acyclic graphs of runners. Each runner is one of five kinds:
-`prompt`, `script`, `branch`, `parallel`, or `terminal`. Runners pass data forward
-as batons — typed JSON objects validated by Zod schemas. The runner persists a
-checkpoint after every runner completes; a crashed run resumes from the last good
+Flows are directed acyclic graphs of steps. Each step is one of five kinds:
+`prompt`, `script`, `branch`, `parallel`, or `terminal`. Steps pass data forward
+as handoffs — typed JSON objects validated by Zod schemas. The orchestrator persists a
+checkpoint after every step completes; a crashed run resumes from the last good
 checkpoint with `relay resume <runId>`.
 
 ---
@@ -32,15 +32,15 @@ Requires Node ≥ 20.10 and TypeScript 5.4+ (`"module": "NodeNext"` in tsconfig)
 ## Quick start
 
 ```ts
-import { defineRace, runner, z } from '@relay/core';
+import { defineFlow, step, z } from '@relay/core';
 
-export default defineRace({
+export default defineFlow({
   name: 'hello-world',
   version: '0.1.0',
-  description: 'A minimal race with one prompt runner.',
+  description: 'A minimal flow with one prompt step.',
   input: z.object({ topic: z.string() }),
-  runners: {
-    write: runner.prompt({
+  steps: {
+    write: step.prompt({
       promptFile: 'prompts/01_write.md',
       output: { artifact: 'output.md' },
     }),
@@ -51,35 +51,35 @@ export default defineRace({
 Point the CLI at the compiled output:
 
 ```bash
-relay run ./hello-world --topic="relay races"
+relay run ./hello-world --topic="relay flows"
 ```
 
 ---
 
 ## Core API
 
-### `defineRace(spec)`
+### `defineFlow(spec)`
 
-Compiles a race spec into a validated `Race` object. Throws `RaceDefinitionError`
+Compiles a flow spec into a validated `Flow` object. Throws `FlowDefinitionError`
 synchronously if the spec is invalid — cycles, missing dependencies, bad schemas.
 Import this once at module load; do not call it inside a function.
 
-### `runner.prompt(config)` / `runner.script(config)` / `runner.branch(config)` / `runner.parallel(config)` / `runner.terminal(config)`
+### `step.prompt(config)` / `step.script(config)` / `step.branch(config)` / `step.parallel(config)` / `step.terminal(config)`
 
-The five runner constructors. Each validates its config and throws `RaceDefinitionError`
-on bad input. Prompt runners run in a contained subprocess with an explicit env
-allowlist. Script and branch runners receive the full parent env — see
+The five step constructors. Each validates its config and throws `FlowDefinitionError`
+on bad input. Prompt steps run in a contained subprocess with an explicit env
+allowlist. Script and branch steps receive the full parent env — see
 `docs/billing-safety.md` for the containment boundary.
 
 ### `Runner`
 
-Executes a race given input. Returns a `Result<RunSummary, RunError>`.
+Executes a flow given input. Returns a `Result<RunSummary, RunError>`.
 
 ```ts
 import { Runner } from '@relay/core';
 
 const runner = new Runner({ runDir: '.relay/runs' });
-const result = await runner.run(race, { topic: 'relay races' }, { raceDir, racePath });
+const result = await runner.run(flow, { topic: 'relay flows' }, { flowDir, flowPath });
 ```
 
 Call `runner.allowApiKey()` before `run()` to opt in to `ANTHROPIC_API_KEY` billing.
@@ -89,11 +89,11 @@ Call `runner.allowApiKey()` before `run()` to opt in to `ANTHROPIC_API_KEY` bill
 ## Glossary
 
 ```
-race        a named, versioned pipeline you can run
-runner      one node in a race (prompt, script, branch, parallel)
-baton       the JSON one runner produces and a later runner consumes
-run         one execution of a race; identified by a run id
-checkpoint  the saved state of a run after each runner completes
+flow        a named, versioned sequence of steps you can run
+step        one node in a flow (prompt, script, branch, parallel)
+handoff     the JSON one step produces and a later step consumes
+run         one execution of a flow; identified by a run id
+checkpoint  the saved state of a run after each step completes
 ```
 
 ---

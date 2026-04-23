@@ -1,11 +1,12 @@
-import { defineRace, runner, z } from '@relay/core';
+import { defineFlow, step, z } from '@relay/core';
 import { EntitiesSchema } from './schemas/entities.js';
 import { InventorySchema } from './schemas/inventory.js';
 
-export default defineRace({
+export default defineFlow({
   name: 'codebase-discovery',
   version: '0.1.0',
-  description: 'Explores a codebase and produces an HTML report of packages, entities, services, and architecture.',
+  description:
+    'Explores a codebase and produces an HTML report of packages, entities, services, and architecture.',
   input: z.object({
     repoPath: z.string().describe('Absolute or relative path to the repository to analyze.'),
     audience: z
@@ -13,27 +14,27 @@ export default defineRace({
       .default('both')
       .describe('Who the report is written for: product managers, developers, or both.'),
   }),
-  runners: {
-    inventory: runner.prompt({
+  steps: {
+    inventory: step.prompt({
       promptFile: 'prompts/01_inventory.md',
       tools: ['Read', 'Glob', 'Grep'],
-      output: { baton: 'inventory', schema: InventorySchema },
+      output: { handoff: 'inventory', schema: InventorySchema },
     }),
-    entities: runner.prompt({
+    entities: step.prompt({
       promptFile: 'prompts/02_entities.md',
       tools: ['Read', 'Glob', 'Grep'],
       dependsOn: ['inventory'],
       contextFrom: ['inventory'],
-      output: { baton: 'entities', schema: EntitiesSchema },
+      output: { handoff: 'entities', schema: EntitiesSchema },
     }),
-    services: runner.prompt({
+    services: step.prompt({
       promptFile: 'prompts/03_services.md',
       tools: ['Read', 'Glob', 'Grep'],
       dependsOn: ['inventory'],
       contextFrom: ['inventory'],
-      output: { baton: 'services' },
+      output: { handoff: 'services' },
     }),
-    report: runner.prompt({
+    report: step.prompt({
       promptFile: 'prompts/04_report.md',
       dependsOn: ['entities', 'services'],
       contextFrom: ['inventory', 'entities', 'services'],

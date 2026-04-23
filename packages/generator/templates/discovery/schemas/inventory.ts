@@ -1,8 +1,8 @@
 import { z } from '@relay/core';
 
 /**
- * The shape of the `inventory` baton written by the first runner.
- * Downstream runners receive this object as an injected context block and
+ * The shape of the `inventory` handoff written by the first step.
+ * Downstream steps receive this object as an injected context block and
  * should read it as `{{inventory.packages}}` from within a prompt.
  */
 export const InventorySchema = z.object({
@@ -13,9 +13,7 @@ export const InventorySchema = z.object({
       language: z
         .enum(['ts', 'js', 'py', 'go', 'rust', 'other'])
         .describe('Primary language of the package.'),
-      entryPoints: z
-        .array(z.string())
-        .describe('Repo-relative paths to the package entry points.'),
+      entryPoints: z.array(z.string()).describe('Repo-relative paths to the package entry points.'),
     }),
   ),
 });

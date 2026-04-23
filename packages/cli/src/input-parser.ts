@@ -8,10 +8,10 @@
  *   - Type coercion for ZodNumber (parse float) and ZodBoolean (true/false/1/0)
  *   - Default and optional fields are skipped during positional assignment
  *
- * Returns ok(parsed) on success or err(RaceDefinitionError) on failure.
+ * Returns ok(parsed) on success or err(FlowDefinitionError) on failure.
  */
 
-import { err, RaceDefinitionError, ok, type Result, z } from '@relay/core';
+import { err, FlowDefinitionError, ok, type Result, z } from '@relay/core';
 
 // ---------------------------------------------------------------------------
 // Internal type helpers
@@ -73,7 +73,7 @@ function isBooleanLike(field: z.ZodType): boolean {
 
 /**
  * Coerce a raw argv string to the appropriate JS type for this schema field.
- * Throws RaceDefinitionError on bad input so the caller can bubble it as err().
+ * Throws FlowDefinitionError on bad input so the caller can bubble it as err().
  */
 function coerce(raw: string, field: z.ZodType): unknown {
   const inner = unwrapField(field);
@@ -81,7 +81,7 @@ function coerce(raw: string, field: z.ZodType): unknown {
   if (inner instanceof z.ZodNumber) {
     const n = Number(raw);
     if (Number.isNaN(n)) {
-      throw new RaceDefinitionError(`expected a number but received "${raw}"`);
+      throw new FlowDefinitionError(`expected a number but received "${raw}"`);
     }
     return n;
   }
@@ -89,9 +89,7 @@ function coerce(raw: string, field: z.ZodType): unknown {
   if (inner instanceof z.ZodBoolean) {
     if (raw === 'true' || raw === '1') return true;
     if (raw === 'false' || raw === '0') return false;
-    throw new RaceDefinitionError(
-      `expected true/false/1/0 but received "${raw}"`,
-    );
+    throw new FlowDefinitionError(`expected true/false/1/0 but received "${raw}"`);
   }
 
   // ZodString, ZodEnum, ZodLiteral, or anything else — pass the string through.
@@ -119,10 +117,10 @@ function coerce(raw: string, field: z.ZodType): unknown {
 export function parseInputFromArgv(
   schema: z.ZodType,
   args: string[],
-): Result<unknown, RaceDefinitionError> {
+): Result<unknown, FlowDefinitionError> {
   if (!(schema instanceof z.ZodObject)) {
     return err(
-      new RaceDefinitionError(
+      new FlowDefinitionError(
         'input schema must be a ZodObject — other Zod types are not supported for argv parsing',
       ),
     );
@@ -158,8 +156,8 @@ export function parseInputFromArgv(
           try {
             raw[key] = coerce(rawValue, fieldRaw);
           } catch (coerceErr) {
-            if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
-            return err(new RaceDefinitionError(String(coerceErr)));
+            if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
+            return err(new FlowDefinitionError(String(coerceErr)));
           }
         } else {
           // Unknown flag — pass through as string so Zod can surface the error.
@@ -188,8 +186,8 @@ export function parseInputFromArgv(
             try {
               raw[key] = coerce(next, field);
             } catch (coerceErr) {
-              if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
-              return err(new RaceDefinitionError(String(coerceErr)));
+              if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
+              return err(new FlowDefinitionError(String(coerceErr)));
             }
           } else {
             // Unknown flag with a following value.
@@ -229,8 +227,8 @@ export function parseInputFromArgv(
     try {
       raw[key] = coerce(pos, fieldRaw);
     } catch (coerceErr) {
-      if (coerceErr instanceof RaceDefinitionError) return err(coerceErr);
-      return err(new RaceDefinitionError(String(coerceErr)));
+      if (coerceErr instanceof FlowDefinitionError) return err(coerceErr);
+      return err(new FlowDefinitionError(String(coerceErr)));
     }
 
     posIdx++;
@@ -243,7 +241,7 @@ export function parseInputFromArgv(
 
   if (!result.success) {
     const message = buildIssueMessage(result.error);
-    return err(new RaceDefinitionError(message, { issues: result.error.issues }));
+    return err(new FlowDefinitionError(message, { issues: result.error.issues }));
   }
 
   return ok(result.data);
@@ -305,19 +303,13 @@ export function renderHelpFromSchema(schema: z.ZodType): string {
 
   const rows: string[] = [];
 
-  rows.push(
-    `${'option'.padEnd(maxFlag)}  ${'type'.padEnd(maxType)}  description`,
-  );
-  rows.push(
-    `${'─'.repeat(maxFlag)}  ${'─'.repeat(maxType)}  ${'─'.repeat(40)}`,
-  );
+  rows.push(`${'option'.padEnd(maxFlag)}  ${'type'.padEnd(maxType)}  description`);
+  rows.push(`${'─'.repeat(maxFlag)}  ${'─'.repeat(maxType)}  ${'─'.repeat(40)}`);
 
   for (const { flag, typeName, desc, required } of data) {
     const optMarker = required ? '' : ' (optional)';
     const descText = desc + optMarker;
-    rows.push(
-      `${flag.padEnd(maxFlag)}  ${typeName.padEnd(maxType)}  ${descText}`.trimEnd(),
-    );
+    rows.push(`${flag.padEnd(maxFlag)}  ${typeName.padEnd(maxType)}  ${descText}`.trimEnd());
   }
 
   return rows.join('\n');

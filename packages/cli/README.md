@@ -1,7 +1,7 @@
 # @relay/cli
 
-The `relay` command-line binary. Runs races, manages runs, inspects auth,
-and scaffolds new race packages.
+The `relay` command-line binary. Runs flows, manages runs, inspects auth,
+and scaffolds new flow packages.
 
 ---
 
@@ -10,7 +10,7 @@ and scaffolds new race packages.
 `@relay/cli` wraps `@relay/core` in a terminal-facing binary. It handles provider
 selection, pre-run banners, TTY progress output, and error display. Every command
 exits with a documented exit code so CI scripts can distinguish billing
-misconfigurations from runner failures.
+misconfigurations from step failures.
 
 ---
 
@@ -31,27 +31,27 @@ relay init      # write provider choice to ~/.relay/settings.json
 relay doctor    # confirm Node, claude binary, auth state, and .relay dir
 ```
 
-Without `relay init` the runner exits with `NoProviderConfiguredError` (exit 2)
-before any runner executes.
+Without `relay init` the CLI exits with `NoProviderConfiguredError` (exit 2)
+before any step executes.
 
 ---
 
 ## Commands
 
-### `relay run <race> [input]`
+### `relay run <flow> [input]`
 
-Run a race. `<race>` is a local directory path or a catalog race name.
+Run a flow. `<flow>` is a local directory path or a catalog flow name.
 
 ```bash
 relay run codebase-discovery --repoPath=. --audience=dev
-relay run ./packages/races/codebase-discovery --repoPath=.
+relay run ./packages/flows/codebase-discovery --repoPath=.
 ```
 
 Pass `--api-key` to opt in to `ANTHROPIC_API_KEY` billing explicitly.
 
 ### `relay resume <runId>`
 
-Resume a run from its last checkpoint. Skips runners that completed successfully.
+Resume a run from its last checkpoint. Skips steps that completed successfully.
 
 ```bash
 relay resume f9c3a2
@@ -59,11 +59,11 @@ relay resume f9c3a2
 
 ### `relay list`
 
-List installed races and catalog races available for install.
+List installed flows and catalog flows available for install.
 
 ### `relay install <name>`
 
-Install a race from the catalog.
+Install a flow from the catalog.
 
 ```bash
 relay install codebase-discovery
@@ -71,7 +71,7 @@ relay install codebase-discovery
 
 ### `relay new <name>`
 
-Scaffold a new race package using the generator.
+Scaffold a new flow package using the generator.
 
 ```bash
 relay new my-audit
@@ -88,11 +88,11 @@ blockers.
 Print the vocabulary table:
 
 ```
-race        a named, versioned pipeline you can run
-runner      one node in a race (prompt, script, branch, parallel)
-baton       the JSON one runner produces and a later runner consumes
-run         one execution of a race; identified by a run id
-checkpoint  the saved state of a run after each runner completes
+flow        a named, versioned sequence of steps you can run
+step        one node in a flow (prompt, script, branch, parallel)
+handoff     the JSON one step produces and a later step consumes
+run         one execution of a flow; identified by a run id
+checkpoint  the saved state of a run after each step completes
 ```
 
 ---
@@ -105,15 +105,15 @@ checkpoint  the saved state of a run after each runner completes
 | 1 | General error |
 | 2 | `NoProviderConfiguredError` — run `relay init` |
 | 3 | `ClaudeAuthError` — API key guard; see `docs/billing-safety.md` |
-| 4 | `RaceDefinitionError` — malformed race package |
-| 5 | Runner failure |
+| 4 | `FlowDefinitionError` — malformed flow package |
+| 5 | Step failure |
 
 ---
 
 ## Billing safety
 
 Relay defaults to subscription billing. If `ANTHROPIC_API_KEY` is set in your
-environment, the CLI exits with code 3 before any runner executes. Pass `--api-key`
+environment, the CLI exits with code 3 before any step executes. Pass `--api-key`
 or set `RELAY_ALLOW_API_KEY=1` to opt in explicitly. See `docs/billing-safety.md`
 for the full auth precedence table and CI guidance.
 

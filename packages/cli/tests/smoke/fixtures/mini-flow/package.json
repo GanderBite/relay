@@ -10,7 +10,13 @@
   },
   "relay": {
     "displayName": "smoke-mini",
-    "estimatedCostUsd": { "min": 0.001, "max": 0.01 },
-    "estimatedDurationMin": { "min": 1, "max": 2 }
+    "estimatedCostUsd": {
+      "min": 0.001,
+      "max": 0.01
+    },
+    "estimatedDurationMin": {
+      "min": 1,
+      "max": 2
+    }
   }
 }

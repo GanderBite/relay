@@ -15,10 +15,9 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
-import { ok, err } from '@relay/core';
-import type { Result } from '@relay/core';
-import type { Race } from '@relay/core';
+import { join, resolve } from 'node:path';
+import type { Flow, Result } from '@relay/core';
+import { err, ok } from '@relay/core';
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -47,7 +46,7 @@ export class FlowLoadError extends Error {
 export type FlowSource = 'path' | 'local' | 'node_modules';
 
 export interface LoadedFlow {
-  flow: Race<unknown>;
+  flow: Flow<unknown>;
   dir: string;
   pkg: Record<string, unknown>;
   /** Indicates which resolution path was used. */
@@ -77,13 +76,13 @@ function isMapLike(value: unknown): boolean {
   );
 }
 
-function isFlow(value: unknown): value is Race<unknown> {
+function isFlow(value: unknown): value is Flow<unknown> {
   if (value === null || typeof value !== 'object') return false;
 
   const candidate = value as Record<string, unknown>;
 
   if (typeof candidate['name'] !== 'string') return false;
-  if (candidate['runners'] === null || typeof candidate['runners'] !== 'object') return false;
+  if (candidate['steps'] === null || typeof candidate['steps'] !== 'object') return false;
 
   const graph = candidate['graph'];
   if (graph === null || typeof graph !== 'object') return false;
@@ -144,13 +143,9 @@ async function importFlow(
   try {
     mod = await import(entryPath);
   } catch (importErr) {
-    const detail =
-      importErr instanceof Error ? importErr.message : String(importErr);
+    const detail = importErr instanceof Error ? importErr.message : String(importErr);
     return err(
-      new FlowLoadError(
-        `failed to import flow from ${entryPath}: ${detail}`,
-        'FLOW_INVALID',
-      ),
+      new FlowLoadError(`failed to import flow from ${entryPath}: ${detail}`, 'FLOW_INVALID'),
     );
   }
 
@@ -163,8 +158,8 @@ async function importFlow(
   if (!isFlow(defaultExport)) {
     return err(
       new FlowLoadError(
-        `${entryPath} does not export a valid Race — expected an object with ` +
-          `name (string), runners (object), and graph (RaceGraph)`,
+        `${entryPath} does not export a valid Flow — expected an object with ` +
+          `name (string), steps (object), and graph (FlowGraph)`,
         'FLOW_INVALID',
       ),
     );

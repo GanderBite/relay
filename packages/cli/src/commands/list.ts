@@ -18,18 +18,18 @@
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MARK, gray } from '../visual.js';
+import { gray, MARK } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Column widths — derived from the longest entry in the spec example
 // "codebase-discovery" (18 chars) → padEnd(22) gives 4 trailing spaces before "v"
 // ---------------------------------------------------------------------------
 
-const NAME_COL = 22;  // display name padEnd
-const VER_COL  = 10;  // "vX.Y.Z" padEnd
-const DUR_COL  =  5;  // "XXm" padEnd
-const COST_COL =  8;  // "$X.XX" padEnd
-const DESC_MAX = 60;  // truncate description at this length
+const NAME_COL = 22; // display name padEnd
+const VER_COL = 10; // "vX.Y.Z" padEnd
+const DUR_COL = 5; // "XXm" padEnd
+const COST_COL = 8; // "$X.XX" padEnd
+const DESC_MAX = 60; // truncate description at this length
 
 // ---------------------------------------------------------------------------
 // Package metadata shape — the `relay` block from package.json (§7)
@@ -80,12 +80,15 @@ async function readFlowEntry(pkgPath: string): Promise<FlowEntry | null> {
 
   const p = pkg as Record<string, unknown>;
 
-  const pkgName    = typeof p['name']    === 'string' ? p['name']    : '';
+  const pkgName = typeof p['name'] === 'string' ? p['name'] : '';
   const pkgVersion = typeof p['version'] === 'string' ? p['version'] : '0.0.0';
-  const pkgDesc    = typeof p['description'] === 'string' ? p['description'] : '';
+  const pkgDesc = typeof p['description'] === 'string' ? p['description'] : '';
 
   const relayMeta: RelayMeta =
-    p['relay'] !== undefined && p['relay'] !== null && typeof p['relay'] === 'object' && !Array.isArray(p['relay'])
+    p['relay'] !== undefined &&
+    p['relay'] !== null &&
+    typeof p['relay'] === 'object' &&
+    !Array.isArray(p['relay'])
       ? (p['relay'] as RelayMeta)
       : {};
 
@@ -102,9 +105,10 @@ async function readFlowEntry(pkgPath: string): Promise<FlowEntry | null> {
   const duration = durNum !== null ? `${durNum}m` : '';
 
   // Description: relay.description (meta) > package description
-  const description = (typeof relayMeta.description === 'string' && relayMeta.description.length > 0)
-    ? relayMeta.description
-    : pkgDesc;
+  const description =
+    typeof relayMeta.description === 'string' && relayMeta.description.length > 0
+      ? relayMeta.description
+      : pkgDesc;
 
   return {
     displayName,
@@ -224,9 +228,9 @@ async function fetchRemoteCatalog(): Promise<FlowEntry[] | null> {
         ? item.relay
         : {};
 
-    const rawName     = typeof item.name    === 'string' ? item.name    : '';
-    const version     = typeof item.version === 'string' ? item.version : '0.0.0';
-    const pkgDesc     = typeof item.description === 'string' ? item.description : '';
+    const rawName = typeof item.name === 'string' ? item.name : '';
+    const version = typeof item.version === 'string' ? item.version : '0.0.0';
+    const pkgDesc = typeof item.description === 'string' ? item.description : '';
     const strippedName = rawName.replace(/^@ganderbite\/flow-/, '');
     const displayName = relayMeta.displayName ?? (strippedName.length > 0 ? strippedName : rawName);
 
@@ -234,9 +238,10 @@ async function fetchRemoteCatalog(): Promise<FlowEntry[] | null> {
     const cost = costNum !== null ? `$${costNum.toFixed(2)}` : '';
     const durNum = extractMax(relayMeta.estimatedDurationMin);
     const duration = durNum !== null ? `${durNum}m` : '';
-    const description = (typeof relayMeta.description === 'string' && relayMeta.description.length > 0)
-      ? relayMeta.description
-      : pkgDesc;
+    const description =
+      typeof relayMeta.description === 'string' && relayMeta.description.length > 0
+        ? relayMeta.description
+        : pkgDesc;
 
     if (displayName.length === 0) continue;
 
@@ -296,8 +301,8 @@ function truncate(s: string, maxLen: number): string {
  */
 function renderRow(entry: FlowEntry, namePad: number): string {
   const name = entry.displayName.padEnd(namePad);
-  const ver  = `v${entry.version}`.padEnd(VER_COL);
-  const dur  = entry.duration.padEnd(DUR_COL);
+  const ver = `v${entry.version}`.padEnd(VER_COL);
+  const dur = entry.duration.padEnd(DUR_COL);
   const cost = entry.cost.padEnd(COST_COL);
   const desc = truncate(entry.description, DESC_MAX);
   return ` ${name}${ver}${dur}${cost}${desc}`;
@@ -315,7 +320,7 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   const cwd = process.cwd();
 
   // Header — verbatim from product spec §6.8
-  process.stdout.write(`${MARK}  installed races (./.relay/flows/)\n`);
+  process.stdout.write(`${MARK}  installed flows (./.relay/flows/)\n`);
   process.stdout.write('\n');
 
   // Scan all sources concurrently; remote may fail
@@ -332,9 +337,11 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   const flows = dedup([local, workspace, remote]);
 
   if (flows.length === 0) {
-    process.stdout.write('  no races installed. browse the catalog: relay search <query>\n');
+    process.stdout.write('  no flows installed. browse the catalog: relay search <query>\n');
     if (remoteCatalogUnavailable) {
-      process.stdout.write(gray('  (catalog unavailable — relay search may be out of date)') + '\n');
+      process.stdout.write(
+        gray('  (catalog unavailable — relay search may be out of date)') + '\n',
+      );
     }
     return;
   }
@@ -349,7 +356,7 @@ export default async function listCommand(_args: unknown[], _opts: unknown): Pro
   process.stdout.write('\n');
 
   // Footer — verbatim from product spec §6.8
-  process.stdout.write(`${flows.length} races installed. search more: relay search <query>\n`);
+  process.stdout.write(`${flows.length} flows installed. search more: relay search <query>\n`);
 
   if (remoteCatalogUnavailable) {
     process.stdout.write(gray('  (catalog unavailable — relay search may be out of date)') + '\n');

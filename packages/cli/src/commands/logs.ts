@@ -23,7 +23,7 @@ import { createReadStream, watch } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { MARK, SYMBOLS, gray, green, red, yellow } from '../visual.js';
+import { gray, green, MARK, red, SYMBOLS, yellow } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // Level ordering
@@ -58,7 +58,7 @@ function parseFlags(): LogFlags {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if ((arg === '--follow' || arg === '-f')) {
+    if (arg === '--follow' || arg === '-f') {
       follow = true;
     }
     if (arg === '--step' && i + 1 < argv.length) {
@@ -94,11 +94,16 @@ interface LogEvent {
 
 function colorLevel(level: string): string {
   switch (level) {
-    case 'error': return red(level);
-    case 'warn':  return yellow(level);
-    case 'info':  return green(level);
-    case 'debug': return gray(level);
-    default:      return gray(level);
+    case 'error':
+      return red(level);
+    case 'warn':
+      return yellow(level);
+    case 'info':
+      return green(level);
+    case 'debug':
+      return gray(level);
+    default:
+      return gray(level);
   }
 }
 
@@ -109,7 +114,7 @@ function colorLevel(level: string): string {
 function formatTime(ts: string | undefined): string {
   if (ts === undefined) return '--:--:--';
   const d = new Date(ts);
-  if (isNaN(d.getTime())) return '--:--:--';
+  if (Number.isNaN(d.getTime())) return '--:--:--';
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   const ss = String(d.getSeconds()).padStart(2, '0');
@@ -121,12 +126,12 @@ function formatTime(ts: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Render a LogEvent's fields (excluding ts, level, event, runnerId, raceName,
+ * Render a LogEvent's fields (excluding ts, level, event, runnerId, flowName,
  * runId) as space-separated key=value pairs. Nested data object fields are
  * flattened one level.
  */
 function renderExtras(evt: LogEvent): string {
-  const SKIP = new Set(['ts', 'level', 'event', 'runnerId', 'raceName', 'runId', 'data']);
+  const SKIP = new Set(['ts', 'level', 'event', 'runnerId', 'flowName', 'runId', 'data']);
   const pairs: string[] = [];
 
   if (evt.runnerId !== undefined) {
@@ -153,7 +158,6 @@ function renderExtras(evt: LogEvent): string {
 
 function renderEvent(evt: LogEvent): string {
   const time = formatTime(evt.ts);
-  const level = String(evt.level ?? 'info').padEnd(5);
   const eventName = String(evt.event ?? '(unknown)');
   const extras = renderExtras(evt);
 
@@ -169,10 +173,7 @@ function renderEvent(evt: LogEvent): string {
 // Event filter
 // ---------------------------------------------------------------------------
 
-function shouldShow(
-  evt: LogEvent,
-  flags: LogFlags,
-): boolean {
+function shouldShow(evt: LogEvent, flags: LogFlags): boolean {
   // Level filter
   const rank = levelRank(String(evt.level ?? 'info'));
   if (rank < levelRank(flags.minLevel)) return false;
@@ -202,14 +203,14 @@ function parseLine(line: string): LogEvent | null {
 }
 
 // ---------------------------------------------------------------------------
-// State file reader — for raceName in header
+// State file reader — for flowName in header
 // ---------------------------------------------------------------------------
 
 interface MinimalState {
-  raceName?: string;
+  flowName?: string;
 }
 
-async function readRaceName(runDir: string): Promise<string> {
+async function readFlowName(runDir: string): Promise<string> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), { encoding: 'utf8' });
     const parsed: unknown = JSON.parse(raw);
@@ -217,9 +218,9 @@ async function readRaceName(runDir: string): Promise<string> {
       parsed !== null &&
       typeof parsed === 'object' &&
       !Array.isArray(parsed) &&
-      typeof (parsed as MinimalState).raceName === 'string'
+      typeof (parsed as MinimalState).flowName === 'string'
     ) {
-      return (parsed as MinimalState).raceName as string;
+      return (parsed as MinimalState).flowName as string;
     }
   } catch {
     // fall through
@@ -231,12 +232,8 @@ async function readRaceName(runDir: string): Promise<string> {
 // Stream existing log lines
 // ---------------------------------------------------------------------------
 
-async function streamExisting(
-  logPath: string,
-  flags: LogFlags,
-): Promise<number> {
+async function streamExisting(logPath: string, flags: LogFlags): Promise<number> {
   let lastPos = 0;
-  let linesPrinted = 0;
 
   return new Promise<number>((resolve, reject) => {
     const stream = createReadStream(logPath, { encoding: 'utf8' });
@@ -246,7 +243,6 @@ async function streamExisting(
       const evt = parseLine(line);
       if (evt !== null && shouldShow(evt, flags)) {
         process.stdout.write(renderEvent(evt) + '\n');
-        linesPrinted++;
       }
     });
 
@@ -338,11 +334,11 @@ export default async function logsCommand(args: unknown[], _opts: unknown): Prom
     process.exit(1);
   }
 
-  // Read raceName from state.json (best-effort).
-  const raceName = await readRaceName(runDir);
+  // Read flowName from state.json (best-effort).
+  const flowName = await readFlowName(runDir);
 
   // Print header.
-  process.stdout.write(`${MARK}  logs for ${runId}  ${SYMBOLS.dot}  ${raceName}\n`);
+  process.stdout.write(`${MARK}  logs for ${runId}  ${SYMBOLS.dot}  ${flowName}\n`);
   process.stdout.write('\n');
 
   const logPath = join(runDir, 'run.log');
@@ -365,7 +361,7 @@ export default async function logsCommand(args: unknown[], _opts: unknown): Prom
     // then stream it. Use fs.watch on the run directory.
     const dirWatcher = watch(runDir, { persistent: true });
 
-    dirWatcher.on('change', (eventType, filename) => {
+    dirWatcher.on('change', (_eventType, filename) => {
       if (filename === 'run.log') {
         dirWatcher.close();
         void (async () => {

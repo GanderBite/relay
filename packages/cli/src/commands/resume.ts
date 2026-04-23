@@ -20,18 +20,18 @@
 
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { AuthState, RaceState, RunnerState } from '@relay/core';
+import type { AuthState, RunState, StepState } from '@relay/core';
 import {
   ClaudeAuthError,
   CostTracker,
   defaultRegistry,
+  loadFlowSettings,
   loadGlobalSettings,
-  loadRaceSettings,
   loadState,
   Orchestrator,
-  RaceStateNotFoundError,
   registerDefaultProviders,
   resolveProvider,
+  StateNotFoundError,
 } from '@relay/core';
 import {
   type FailureStepRow,
@@ -46,13 +46,13 @@ import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { gray, green, kvLine, MARK, red, STEP_NAME_WIDTH, SYMBOLS, yellow } from '../visual.js';
 
 // ---------------------------------------------------------------------------
-// RaceRef shape — mirrors core/orchestrator/resume.ts RaceRef
+// FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
 // ---------------------------------------------------------------------------
 
-interface RaceRef {
-  raceName: string;
-  raceVersion: string;
-  racePath: string | null;
+interface FlowRef {
+  flowName: string;
+  flowVersion: string;
+  flowPath: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,38 +79,38 @@ function fmtUsd(usd: number): string {
 }
 
 /**
- * Find the first runner in topoOrder that is not succeeded/skipped.
- * This is the "picking up from:" runner.
+ * Find the first step in topoOrder that is not succeeded/skipped.
+ * This is the "picking up from:" step.
  */
-function firstPendingRunnerId(
+function firstPendingStepId(
   topoOrder: readonly string[],
-  runners: Record<string, RunnerState>,
+  steps: Record<string, StepState>,
 ): string {
-  for (const runnerId of topoOrder) {
-    const s = runners[runnerId];
+  for (const stepId of topoOrder) {
+    const s = steps[stepId];
     if (s === undefined) continue;
-    if (s.status !== 'succeeded' && s.status !== 'skipped') return runnerId;
+    if (s.status !== 'succeeded' && s.status !== 'skipped') return stepId;
   }
   // Fallback: if all succeeded somehow, return the last in order.
   return topoOrder[topoOrder.length - 1] ?? '';
 }
 
 /**
- * Render one runner row for the pre-resume static banner.
+ * Render one step row for the pre-resume static banner.
  *
  * Status rules per §6.7:
  *   succeeded → green "✓ <name padded>  (cached, ran HH:MM)"
  *   failed/pending/running → determined by position in banner:
- *     the first non-succeeded runner is shown as spinning "⠋ <name>    running"
- *     subsequent non-succeeded runners are "○ <name>    waiting on X, Y"
+ *     the first non-succeeded step is shown as spinning "⠋ <name>    running"
+ *     subsequent non-succeeded steps are "○ <name>    waiting on X, Y"
  */
-function renderPreResumeRunnerRow(
-  runnerId: string,
-  stepState: RunnerState,
+function renderPreResumeStepRow(
+  stepId: string,
+  stepState: StepState,
   isFirstPending: boolean,
   pendingPredecessors: string[],
 ): string {
-  const nameCol = runnerId.padEnd(STEP_NAME_WIDTH);
+  const nameCol = stepId.padEnd(STEP_NAME_WIDTH);
 
   if (stepState.status === 'succeeded') {
     const timeStr = stepState.completedAt !== undefined ? fmtHHMM(stepState.completedAt) : '--:--';
@@ -155,27 +155,27 @@ async function loadSpentUsd(runDir: string): Promise<number> {
  */
 function printPreResumeBanner(
   runId: string,
-  raceRef: RaceRef,
-  state: RaceState,
+  flowRef: FlowRef,
+  state: RunState,
   topoOrder: readonly string[],
   predecessors: ReadonlyMap<string, ReadonlySet<string>> | undefined,
   spentUsd: number,
 ): void {
-  const pickingUpFrom = firstPendingRunnerId(topoOrder, state.runners);
+  const pickingUpFrom = firstPendingStepId(topoOrder, state.steps);
 
   // Header: "●─▶●─▶●─▶●  relay resume f9c3a2"
   process.stdout.write(`${MARK}  relay resume ${runId}\n`);
   process.stdout.write('\n');
 
-  // KV rows — "race" uses kvLine for column alignment; "picking up from:" does not.
-  process.stdout.write(kvLine('race', `${raceRef.raceName} v${raceRef.raceVersion}`) + '\n');
+  // KV rows — "flow" uses kvLine for column alignment; "picking up from:" does not.
+  process.stdout.write(kvLine('flow', `${flowRef.flowName} v${flowRef.flowVersion}`) + '\n');
   process.stdout.write(`picking up from: ${pickingUpFrom}\n`);
   process.stdout.write('\n');
 
-  // Runner grid.
+  // Step grid.
   let foundFirstPending = false;
-  for (const runnerId of topoOrder) {
-    const stepState = state.runners[runnerId];
+  for (const stepId of topoOrder) {
+    const stepState = state.steps[stepId];
     if (stepState === undefined) continue;
 
     const isFirstPending =
@@ -184,15 +184,15 @@ function printPreResumeBanner(
     if (isFirstPending) foundFirstPending = true;
 
     // Compute pending predecessors for the "waiting on" line.
-    // Only needed for non-first non-succeeded runners.
+    // Only needed for non-first non-succeeded steps.
     let pendingPredecessors: string[] = [];
     if (!isFirstPending && stepState.status !== 'succeeded' && stepState.status !== 'skipped') {
       if (predecessors !== undefined) {
         // Use actual graph edges — only direct parents that are not yet done.
-        const directParents = predecessors.get(runnerId);
+        const directParents = predecessors.get(stepId);
         if (directParents !== undefined) {
           pendingPredecessors = [...directParents].filter((predId) => {
-            const predState = state.runners[predId];
+            const predState = state.steps[predId];
             return (
               predState !== undefined &&
               predState.status !== 'succeeded' &&
@@ -202,9 +202,9 @@ function printPreResumeBanner(
         }
       } else {
         // Fallback: topoOrder heuristic when the graph does not expose predecessors.
-        const ownIndex = topoOrder.indexOf(runnerId);
+        const ownIndex = topoOrder.indexOf(stepId);
         pendingPredecessors = topoOrder.slice(0, ownIndex).filter((predId) => {
-          const predState = state.runners[predId];
+          const predState = state.steps[predId];
           return (
             predState !== undefined &&
             predState.status !== 'succeeded' &&
@@ -214,7 +214,7 @@ function printPreResumeBanner(
       }
     }
 
-    const row = renderPreResumeRunnerRow(runnerId, stepState, isFirstPending, pendingPredecessors);
+    const row = renderPreResumeStepRow(stepId, stepState, isFirstPending, pendingPredecessors);
     process.stdout.write(row + '\n');
   }
 
@@ -258,7 +258,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   const stateResult = await loadState(runDir);
   if (stateResult.isErr()) {
     const e = stateResult.error;
-    if (e instanceof RaceStateNotFoundError) {
+    if (e instanceof StateNotFoundError) {
       process.stderr.write(red(`  ${SYMBOLS.fail} no resumable run at ${runId}`) + '\n');
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     } else {
@@ -271,51 +271,51 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   }
   const state = stateResult.value;
 
-  // ---- (3) Load race-ref.json ----
-  let raceRef: RaceRef;
+  // ---- (3) Load flow-ref.json ----
+  let flowRef: FlowRef;
   try {
-    const raw = await readFile(join(runDir, 'race-ref.json'), 'utf8');
+    const raw = await readFile(join(runDir, 'flow-ref.json'), 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (
       parsed === null ||
       typeof parsed !== 'object' ||
       Array.isArray(parsed) ||
-      typeof (parsed as Record<string, unknown>)['raceName'] !== 'string' ||
-      typeof (parsed as Record<string, unknown>)['raceVersion'] !== 'string'
+      typeof (parsed as Record<string, unknown>)['flowName'] !== 'string' ||
+      typeof (parsed as Record<string, unknown>)['flowVersion'] !== 'string'
     ) {
-      throw new Error('race-ref.json is malformed');
+      throw new Error('flow-ref.json is malformed');
     }
     const p = parsed as Record<string, unknown>;
-    raceRef = {
-      raceName: p['raceName'] as string,
-      raceVersion: p['raceVersion'] as string,
-      racePath: typeof p['racePath'] === 'string' ? p['racePath'] : null,
+    flowRef = {
+      flowName: p['flowName'] as string,
+      flowVersion: p['flowVersion'] as string,
+      flowPath: typeof p['flowPath'] === 'string' ? p['flowPath'] : null,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     process.stderr.write(
-      red(`  ${SYMBOLS.fail} could not load race-ref.json for run ${runId}: ${msg}`) + '\n',
+      red(`  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${msg}`) + '\n',
     );
     process.stderr.write(gray('  did you mean: relay runs') + '\n');
     process.exit(1);
   }
 
-  if (raceRef.racePath === null) {
+  if (flowRef.flowPath === null) {
     process.stderr.write(
-      red(`  ${SYMBOLS.fail} run ${runId} has no recorded race path — cannot resume`) + '\n',
+      red(`  ${SYMBOLS.fail} run ${runId} has no recorded flow path — cannot resume`) + '\n',
     );
-    process.stderr.write(gray('  start a fresh run: relay run ' + raceRef.raceName + ' .') + '\n');
+    process.stderr.write(gray('  start a fresh run: relay run ' + flowRef.flowName + ' .') + '\n');
     process.exit(1);
   }
 
-  // ---- (4) Load the race module ----
-  const flowResult = await loadFlow(raceRef.racePath, process.cwd());
+  // ---- (4) Load the flow module ----
+  const flowResult = await loadFlow(flowRef.flowPath, process.cwd());
   if (flowResult.isErr()) {
     process.stderr.write(
-      red(`  ${SYMBOLS.fail} could not load race for run ${runId}: ${flowResult.error.message}`) +
+      red(`  ${SYMBOLS.fail} could not load flow for run ${runId}: ${flowResult.error.message}`) +
         '\n',
     );
-    process.stderr.write(gray('  ensure the race package is built: pnpm build') + '\n');
+    process.stderr.write(gray('  ensure the flow package is built: pnpm build') + '\n');
     process.exit(1);
   }
   const { flow } = flowResult.value;
@@ -326,7 +326,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // ---- (6) Print pre-resume banner ----
   printPreResumeBanner(
     runId,
-    raceRef,
+    flowRef,
     state,
     flow.graph.topoOrder,
     flow.graph.predecessors,
@@ -338,19 +338,19 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // (--provider flag > race settings > global settings) so any auth failure
   // surfaces here with a clean exit code rather than mid-resume.
   registerDefaultProviders();
-  const flowDirForSettings = dirname(raceRef.racePath);
+  const flowDirForSettings = dirname(flowRef.flowPath);
   const globalSettingsResult = await loadGlobalSettings();
   if (globalSettingsResult.isErr()) {
     process.stderr.write(formatError(globalSettingsResult.error) + '\n');
     process.exit(exitCodeFor(globalSettingsResult.error));
   }
-  const raceSettingsResult = await loadRaceSettings(flowDirForSettings);
-  if (raceSettingsResult.isErr()) {
-    process.stderr.write(formatError(raceSettingsResult.error) + '\n');
-    process.exit(exitCodeFor(raceSettingsResult.error));
+  const flowSettingsResult = await loadFlowSettings(flowDirForSettings);
+  if (flowSettingsResult.isErr()) {
+    process.stderr.write(formatError(flowSettingsResult.error) + '\n');
+    process.exit(exitCodeFor(flowSettingsResult.error));
   }
   const resolverArgs: Parameters<typeof resolveProvider>[0] = {
-    raceSettings: raceSettingsResult.value,
+    flowSettings: flowSettingsResult.value,
     globalSettings: globalSettingsResult.value,
     registry: defaultRegistry,
   };
@@ -440,7 +440,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
 
       const stepRows: SuccessStepRow[] = flow.graph.topoOrder.map((runnerId) => {
-        const stepState = finalState.runners[runnerId];
+        const stepState = finalState.steps[runnerId];
         return {
           name: runnerId,
           model: 'sonnet',
@@ -456,7 +456,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
 
       process.stdout.write(
         renderSuccessBanner({
-          raceName: raceRef.raceName,
+          flowName: flowRef.flowName,
           runId,
           steps: stepRows,
           totalDurationMs: result.durationMs,
@@ -468,7 +468,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     } else if (result.status === 'aborted' && wasInterrupted) {
       // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
       // This is not an error: state is saved, the run can be resumed.
-      await renderPausedBanner(raceRef.raceName, runId, runDir, flow.graph.topoOrder);
+      await renderPausedBanner(flowRef.flowName, runId, runDir, flow.graph.topoOrder);
       process.exit(130);
     } else {
       // Re-read final state for accurate step statuses after the run.
@@ -476,7 +476,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
 
       const failureSteps: FailureStepRow[] = flow.graph.topoOrder.map((runnerId) => {
-        const stepState = finalState.runners[runnerId];
+        const stepState = finalState.steps[runnerId];
         const stepStatus: FailureStepRow['status'] =
           stepState?.status === 'succeeded'
             ? 'succeeded'
@@ -497,7 +497,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
 
       process.stdout.write(
         renderFailureBanner({
-          raceName: raceRef.raceName,
+          flowName: flowRef.flowName,
           runId,
           steps: failureSteps,
           spentUsd: result.cost.totalUsd,

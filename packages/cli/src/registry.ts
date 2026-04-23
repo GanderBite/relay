@@ -8,12 +8,12 @@
  *   - relay search    (CLI, reads the cached copy at ~/.relay/registry.json)
  */
 
-import { readFile } from 'node:fs/promises';
-import { join, isAbsolute } from 'node:path';
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
-import { ok, err } from '@relay/core';
 import type { Result } from '@relay/core';
+import { err, ok } from '@relay/core';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +28,7 @@ const execFileAsync = promisify(execFile);
  * the catalog site (catalog/app.js) consume this exact shape.
  */
 export interface RegistryEntry {
-  /** npm package name, e.g. "@relay/races-codebase-discovery". */
+  /** npm package name, e.g. "@relay/flows-codebase-discovery". */
   name: string;
   /** Strict semver version string, e.g. "0.1.0". */
   version: string;
@@ -57,17 +57,14 @@ export interface RegistryDoc {
   version: 1;
   /** ISO-8601 timestamp of when this document was generated. */
   generatedAt: string;
-  races: RegistryEntry[];
+  flows: RegistryEntry[];
 }
 
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
 
-export type RegistryErrorCode =
-  | 'PACKAGE_NOT_FOUND'
-  | 'PACKAGE_INVALID'
-  | 'READ_ERROR';
+export type RegistryErrorCode = 'PACKAGE_NOT_FOUND' | 'PACKAGE_INVALID' | 'READ_ERROR';
 
 export class RegistryError extends Error {
   readonly code: RegistryErrorCode;
@@ -90,7 +87,7 @@ export class RegistryError extends Error {
 // ---------------------------------------------------------------------------
 
 interface RelayMetaBlock {
-  raceName: string;
+  flowName: string;
   displayName: string;
   tags: string[];
   estimatedCostUsd: { min: number; max: number };
@@ -125,7 +122,7 @@ function isCostRange(v: unknown): v is { min: number; max: number } {
 
 function isRelayMeta(v: unknown): v is RelayMetaBlock {
   if (!isRecord(v)) return false;
-  if (typeof v['raceName'] !== 'string') return false;
+  if (typeof v['flowName'] !== 'string') return false;
   if (typeof v['displayName'] !== 'string') return false;
   if (!isStringArray(v['tags'])) return false;
   if (!isCostRange(v['estimatedCostUsd'])) return false;
@@ -153,22 +150,20 @@ const README_EXCERPT_LENGTH = 500;
  */
 function stripMarkdown(md: string): string {
   return md
-    .replace(/^#{1,6}\s+/gm, '')          // headings
-    .replace(/\*\*([^*]+)\*\*/g, '$1')    // bold
-    .replace(/\*([^*]+)\*/g, '$1')        // italic
-    .replace(/```[\s\S]*?```/gm, '')      // fenced code blocks (must run before inline-code)
-    .replace(/`{1,3}[^`]*`{1,3}/g, '')   // inline code
+    .replace(/^#{1,6}\s+/gm, '') // headings
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/```[\s\S]*?```/gm, '') // fenced code blocks (must run before inline-code)
+    .replace(/`{1,3}[^`]*`{1,3}/g, '') // inline code
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
-    .replace(/\n{3,}/g, '\n\n')           // excess blank lines
+    .replace(/\n{3,}/g, '\n\n') // excess blank lines
     .trim();
 }
 
 function extractReadmeExcerpt(raw: string): string {
   const plain = stripMarkdown(raw);
-  return plain.length > README_EXCERPT_LENGTH
-    ? plain.slice(0, README_EXCERPT_LENGTH)
-    : plain;
+  return plain.length > README_EXCERPT_LENGTH ? plain.slice(0, README_EXCERPT_LENGTH) : plain;
 }
 
 function extractRepoUrl(pkg: RawPackageJson): string | undefined {
@@ -182,9 +177,7 @@ function extractRepoUrl(pkg: RawPackageJson): string | undefined {
 // Local directory flow
 // ---------------------------------------------------------------------------
 
-async function processLocalDir(
-  dir: string,
-): Promise<Result<RegistryEntry, RegistryError>> {
+async function processLocalDir(dir: string): Promise<Result<RegistryEntry, RegistryError>> {
   // Read package.json
   let rawPkg: unknown;
   try {
@@ -193,11 +186,7 @@ async function processLocalDir(
   } catch (readErr) {
     const msg = readErr instanceof Error ? readErr.message : String(readErr);
     return err(
-      new RegistryError(
-        `failed to read package.json from ${dir}: ${msg}`,
-        'READ_ERROR',
-        dir,
-      ),
+      new RegistryError(`failed to read package.json from ${dir}: ${msg}`, 'READ_ERROR', dir),
     );
   }
 
@@ -215,7 +204,7 @@ async function processLocalDir(
   if (!isRelayMeta(relayMeta)) {
     return err(
       new RegistryError(
-        `package.json at ${dir} is missing a valid "relay" metadata block (raceName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience)`,
+        `package.json at ${dir} is missing a valid "relay" metadata block (flowName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience)`,
         'PACKAGE_INVALID',
         dir,
       ),
@@ -273,9 +262,7 @@ function isNpmViewOutput(v: unknown): v is NpmViewOutput {
   return isRecord(v);
 }
 
-async function processNpmPackage(
-  pkg: string,
-): Promise<Result<RegistryEntry, RegistryError>> {
+async function processNpmPackage(pkg: string): Promise<Result<RegistryEntry, RegistryError>> {
   // Run `npm view <pkg> --json` to get published metadata.
   let stdout: string;
   try {
@@ -284,13 +271,7 @@ async function processNpmPackage(
   } catch (execErr) {
     // npm exits non-zero when the package is not found.
     const msg = execErr instanceof Error ? execErr.message : String(execErr);
-    return err(
-      new RegistryError(
-        `npm view failed for "${pkg}": ${msg}`,
-        'PACKAGE_NOT_FOUND',
-        pkg,
-      ),
-    );
+    return err(new RegistryError(`npm view failed for "${pkg}": ${msg}`, 'PACKAGE_NOT_FOUND', pkg));
   }
 
   let parsed: unknown;
@@ -298,21 +279,13 @@ async function processNpmPackage(
     parsed = JSON.parse(stdout);
   } catch {
     return err(
-      new RegistryError(
-        `npm view returned non-JSON output for "${pkg}"`,
-        'PACKAGE_INVALID',
-        pkg,
-      ),
+      new RegistryError(`npm view returned non-JSON output for "${pkg}"`, 'PACKAGE_INVALID', pkg),
     );
   }
 
   if (!isNpmViewOutput(parsed)) {
     return err(
-      new RegistryError(
-        `unexpected npm view output shape for "${pkg}"`,
-        'PACKAGE_INVALID',
-        pkg,
-      ),
+      new RegistryError(`unexpected npm view output shape for "${pkg}"`, 'PACKAGE_INVALID', pkg),
     );
   }
 
@@ -321,11 +294,7 @@ async function processNpmPackage(
 
   if (version === '') {
     return err(
-      new RegistryError(
-        `npm view did not return a version for "${pkg}"`,
-        'PACKAGE_INVALID',
-        pkg,
-      ),
+      new RegistryError(`npm view did not return a version for "${pkg}"`, 'PACKAGE_INVALID', pkg),
     );
   }
 
@@ -333,7 +302,7 @@ async function processNpmPackage(
   if (!isRelayMeta(relayMeta)) {
     return err(
       new RegistryError(
-        `"${pkg}" is missing a valid "relay" metadata block (raceName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience) in its published package.json`,
+        `"${pkg}" is missing a valid "relay" metadata block (flowName, displayName, tags, estimatedCostUsd, estimatedDurationMin, audience) in its published package.json`,
         'PACKAGE_INVALID',
         pkg,
       ),
@@ -402,7 +371,7 @@ function isLocalPath(input: string): boolean {
  * Each input is either:
  *   - A local directory path (starts with `.` or `/`): read package.json and
  *     README.md from the directory.
- *   - An npm package name (e.g. "@relay/races-codebase-discovery"): call
+ *   - An npm package name (e.g. "@relay/flows-codebase-discovery"): call
  *     `npm view <pkg> --json` to get published metadata.
  *
  * Returns err() only if every input fails. When some inputs succeed and some
@@ -415,7 +384,7 @@ function isLocalPath(input: string): boolean {
 export async function generateRegistryJson(
   packages: string[],
 ): Promise<Result<RegistryDoc, RegistryError>> {
-  const races: RegistryEntry[] = [];
+  const flows: RegistryEntry[] = [];
   const errors: RegistryError[] = [];
 
   for (const input of packages) {
@@ -424,14 +393,14 @@ export async function generateRegistryJson(
       : await processNpmPackage(input);
 
     if (result.isOk()) {
-      races.push(result.value);
+      flows.push(result.value);
     } else {
       errors.push(result.error);
     }
   }
 
   // If every input failed, surface the first error.
-  if (races.length === 0 && errors.length > 0) {
+  if (flows.length === 0 && errors.length > 0) {
     return err(errors[0] as RegistryError);
   }
 
@@ -439,7 +408,7 @@ export async function generateRegistryJson(
   const doc: RegistryDoc = {
     version: 1,
     generatedAt: new Date().toISOString(),
-    races,
+    flows,
   };
 
   return ok(doc);

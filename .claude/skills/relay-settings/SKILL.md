@@ -1,6 +1,6 @@
 ---
 name: relay-settings
-description: The three-tier provider selection model — `--provider` flag, race-level settings.json, global settings.json, and `NoProviderConfiguredError`. The settings schema (currently `{ provider? }`), the `relay init` command contract, path helpers `globalSettingsPath` and `raceSettingsPath`, and the `resolveProvider` function. Trigger this skill when implementing or changing provider resolution, `relay init`, settings loading, or any code that reads or writes `~/.relay/settings.json` or `<raceDir>/settings.json`.
+description: The three-tier provider selection model — `--provider` flag, flow-level settings.json, global settings.json, and `NoProviderConfiguredError`. The settings schema (currently `{ provider? }`), the `relay init` command contract, path helpers `globalSettingsPath` and `flowSettingsPath`, and the `resolveProvider` function. Trigger this skill when implementing or changing provider resolution, `relay init`, settings loading, or any code that reads or writes `~/.relay/settings.json` or `<flowDir>/settings.json`.
 ---
 
 # relay-settings
@@ -12,7 +12,7 @@ The settings module handles how Relay selects a provider for each run. The core 
 - Implementing or changing `packages/core/src/settings/`.
 - Wiring `relay init` in `packages/cli/`.
 - Adding new fields to the settings schema.
-- Writing tests that cover `resolveProvider`, `loadGlobalSettings`, or `loadRaceSettings`.
+- Writing tests that cover `resolveProvider`, `loadGlobalSettings`, or `loadFlowSettings`.
 
 ## Three-tier provider selection
 
@@ -20,7 +20,7 @@ Provider selection uses three sources in priority order. The first non-null valu
 
 ```
 1. --provider <flag>              (CLI flag, per-invocation)
-2. <raceDir>/settings.json        (race-level, checked in with the race)
+2. <flowDir>/settings.json        (flow-level, checked in with the flow)
 3. ~/.relay/settings.json         (global, user's machine default)
 ```
 
@@ -31,7 +31,7 @@ The resolver lives at `packages/core/src/settings/resolve.ts` as `resolveProvide
 ```ts
 interface ResolveProviderArgs {
   flagProvider?: string;          // --provider flag value, if passed
-  raceSettings: RelaySettings | null;   // loaded from <raceDir>/settings.json
+  flowSettings: RelaySettings | null;   // loaded from <flowDir>/settings.json
   globalSettings: RelaySettings | null; // loaded from ~/.relay/settings.json
   registry: ProviderRegistry;     // maps provider names to Provider instances
 }
@@ -66,12 +66,12 @@ globalSettingsPath(): string
   // Returns: path.join(os.homedir(), '.relay', 'settings.json')
   // Example: /Users/alice/.relay/settings.json
 
-raceSettingsPath(raceDir: string): string
-  // Returns: path.join(raceDir, 'settings.json')
-  // Example: /Users/alice/projects/my-race/settings.json
+flowSettingsPath(flowDir: string): string
+  // Returns: path.join(flowDir, 'settings.json')
+  // Example: /Users/alice/projects/my-flow/settings.json
 ```
 
-Neither function creates the directory or file — that is `relay init`'s responsibility for the global path, and the race author's responsibility for the race path.
+Neither function creates the directory or file — that is `relay init`'s responsibility for the global path, and the flow author's responsibility for the flow path.
 
 ## Loading
 
@@ -79,7 +79,7 @@ Neither function creates the directory or file — that is `relay init`'s respon
 // packages/core/src/settings/load.ts
 
 loadGlobalSettings(): Promise<Result<RelaySettings | null, PipelineError>>
-loadRaceSettings(raceDir: string): Promise<Result<RelaySettings | null, PipelineError>>
+loadFlowSettings(flowDir: string): Promise<Result<RelaySettings | null, PipelineError>>
 ```
 
 Both return `ok(null)` when the file is absent (ENOENT). Any other read or parse failure returns `err(PipelineError)`. The CLI surfaces these errors before attempting provider resolution.
@@ -103,7 +103,7 @@ After `relay init` with `claude-cli`, the user still needs to run `claude /login
 code:    E_NO_PROVIDER
 message: no provider configured. run `relay init` to pick one,
          or pass `--provider claude-cli` or `--provider claude-agent-sdk`.
-exit:    2 (same as RaceDefinitionError — run cannot proceed before any tokens are spent)
+exit:    2 (same as FlowDefinitionError — run cannot proceed before any tokens are spent)
 ```
 
 The error message is the remediation. No separate "next steps" block is needed — the message names both recovery paths.

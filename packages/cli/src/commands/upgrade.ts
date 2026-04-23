@@ -27,7 +27,7 @@ import { join } from 'node:path';
 
 import semver from 'semver';
 
-import { MARK, SYMBOLS, gray, green, red } from '../visual.js';
+import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
 import installCommand from './install.js';
 
 // ---------------------------------------------------------------------------
@@ -68,9 +68,7 @@ async function discoverFlows(flowsDir: string): Promise<string[] | null> {
   } catch {
     return null;
   }
-  return entries
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name);
+  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,11 +90,7 @@ interface UpgradeOutcome {
  * latest compatible version from the original semver range), then reads the
  * new version to produce a before/after diff.
  */
-async function upgradeFlow(
-  name: string,
-  flowsDir: string,
-  opts: unknown,
-): Promise<UpgradeOutcome> {
+async function upgradeFlow(name: string, flowsDir: string, opts: unknown): Promise<UpgradeOutcome> {
   const flowDir = join(flowsDir, name);
 
   // Read the version that is currently on disk before the install.
@@ -145,9 +139,10 @@ function renderOutcome(outcome: UpgradeOutcome): string {
   }
 
   // updated — compare versions to determine color
-  const cmp = semver.valid(outcome.before) !== null && semver.valid(outcome.after) !== null
-    ? semver.compare(outcome.after, outcome.before)
-    : 1; // treat unparseable as upgrade
+  const cmp =
+    semver.valid(outcome.before) !== null && semver.valid(outcome.after) !== null
+      ? semver.compare(outcome.after, outcome.before)
+      : 1; // treat unparseable as upgrade
 
   if (cmp >= 0) {
     // upgrade (new > old) — green
@@ -168,10 +163,7 @@ function renderOutcome(outcome: UpgradeOutcome): string {
  * @param args  Argv slice after "upgrade": optional [raceName]
  * @param opts  Parsed option flags from the dispatcher (passed through to installCommand)
  */
-export default async function upgradeCommand(
-  args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function upgradeCommand(args: unknown[], opts: unknown): Promise<void> {
   const cwd = process.cwd();
   const flowsDir = join(cwd, '.relay', 'flows');
 
@@ -185,7 +177,7 @@ export default async function upgradeCommand(
     const all = await discoverFlows(flowsDir);
     if (all === null || !all.includes(targetFlow)) {
       process.stdout.write(
-        `  ${SYMBOLS.fail} ${targetFlow} is not installed. run relay install ${targetFlow} first.\n`,
+        `  ${SYMBOLS.fail} ${targetFlow} is not installed. run: relay install ${targetFlow}\n`,
       );
       process.exit(1);
     }
@@ -194,14 +186,14 @@ export default async function upgradeCommand(
     // All-races mode: discover installed races.
     const discovered = await discoverFlows(flowsDir);
     if (discovered === null || discovered.length === 0) {
-      process.stdout.write(`  no races installed. try relay install.\n`);
+      process.stdout.write(`  no flows installed. try relay install.\n`);
       process.exit(0);
     }
     flowNames = discovered;
   }
 
   // Header — matches the banner shape from product spec §6.8.
-  const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading races';
+  const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading flows';
   process.stdout.write(`${MARK}  ${verb}\n`);
   process.stdout.write('\n');
 
@@ -218,7 +210,7 @@ export default async function upgradeCommand(
 
   // Summary footer.
   const updated = outcomes.filter((o) => o.status === 'updated').length;
-  const failed  = outcomes.filter((o) => o.status === 'failed').length;
+  const failed = outcomes.filter((o) => o.status === 'failed').length;
 
   process.stdout.write(`  ${updated} flow${updated === 1 ? '' : '(s)'} upgraded.\n`);
   process.stdout.write('\n');

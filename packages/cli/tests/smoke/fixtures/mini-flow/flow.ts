@@ -9,21 +9,21 @@
  *     --target ES2022 --strict --skipLibCheck flow.ts
  */
 
-import { defineRace, runner, z } from '@relay/core';
+import { defineFlow, step, z } from '@relay/core';
 
-export default defineRace({
+export default defineFlow({
   name: 'smoke-mini',
   version: '0.1.0',
-  description: 'Minimal two-runner race for smoke testing relay run end-to-end.',
+  description: 'Minimal two-step flow for smoke testing relay run end-to-end.',
   input: z.object({
     target: z.string().describe('What to greet'),
   }),
-  runners: {
-    greet: runner.prompt({
+  steps: {
+    greet: step.prompt({
       promptFile: 'prompts/01.md',
-      output: { baton: 'greet-result' },
+      output: { handoff: 'greet-result' },
     }),
-    confirm: runner.prompt({
+    confirm: step.prompt({
       promptFile: 'prompts/02.md',
       dependsOn: ['greet'],
       output: { artifact: 'result.txt' },

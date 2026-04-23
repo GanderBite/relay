@@ -1,11 +1,18 @@
 {
   "name": "hello-world-mocked",
   "version": "0.1.0",
-  "description": "The mocked twin of hello-world — runs the same two-runner race against a MockProvider with no Claude binary, subscription, or API key.",
+  "description": "The mocked twin of hello-world — runs the same two-step flow against a MockProvider with no Claude binary, subscription, or API key.",
   "private": true,
   "type": "module",
-  "main": "./dist/race.js",
-  "files": ["dist", "prompts", "README.md"],
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": "./dist/flow.js"
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -22,9 +29,21 @@
   },
   "relay": {
     "displayName": "Hello World (Mocked)",
-    "tags": ["example", "tutorial", "testing"],
-    "estimatedCostUsd": { "min": 0.00, "max": 0.00 },
-    "estimatedDurationMin": { "min": 1, "max": 1 },
-    "audience": ["dev"]
+    "tags": [
+      "example",
+      "tutorial",
+      "testing"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "estimatedDurationMin": {
+      "min": 1,
+      "max": 1
+    },
+    "audience": [
+      "dev"
+    ]
   }
 }

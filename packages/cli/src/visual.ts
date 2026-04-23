@@ -296,5 +296,5 @@ export function raceHeader(raceName: string, runId: string, symbol?: string): st
   return symbol !== undefined ? `${base}  ${symbol}` : base;
 }
 
-/** @deprecated Use raceHeader — renamed as part of race/runner/baton vocabulary. */
+/** @deprecated Use raceHeader — kept for backward compatibility. */
 export const flowHeader = raceHeader;

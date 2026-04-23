@@ -6,7 +6,7 @@
  * are swallowed silently — telemetry must never affect the run's exit code.
  *
  * No flow input data, no prompt content, no path strings are sent. The only
- * fields that tie a run to the catalog are raceName and raceVersion.
+ * fields that tie a run to the catalog are flowName and flowVersion.
  */
 
 import { readFileSync } from 'node:fs';
@@ -30,8 +30,8 @@ const CONFIG_PATH = join(homedir(), '.relay', 'config.json');
  * No input data, no prompts, no file paths.
  */
 export interface RunEvent {
-  raceName: string;
-  raceVersion: string;
+  flowName: string;
+  flowVersion: string;
   status: 'success' | 'failure' | 'aborted';
   durationMs: number;
   stepsCount: number;
@@ -60,11 +60,7 @@ export function isEnabled(): boolean {
   try {
     const raw = readFileSync(CONFIG_PATH, 'utf8');
     const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      !Array.isArray(parsed)
-    ) {
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const config = parsed as RelayConfig;
       return config.telemetry?.enabled === true;
     }
@@ -87,7 +83,9 @@ export async function maybeSendRunEvent(evt: RunEvent): Promise<void> {
   if (!isEnabled()) return;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => { controller.abort(); }, TELEMETRY_TIMEOUT_MS);
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, TELEMETRY_TIMEOUT_MS);
   try {
     await fetch(TELEMETRY_ENDPOINT, {
       method: 'POST',

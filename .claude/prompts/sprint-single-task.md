@@ -26,7 +26,7 @@ Invoke the `sprint-workflow` skill to access the agent picker table — even for
 Remind the dispatched agent to invoke the relevant sub-skill based on what the task touches:
 - User-visible string → `relay-brand-grammar`
 - `ANTHROPIC_API_KEY` / auth / env / doctor → `billing-safety`
-- Race package work → `race-package-format`
+- Flow package work → `flow-package-format`
 - Claude Agent SDK wiring → `claude-agent-sdk`
 - `.ts` write or refactor → `typescript`
 - Vitest test → `vitest`
@@ -39,7 +39,7 @@ Choose exactly ONE agent for this task based on the picker rules:
 
 - `@systems-engineer (agent)` — if `risk: high` and module in `core.runner` / `core.providers.claude` / `core.flow` / `core.state`
 - `@cli-ux-engineer (agent)` — if module starts with `cli.` (wins over risk)
-- `@race-author (agent)` — if target path includes `prompts/`, `race.ts`, or `packages/generator/templates/`
+- `@flow-author (agent)` — if target path includes `prompts/`, `flow.ts`, or `packages/generator/templates/`
 - `@test-engineer (agent)` — if target path under `tests/` or task name starts with "Test "
 - `@doc-writer (agent)` — if target path under `docs/` or root `README.md`
 - `@catalog-builder (agent)` — if target path under `catalog/` or task touches `lint.ts` / `registry.ts` / `catalog-deploy.yml`

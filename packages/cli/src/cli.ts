@@ -1,14 +1,14 @@
-import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { CommanderError } from 'commander';
 import { buildProgram } from './dispatcher.js';
-import { MARK } from './visual.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
 import { renderSplash } from './help.js';
+import { MARK } from './visual.js';
 
+export type { RegistryDoc, RegistryEntry, RegistryError } from './registry.js';
 // Public API re-exports — consumed by bin shims and catalog tooling.
 export { generateRegistryJson } from './registry.js';
-export type { RegistryDoc, RegistryEntry, RegistryError } from './registry.js';
 
 // Indent for --version continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
@@ -74,8 +74,7 @@ export async function main(argv: string[]): Promise<void> {
   // `relay <subcommand> --help` still reaches Commander for per-command help.
   const extraArgs = argv.slice(2).filter((a) => a !== '--no-color' && a !== '--verbose');
   const isBareSplash =
-    extraArgs.length === 0 ||
-    (extraArgs.length === 1 && extraArgs[0] === '--help');
+    extraArgs.length === 0 || (extraArgs.length === 1 && extraArgs[0] === '--help');
   if (isBareSplash) {
     renderSplash();
     process.exit(0);

@@ -14,11 +14,11 @@
 
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import * as os from 'node:os';
+import * as path from 'node:path';
 import { promisify } from 'node:util';
 
-import { MARK, SYMBOLS, green, red, gray } from '../visual.js';
+import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -60,7 +60,7 @@ function resolvePackage(arg: string): ResolvedPackage {
     const atIndex = afterSlash.indexOf('@');
     if (atIndex !== -1) {
       rawName = arg.slice(0, slashIndex + 1 + atIndex); // "@scope/flow-name"
-      version = afterSlash.slice(atIndex + 1);           // "version"
+      version = afterSlash.slice(atIndex + 1); // "version"
     } else {
       rawName = arg;
     }
@@ -86,9 +86,7 @@ function resolvePackage(arg: string): ResolvedPackage {
   // Extract the bare short name (e.g. "codebase-discovery").
   const name = packageName.replace(/^@ganderbite\/flow-/, '');
 
-  const packageSpec = version !== undefined
-    ? `${packageName}@${version}`
-    : packageName;
+  const packageSpec = version !== undefined ? `${packageName}@${version}` : packageName;
 
   return { name, packageName, packageSpec };
 }
@@ -195,16 +193,11 @@ async function refreshRegistryCache(): Promise<void> {
  *
  * Output matches product spec §6.8 verbatim.
  */
-export default async function installCommand(
-  args: unknown[],
-  _opts: unknown,
-): Promise<void> {
+export default async function installCommand(args: unknown[], _opts: unknown): Promise<void> {
   const rawArg = typeof args[0] === 'string' ? args[0].trim() : '';
 
   if (rawArg === '') {
-    process.stderr.write(
-      red(`${SYMBOLS.fail} usage: relay install <flow>[@<version>]`) + '\n',
-    );
+    process.stderr.write(red(`${SYMBOLS.fail} usage: relay install <flow>[@<version>]`) + '\n');
     process.exit(1);
   }
 
@@ -223,12 +216,7 @@ export default async function installCommand(
   // Step 1 — npm install
   // ---------------------------------------------------------------------------
   try {
-    await execFileAsync('npm', [
-      'install',
-      '--no-save',
-      '--prefix', flowDir,
-      packageSpec,
-    ]);
+    await execFileAsync('npm', ['install', '--no-save', '--prefix', flowDir, packageSpec]);
   } catch (installErr: unknown) {
     const stderr =
       installErr instanceof Error && 'stderr' in installErr
@@ -237,9 +225,7 @@ export default async function installCommand(
           ? installErr.message
           : String(installErr);
 
-    process.stderr.write(
-      red(` ${SYMBOLS.fail} npm install failed: ${stderr.trim()}`) + '\n',
-    );
+    process.stderr.write(red(` ${SYMBOLS.fail} npm install failed: ${stderr.trim()}`) + '\n');
     process.exit(1);
   }
 
@@ -249,15 +235,13 @@ export default async function installCommand(
     const pkgJsonPath = path.join(flowDir, 'node_modules', packageName, 'package.json');
     const raw = await fs.readFile(pkgJsonPath, 'utf8');
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    installedVersion =
-      typeof parsed['version'] === 'string' ? parsed['version'] : '';
+    installedVersion = typeof parsed['version'] === 'string' ? parsed['version'] : '';
   } catch {
     // Version display falls back to empty — not a fatal error.
   }
 
-  const resolvedLabel = installedVersion.length > 0
-    ? `${packageName}@${installedVersion}`
-    : packageName;
+  const resolvedLabel =
+    installedVersion.length > 0 ? `${packageName}@${installedVersion}` : packageName;
 
   process.stdout.write(green(` ${SYMBOLS.ok} resolved ${resolvedLabel} from npm`) + '\n');
 
@@ -273,17 +257,12 @@ export default async function installCommand(
     // Remove the now-redundant node_modules directory.
     await fs.rm(path.join(flowDir, 'node_modules'), { recursive: true, force: true });
   } catch (flattenErr: unknown) {
-    const msg =
-      flattenErr instanceof Error ? flattenErr.message : String(flattenErr);
-    process.stderr.write(
-      red(` ${SYMBOLS.fail} failed to unpack flow package: ${msg}`) + '\n',
-    );
+    const msg = flattenErr instanceof Error ? flattenErr.message : String(flattenErr);
+    process.stderr.write(red(` ${SYMBOLS.fail} failed to unpack flow package: ${msg}`) + '\n');
     process.exit(1);
   }
 
-  process.stdout.write(
-    green(` ${SYMBOLS.ok} unpacked to ./.relay/flows/${name}/`) + '\n',
-  );
+  process.stdout.write(green(` ${SYMBOLS.ok} unpacked to ./.relay/flows/${name}/`) + '\n');
 
   // ---------------------------------------------------------------------------
   // Step 3 — compile flow.ts if needed
@@ -328,9 +307,7 @@ export default async function installCommand(
             : buildErr instanceof Error
               ? buildErr.message
               : String(buildErr);
-        process.stderr.write(
-          red(` ${SYMBOLS.fail} build failed: ${msg.trim()}`) + '\n',
-        );
+        process.stderr.write(red(` ${SYMBOLS.fail} build failed: ${msg.trim()}`) + '\n');
         process.exit(1);
       }
     }
@@ -345,19 +322,16 @@ export default async function installCommand(
   let validationError: string | null = null;
 
   try {
-    const mod = await import(distFlowPath) as Record<string, unknown>;
+    const mod = (await import(distFlowPath)) as Record<string, unknown>;
     const defaultExport = mod['default'];
     validationError = validateFlowExport(defaultExport);
   } catch (importErr: unknown) {
-    const msg =
-      importErr instanceof Error ? importErr.message : String(importErr);
+    const msg = importErr instanceof Error ? importErr.message : String(importErr);
     validationError = `could not import dist/flow.js: ${msg}`;
   }
 
   if (validationError !== null) {
-    process.stdout.write(
-      red(` ${SYMBOLS.fail} validation failed: ${validationError}`) + '\n',
-    );
+    process.stdout.write(red(` ${SYMBOLS.fail} validation failed: ${validationError}`) + '\n');
     process.exit(2);
   }
 

@@ -25,7 +25,7 @@ If the code-reviewer surfaces issues that require re-work, remind the follow-up 
 
 - `relay-brand-grammar` for user-visible copy issues
 - `billing-safety` for auth/env/doctor issues
-- `race-package-format` for race package issues
+- `flow-package-format` for flow package issues
 - `claude-agent-sdk` for SDK wiring issues
 - `typescript` or `vitest` for generic code or test issues
   </skills_to_use>
@@ -37,7 +37,7 @@ If the reviewer surfaces BLOCK findings that need re-work, dispatch a follow-up 
 
 - `@systems-engineer (agent)` — high-risk core
 - `@cli-ux-engineer (agent)` — `cli.*` modules
-- `@race-author (agent)` — `prompts/`, `race.ts`, templates
+- `@flow-author (agent)` — `prompts/`, `flow.ts`, templates
 - `@test-engineer (agent)` — `tests/`
 - `@doc-writer (agent)` — `docs/` or `README.md`
 - `@catalog-builder (agent)` — `catalog/` or lint/registry
