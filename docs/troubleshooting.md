@@ -114,14 +114,16 @@ This is the billing safety guard. Full details are in [`docs/billing-safety.md`]
 unset ANTHROPIC_API_KEY
 relay run <flowName> <input>
 ```
-→ To explicitly opt in to API-account billing for a single run, pass the flag:
+→ If you need to route to a cloud account instead of your subscription, set the appropriate variable before running:
 ```
-relay run <flowName> <input> --api-key
+CLAUDE_CODE_USE_BEDROCK=1 relay run <flowName> <input>
+# or
+CLAUDE_CODE_USE_VERTEX=1 relay run <flowName> <input>
+# or
+CLAUDE_CODE_USE_FOUNDRY=1 relay run <flowName> <input>
 ```
-→ To opt in via environment variable (useful in CI):
-```
-RELAY_ALLOW_API_KEY=1 relay run <flowName> <input>
-```
+→ For CI, generate a subscription token once with `claude /login` and export `CLAUDE_CODE_OAUTH_TOKEN` as a CI secret — this path does not require `ANTHROPIC_API_KEY` to be present at all.
+→ see `docs/billing-safety.md` for full detail on the billing safety guard.
 
 ---
 
