@@ -8,10 +8,10 @@
  * block.
  *
  * All three helpers return Result<T, PipelineError>. They never throw, and
- * they never inherit the parent process env — execFile is used with an
- * explicit arg array so a shell-injection vector through runId or a path is
- * impossible. spawn is deliberately avoided: these calls are one-shot,
- * short-lived, and have no streaming output to handle.
+ * they never pass user-supplied data through a shell — execFile takes an arg
+ * array, so a malicious runId or path cannot break out of its argv slot.
+ * spawn is deliberately avoided: these calls are one-shot, short-lived, and
+ * have no streaming output to handle.
  */
 
 import { execFile } from 'node:child_process';
@@ -132,6 +132,18 @@ export async function createWorktree(
       },
       'git worktree add failed',
     );
+    // Best-effort cleanup of any partially-created worktree directory. The
+    // call is fire-and-forget — a secondary failure here must not replace
+    // the original error. `removeWorktree` returns Result (never throws)
+    // and treats a missing path as a no-op, so the Result is discarded;
+    // the .catch() only guards against an unexpected raw throw from a bug.
+    await removeWorktree({
+      gitRoot: opts.gitRoot,
+      worktreePath,
+      logger: opts.logger,
+    }).catch(() => {
+      // ignore secondary cleanup failure
+    });
     return err(
       new PipelineError(
         `failed to create git worktree at "${worktreePath}": ${message}`,

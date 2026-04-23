@@ -212,6 +212,90 @@ describe('createWorktree', () => {
       expect.any(String),
     );
   });
+
+  it('attempts best-effort cleanup via git worktree remove after a failed add', async () => {
+    // First call (worktree add) fails; second call (worktree remove --force)
+    // is the best-effort cleanup the Runner relies on so a partial checkout
+    // cannot leak under $TMPDIR/relay-worktrees across thousands of runs.
+    mockExecFile.mockImplementationOnce(
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (e: Error | null, so: string, se: string) => void,
+      ) => {
+        cb(new Error('fatal: something went wrong mid-add'), '', '');
+      },
+    );
+    mockExecFile.mockImplementationOnce(
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _opts: unknown,
+        cb: (e: Error | null, so: string, se: string) => void,
+      ) => {
+        cb(null, '', '');
+      },
+    );
+    const { logger } = makeLogger();
+    const expectedPath = join(tmpdir(), 'relay-worktrees', 'cleanup');
+
+    const result = await createWorktree({
+      gitRoot: '/Users/me/my-repo',
+      runId: 'cleanup',
+      logger,
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    const [addCmd, addArgs] = mockExecFile.mock.calls[0] as [string, readonly string[]];
+    const [rmCmd, rmArgs] = mockExecFile.mock.calls[1] as [string, readonly string[]];
+    expect(addCmd).toBe('git');
+    expect(addArgs).toEqual(['worktree', 'add', expectedPath, 'HEAD']);
+    expect(rmCmd).toBe('git');
+    expect(rmArgs).toEqual(['worktree', 'remove', '--force', expectedPath]);
+  });
+
+  it('preserves the original error when the best-effort cleanup also fails', async () => {
+    // Both calls fail. The original "unable to create" error must reach the
+    // caller; the secondary cleanup failure must not replace it.
+    const addErr = new Error('fatal: unable to create worktree');
+    const rmErr = new Error('fatal: unable to remove worktree');
+    mockExecFile
+      .mockImplementationOnce(
+        (
+          _cmd: string,
+          _args: readonly string[],
+          _opts: unknown,
+          cb: (e: Error | null, so: string, se: string) => void,
+        ) => {
+          cb(addErr, '', '');
+        },
+      )
+      .mockImplementationOnce(
+        (
+          _cmd: string,
+          _args: readonly string[],
+          _opts: unknown,
+          cb: (e: Error | null, so: string, se: string) => void,
+        ) => {
+          cb(rmErr, '', '');
+        },
+      );
+    const { logger } = makeLogger();
+
+    const result = await createWorktree({
+      gitRoot: '/Users/me/my-repo',
+      runId: 'both-fail',
+      logger,
+    });
+
+    expect(result.isErr()).toBe(true);
+    const e = result._unsafeUnwrapErr();
+    expect(e.message).toContain('failed to create git worktree');
+    expect(e.message).toContain('unable to create worktree');
+    expect(e.message).not.toContain('unable to remove worktree');
+  });
 });
 
 describe('removeWorktree', () => {
