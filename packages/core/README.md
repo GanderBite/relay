@@ -8,8 +8,8 @@ manages run state, and invokes Claude through pluggable providers.
 ## What it does
 
 `@relay/core` gives you two things: a compiler (`defineFlow`) that turns a typed
-TypeScript object into a validated flow graph, and a `Runner` that executes that
-graph with checkpoint/resume, cost tracking, and billing-safe provider dispatch.
+TypeScript object into a validated flow graph, and an `Orchestrator` that executes
+that graph with checkpoint/resume, cost tracking, and billing-safe provider dispatch.
 
 Flows are directed acyclic graphs of steps. Each step is one of five kinds:
 `prompt`, `script`, `branch`, `parallel`, or `terminal`. Steps pass data forward
@@ -71,18 +71,21 @@ on bad input. Prompt steps run in a contained subprocess with an explicit env
 allowlist. Script and branch steps receive the full parent env — see
 `docs/billing-safety.md` for the containment boundary.
 
-### `Runner`
+### `createOrchestrator(options?)` / `Orchestrator`
 
-Executes a flow given input. Returns a `Result<RunSummary, RunError>`.
+Executes a flow given input. Returns a `RunResult` with status, cost, artifacts,
+and duration.
 
 ```ts
-import { Runner } from '@relay/core';
+import { createOrchestrator } from '@relay/core';
 
-const runner = new Runner({ runDir: '.relay/runs' });
-const result = await runner.run(flow, { topic: 'relay flows' }, { flowDir, flowPath });
+const orchestrator = createOrchestrator({ runDir: '.relay/runs' });
+const result = await orchestrator.run(flow, { topic: 'relay flows' }, { flowDir, flowPath });
 ```
 
-Call `runner.allowApiKey()` before `run()` to opt in to `ANTHROPIC_API_KEY` billing.
+`OrchestratorOptions` accepts `providers` (a `ProviderRegistry`), `runDir`, and
+`logger`. Provider selection follows the three-tier order: `flagProvider` passed
+to `run()`, then the flow's `settings.json`, then `~/.relay/settings.json`.
 
 ---
 
