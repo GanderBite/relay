@@ -1,6 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
-
+import type { BatonStore } from '../../batons.js';
+import { assemblePrompt, loadBatonValues } from '../../context-inject.js';
+import type { CostTracker, RunnerMetrics } from '../../cost.js';
+import { BatonSchemaError, PipelineError, RunnerFailureError } from '../../errors.js';
+import type { Logger } from '../../logger.js';
 import type {
   InvocationContext,
   InvocationRequest,
@@ -9,19 +13,10 @@ import type {
   Provider,
 } from '../../providers/types.js';
 import type { PromptRunnerSpec } from '../../race/types.js';
-import type { CostTracker, RunnerMetrics } from '../../cost.js';
-import type { BatonStore } from '../../batons.js';
-import type { Logger } from '../../logger.js';
-import { assemblePrompt, loadBatonValues } from '../../context-inject.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { safeParse } from '../../util/json.js';
-import {
-  BatonSchemaError,
-  PipelineError,
-  RunnerFailureError,
-} from '../../errors.js';
-import { writeLiveState } from '../live-state.js';
 import { z } from '../../zod.js';
+import { writeLiveState } from '../live-state.js';
 
 /**
  * Context bag threaded into executePrompt. The Runner constructs this from its
@@ -44,6 +39,13 @@ export interface PromptRunnerExecContext {
   provider: Provider;
   inputVars?: Record<string, unknown>;
   runnerVars?: Record<string, unknown>;
+  /**
+   * Working directory handed to the provider subprocess — typically the
+   * per-run git worktree path when isolation is active. Undefined when the
+   * Orchestrator chose not to create a worktree, so the subprocess inherits
+   * the parent cwd. The executor forwards this onto InvocationContext.cwd.
+   */
+  cwd?: string;
 }
 
 export interface PromptRunnerResult {
@@ -223,20 +225,14 @@ async function runProviderInvocation(args: {
  * other non-RunnerFailureError cause is wrapped so the retry loop only has one
  * error type to dispatch on.
  */
-function wrapFailure(
-  cause: unknown,
-  runnerId: string,
-  attempt: number,
-): PipelineError {
+function wrapFailure(cause: unknown, runnerId: string, attempt: number): PipelineError {
   if (cause instanceof RunnerFailureError) return cause;
   if (cause instanceof BatonSchemaError) return cause;
   const message = messageOf(cause);
-  return new RunnerFailureError(
-    `runner "${runnerId}" failed: ${message}`,
-    runnerId,
-    attempt,
-    { cause: message, code: codeOf(cause) },
-  );
+  return new RunnerFailureError(`runner "${runnerId}" failed: ${message}`, runnerId, attempt, {
+    cause: message,
+    code: codeOf(cause),
+  });
 }
 
 /**
@@ -325,6 +321,7 @@ export async function executePrompt(
       attempt,
       abortSignal: ctx.abortSignal,
       logger: ctx.logger,
+      ...(ctx.cwd !== undefined ? { cwd: ctx.cwd } : {}),
     };
 
     // 6. Stream the provider invocation and aggregate events inline. Using

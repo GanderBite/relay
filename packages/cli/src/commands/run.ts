@@ -25,24 +25,24 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import {
+  type AuthState,
   defaultRegistry,
-  loadRaceSettings,
   loadGlobalSettings,
+  loadRaceSettings,
+  Orchestrator,
+  type RunnerState,
+  type RunResult,
   registerDefaultProviders,
   resolveProvider,
-  Orchestrator,
-  type AuthState,
-  type RunResult,
-  type RunnerState,
 } from '@relay/core';
 
-import type { SuccessStepRow, FailureStepRow } from '../banner.js';
+import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { parseInputFromArgv } from '../input-parser.js';
 import { renderPausedBanner } from '../paused-banner.js';
-import { ProgressDisplay, type AuthInfo } from '../progress.js';
+import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { maybeSendRunEvent } from '../telemetry.js';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,13 @@ export interface RunCommandOptions {
   fresh?: boolean;
   /** Provider name from --provider flag. Takes precedence over all settings. */
   provider?: string;
+  /**
+   * Commander flips this to `false` when the user passes `--no-worktree`.
+   * Undefined or true falls back to the Orchestrator default ('auto': create a
+   * worktree when inside a git repo, silently skip otherwise). False disables
+   * the feature entirely for this run.
+   */
+  worktree?: boolean;
 }
 
 /**
@@ -63,10 +70,7 @@ export interface RunCommandOptions {
  * @param args  Argv slice after "run": [flowNameOrPath, ...inputArgs]
  * @param opts  Parsed option flags from the dispatcher
  */
-export default async function runCommand(
-  args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function runCommand(args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as RunCommandOptions;
 
   // --resume delegates to the resume command immediately.
@@ -77,7 +81,9 @@ export default async function runCommand(
   if (options.resume !== undefined) {
     const resumeModulePath = new URL('./resume.js', import.meta.url).pathname;
     try {
-      const mod = await import(resumeModulePath) as { default: (args: unknown[], opts: unknown) => Promise<void> };
+      const mod = (await import(resumeModulePath)) as {
+        default: (args: unknown[], opts: unknown) => Promise<void>;
+      };
       await mod.default([options.resume], opts);
     } catch (importErr: unknown) {
       const msg = importErr instanceof Error ? importErr.message : String(importErr);
@@ -177,15 +183,12 @@ export default async function runCommand(
   const stepCount = flow.runnerOrder.length;
   const flowMeta = flow as unknown as Record<string, unknown>;
   const etaMin =
-    typeof flowMeta['etaMin'] === 'number'
-      ? (flowMeta['etaMin'] as number)
-      : stepCount * 2;
+    typeof flowMeta['etaMin'] === 'number' ? (flowMeta['etaMin'] as number) : stepCount * 2;
 
   // Build the AuthInfo shape for ProgressDisplay.
   const authInfo: AuthInfo = {
-    label: authState.billingSource === 'subscription'
-      ? 'subscription (max)'
-      : authState.billingSource,
+    label:
+      authState.billingSource === 'subscription' ? 'subscription (max)' : authState.billingSource,
     estUsd: 0,
   };
 
@@ -202,7 +205,10 @@ export default async function runCommand(
   let i = 0;
   while (i < inputArgv.length) {
     const arg = inputArgv[i];
-    if (arg === undefined) { i++; continue; }
+    if (arg === undefined) {
+      i++;
+      continue;
+    }
     if (arg.startsWith('--')) {
       const body = arg.slice(2);
       const eqIdx = body.indexOf('=');
@@ -322,6 +328,12 @@ export default async function runCommand(
     if (options.fresh === true) {
       runOpts.fresh = true;
     }
+    // Commander flips `--no-worktree` to `worktree: false`; every other value
+    // (undefined, true) leaves the Orchestrator default of 'auto' in place so
+    // a fresh checkout of the CLI picks up isolation automatically.
+    if (options.worktree === false) {
+      runOpts.worktree = false;
+    }
     result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
@@ -353,9 +365,10 @@ export default async function runCommand(
 
   if (result.status === 'succeeded') {
     const stepRows = await buildSuccessStepRows(result.runDir, flow.runnerOrder);
-    const outputPath = result.artifacts.length > 0
-      ? (result.artifacts[0] ?? `./.relay/runs/${result.runId}`)
-      : `./.relay/runs/${result.runId}`;
+    const outputPath =
+      result.artifacts.length > 0
+        ? (result.artifacts[0] ?? `./.relay/runs/${result.runId}`)
+        : `./.relay/runs/${result.runId}`;
 
     const successBanner = renderSuccessBanner({
       raceName: flow.name,
@@ -452,9 +465,7 @@ interface RawMetrics {
   model?: string;
 }
 
-async function readStateSteps(
-  runDir: string,
-): Promise<Record<string, RawStepState>> {
+async function readStateSteps(runDir: string): Promise<Record<string, RawStepState>> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
     const parsed = JSON.parse(raw) as { runners?: Record<string, RawStepState> };
@@ -481,10 +492,7 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
 }
 
 function stepDurationMs(stepState: RawStepState): number {
-  if (
-    typeof stepState.startedAt === 'string' &&
-    typeof stepState.completedAt === 'string'
-  ) {
+  if (typeof stepState.startedAt === 'string' && typeof stepState.completedAt === 'string') {
     const start = Date.parse(stepState.startedAt);
     const end = Date.parse(stepState.completedAt);
     if (Number.isFinite(start) && Number.isFinite(end)) return Math.max(0, end - start);
@@ -537,9 +545,7 @@ async function buildFailureStepRows(
         costUsd,
         exitCode: 1,
         errorLines:
-          errorMsg !== undefined
-            ? [errorMsg.slice(0, 80), ''] as [string, string]
-            : undefined,
+          errorMsg !== undefined ? ([errorMsg.slice(0, 80), ''] as [string, string]) : undefined,
       };
     }
     // pending / running / skipped / undefined — treat as skipped in the banner
@@ -561,24 +567,14 @@ function buildCostTable(rows: SuccessStepRow[]): string {
   const COST_W = 10;
 
   const header =
-    'runner'.padEnd(NAME_W) +
-    'model'.padEnd(MODEL_W) +
-    'duration'.padEnd(DUR_W) +
-    'cost';
+    'runner'.padEnd(NAME_W) + 'model'.padEnd(MODEL_W) + 'duration'.padEnd(DUR_W) + 'cost';
   const divider = '─'.repeat(NAME_W + MODEL_W + DUR_W + COST_W);
 
   const dataLines = rows.map((r) => {
     const durSec = r.durationMs / 1000;
-    const durStr = durSec < 10
-      ? `${durSec.toFixed(1)}s`
-      : `${Math.round(durSec)}s`;
+    const durStr = durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`;
     const costStr = `$${(Math.ceil(r.costUsd * 1000) / 1000).toFixed(3)}`;
-    return (
-      r.name.padEnd(NAME_W) +
-      r.model.padEnd(MODEL_W) +
-      durStr.padEnd(DUR_W) +
-      costStr
-    );
+    return r.name.padEnd(NAME_W) + r.model.padEnd(MODEL_W) + durStr.padEnd(DUR_W) + costStr;
   });
 
   return [header, divider, ...dataLines].join('\n');

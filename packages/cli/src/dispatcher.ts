@@ -40,8 +40,12 @@ function looksLikeFlowRef(arg: string): boolean {
  * Dynamically import a command handler module from `./commands/<name>.js`.
  * Real handlers are wired in later sprints; the directory holds stubs until then.
  */
-async function loadCommand(name: string): Promise<(args: unknown[], opts: unknown) => Promise<void>> {
-  const mod = await import(`./commands/${name}.js`) as { default: (args: unknown[], opts: unknown) => Promise<void> };
+async function loadCommand(
+  name: string,
+): Promise<(args: unknown[], opts: unknown) => Promise<void>> {
+  const mod = (await import(`./commands/${name}.js`)) as {
+    default: (args: unknown[], opts: unknown) => Promise<void>;
+  };
   return mod.default;
 }
 
@@ -121,17 +125,25 @@ export function buildProgram(): Command {
     .description('run a flow')
     .option('--provider <name>', 'provider to use (overrides settings)')
     .option('--fresh', 'start a new run, ignoring any cached state')
-    .action(async (flow: string, input: string[], cmdOpts: { provider?: string; fresh?: boolean }) => {
-      const handler = await loadCommand('run');
-      await handler([flow, ...input], { ...program.opts(), ...cmdOpts });
-    });
+    .option('--no-worktree', 'disable per-run git worktree isolation')
+    .action(
+      async (
+        flow: string,
+        input: string[],
+        cmdOpts: { provider?: string; fresh?: boolean; worktree?: boolean },
+      ) => {
+        const handler = await loadCommand('run');
+        await handler([flow, ...input], { ...program.opts(), ...cmdOpts });
+      },
+    );
 
   // -------------------------------------------------------------- resume --
   program
     .command('resume <runId>')
     .description('continue a failed or stopped run')
     .option('--provider <name>', 'provider to use (overrides settings)')
-    .action(async (runId: string, cmdOpts: { provider?: string }) => {
+    .option('--no-worktree', 'disable per-run git worktree isolation')
+    .action(async (runId: string, cmdOpts: { provider?: string; worktree?: boolean }) => {
       const handler = await loadCommand('resume');
       await handler([runId], { ...program.opts(), ...cmdOpts });
     });
@@ -242,9 +254,7 @@ export function buildProgram(): Command {
     });
 
   // ----------------------------------------------------------------- help --
-  const helpCmd = program
-    .command('help')
-    .description('learn about relay commands and concepts');
+  const helpCmd = program.command('help').description('learn about relay commands and concepts');
 
   helpCmd
     .command('glossary')

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { BatonStore } from '../batons.js';
 import { CostTracker } from '../cost.js';
 import {
@@ -15,6 +15,7 @@ import { createLogger, type Logger } from '../logger.js';
 import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
 import type { Race, RaceState, Runner, RunnerState } from '../race/types.js';
+import { createWorktree, isGitRepo, removeWorktree } from '../runner/worktree.js';
 import { loadGlobalSettings, loadRaceSettings } from '../settings/load.js';
 import { resolveProvider } from '../settings/resolve.js';
 import { loadState, RaceStateMachine, verifyCompatibility } from '../state.js';
@@ -84,6 +85,20 @@ export interface RunOptions {
    * and finally `NoProviderConfiguredError` if neither carries a name.
    */
   flagProvider?: string;
+  /**
+   * Isolate this run in a per-run git worktree rooted at $TMPDIR. Prompt
+   * subprocesses are spawned with the worktree path as their cwd so every
+   * file edit lands in an isolated checkout that is torn down when the run
+   * finishes.
+   *
+   * - `'auto'` (default): create a worktree when the raceDir is inside a git
+   *   repo; silently proceed without one when git is unavailable or the
+   *   directory is not a working tree.
+   * - `true`: require a worktree. If git is missing or the raceDir is not in
+   *   a repo, the run fails before any step executes.
+   * - `false`: disable the feature. Subprocesses inherit the parent cwd.
+   */
+  worktree?: boolean | 'auto';
 }
 
 export interface RunResult {
@@ -118,6 +133,12 @@ export interface RunnerExecutionContext {
   logger: Logger;
   providers: ProviderRegistry;
   provider: Provider;
+  /**
+   * Working directory the provider subprocess should run in — the per-run
+   * git worktree when isolation is active, otherwise undefined so the
+   * subprocess inherits the parent process cwd.
+   */
+  cwd?: string;
 }
 
 function shortRunId(): string {
@@ -235,9 +256,28 @@ export class Orchestrator {
 
     const start = Date.now();
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    // Declared outside the try so the finally block can tear down whatever
+    // setupWorktree produced, including a partial success where create-after-
+    // probe throws mid-way.
+    let worktreePath: string | undefined;
+    let gitRoot: string | undefined;
 
     try {
       await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
+
+      // Worktree setup happens AFTER auth so an auth timeout (or missing
+      // provider) does not spend seconds on a `git worktree add` that would
+      // immediately be torn down. `worktree: true` still fails fast here —
+      // before the DAG walker dispatches any step.
+      const worktree = await this.#setupWorktree(
+        raceDir,
+        runId,
+        opts,
+        logger,
+        abortController.signal,
+      );
+      worktreePath = worktree.worktreePath;
+      gitRoot = worktree.gitRoot;
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -258,6 +298,7 @@ export class Orchestrator {
           provider,
           validatedInput,
           initialQueue: [...race.graph.rootRunners],
+          invocationCwd: worktree.worktreeCwd,
         });
       }
     } catch (caught) {
@@ -270,6 +311,7 @@ export class Orchestrator {
       process.removeListener('SIGINT', onSigint);
       process.removeListener('SIGTERM', onSigterm);
       await this.#closeProviders(uniqueProviders, logger);
+      await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
     const markResult = raceStateMachine.markRun(runStatus);
@@ -451,9 +493,29 @@ export class Orchestrator {
 
     const start = Date.now();
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    // A resumed run gets its own fresh worktree. Declared outside the try so
+    // the finally block can tear down a partial setup even when auth or the
+    // worktree creation itself throws.
+    let worktreePath: string | undefined;
+    let gitRoot: string | undefined;
 
     try {
       await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
+
+      // Worktree setup happens AFTER auth so an auth timeout does not spend
+      // seconds on a `git worktree add` that would immediately be torn down.
+      // The previous run's worktree (if any) was removed in its own finally
+      // block; if that cleanup was skipped by a SIGKILL, the worktree lives
+      // under $TMPDIR/relay-worktrees where the OS reclaims it.
+      const worktree = await this.#setupWorktree(
+        raceDir,
+        runId,
+        opts,
+        logger,
+        abortController.signal,
+      );
+      worktreePath = worktree.worktreePath;
+      gitRoot = worktree.gitRoot;
 
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
@@ -475,6 +537,7 @@ export class Orchestrator {
           provider,
           validatedInput: raceStateMachine.getState().input,
           initialQueue,
+          invocationCwd: worktree.worktreeCwd,
         });
       }
     } catch (caught) {
@@ -487,6 +550,7 @@ export class Orchestrator {
       process.removeListener('SIGINT', onSigint);
       process.removeListener('SIGTERM', onSigterm);
       await this.#closeProviders(uniqueProviders, logger);
+      await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
     const markResult = raceStateMachine.markRun(runStatus);
@@ -547,6 +611,116 @@ export class Orchestrator {
       artifacts,
       durationMs,
     };
+  }
+
+  /**
+   * Bring up a per-run git worktree so the provider subprocess operates on an
+   * isolated checkout. The return value carries the worktree path, the
+   * enclosing git root, and the worktree-equivalent of `raceDir` — the
+   * subprocess cwd the walker passes to each executor. When isolation is
+   * disabled or silently skipped (auto mode outside a git repo), all three
+   * fields are undefined and the subprocess inherits the parent cwd.
+   *
+   * `worktree: true` is an explicit opt-in to isolation; any probe or create
+   * failure is surfaced so the run aborts before any tokens are spent.
+   * `worktree: 'auto'` (the default) treats the feature as best-effort and
+   * logs a debug breadcrumb when the repo is unavailable.
+   */
+  async #setupWorktree(
+    raceDir: string,
+    runId: string,
+    opts: RunOptions,
+    logger: Logger,
+    signal: AbortSignal,
+  ): Promise<{
+    worktreePath: string | undefined;
+    gitRoot: string | undefined;
+    worktreeCwd: string | undefined;
+  }> {
+    const setting = opts.worktree ?? 'auto';
+    if (setting === false) {
+      return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+    }
+    const required = setting === true;
+
+    // Short-circuit when abort has already fired so we neither spawn git nor
+    // pay the rev-parse probe's wall clock. The caller's post-setup check
+    // notices the aborted signal and skips the DAG walker.
+    if (signal.aborted) {
+      return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+    }
+
+    const probeDir = isAbsolute(raceDir) ? raceDir : join(process.cwd(), raceDir);
+    const gitResult = await isGitRepo(probeDir, signal);
+    if (gitResult.isErr()) {
+      if (required) throw gitResult.error;
+      logger.debug(
+        { event: 'worktree.skip_no_repo', raceDir: probeDir },
+        'not a git repo; proceeding without worktree isolation',
+      );
+      return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+    }
+
+    const gitRoot = gitResult.value;
+
+    // Abort may have fired while the probe was in flight. Skip the create to
+    // avoid a stray worktree the caller would immediately have to tear down.
+    if (signal.aborted) {
+      return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+    }
+
+    const createResult = await createWorktree({ gitRoot, runId, logger, signal });
+    if (createResult.isErr()) {
+      if (required) throw createResult.error;
+      logger.debug(
+        { event: 'worktree.skip_create_failed', gitRoot, error: createResult.error.message },
+        'worktree creation failed; proceeding without isolation',
+      );
+      return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+    }
+
+    const worktreePath = createResult.value;
+
+    // Map the original raceDir onto its equivalent path inside the worktree so
+    // the subprocess runs at the same relative location it would in the real
+    // checkout. When raceDir is outside gitRoot (e.g. a race installed in
+    // node_modules that sits alongside the repo rather than inside it) the
+    // relative path starts with '..'; joining that onto worktreePath would
+    // escape the isolated checkout entirely, so we fall back to the worktree
+    // root. The race package is still read from its original raceDir — only
+    // the subprocess cwd is rebased.
+    const rel = relative(gitRoot, probeDir);
+    const worktreeCwd =
+      rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+        ? join(worktreePath, rel)
+        : worktreePath;
+
+    return { worktreePath, gitRoot, worktreeCwd };
+  }
+
+  /**
+   * Remove the per-run worktree. Called from the run's finally block, so any
+   * failure is logged at warn and swallowed — letting a cleanup error escape
+   * would mask the real failure that triggered the finally.
+   */
+  async #teardownWorktree(
+    worktreePath: string | undefined,
+    gitRoot: string | undefined,
+    logger: Logger,
+  ): Promise<void> {
+    if (worktreePath === undefined || gitRoot === undefined) return;
+    const result = await removeWorktree({ gitRoot, worktreePath, logger });
+    if (result.isErr()) {
+      logger.warn(
+        {
+          event: 'worktree.cleanup_failed',
+          worktreePath,
+          gitRoot,
+          error: result.error.message,
+        },
+        'worktree cleanup failed',
+      );
+    }
   }
 
   /**
@@ -679,6 +853,13 @@ export class Orchestrator {
     provider: Provider;
     validatedInput: unknown;
     initialQueue: string[];
+    /**
+     * Working directory handed to every provider invocation for this run —
+     * typically the per-run worktree path (or its raceDir-equivalent subpath)
+     * when isolation is active. Undefined when worktree isolation is disabled
+     * or auto-skipped, so the subprocess inherits the parent cwd.
+     */
+    invocationCwd: string | undefined;
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
     const {
       race,
@@ -696,6 +877,7 @@ export class Orchestrator {
       provider,
       validatedInput,
       initialQueue,
+      invocationCwd,
     } = args;
 
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
@@ -774,6 +956,7 @@ export class Orchestrator {
           logger: runnerLogger,
           providers,
           provider,
+          ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
         };
 
         switch (runner.kind) {
@@ -798,6 +981,7 @@ export class Orchestrator {
               logger: runnerLogger,
               provider: runnerProvider,
               inputVars,
+              ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
             });
           }
           case 'script':

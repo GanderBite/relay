@@ -49,12 +49,21 @@ function errorMessageOf(value: unknown): string {
  *
  * The caller decides whether an err means "fall back to running without a
  * worktree" (auto mode) or "abort the run" (required mode).
+ *
+ * The optional `signal` forwards the run's AbortSignal down to the git
+ * subprocess so a SIGINT while the probe is in flight kills the child
+ * immediately rather than letting it complete its ~80ms walk up the parent
+ * directories.
  */
-export async function isGitRepo(dir: string): Promise<Result<string, PipelineError>> {
+export async function isGitRepo(
+  dir: string,
+  signal?: AbortSignal,
+): Promise<Result<string, PipelineError>> {
   try {
     const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
       cwd: dir,
       timeout: GIT_REV_PARSE_TIMEOUT_MS,
+      ...(signal !== undefined ? { signal } : {}),
     });
     const gitRoot = stdout.trim();
     if (gitRoot.length === 0) {
@@ -82,6 +91,12 @@ export interface CreateWorktreeOptions {
   gitRoot: string;
   runId: string;
   logger: Logger;
+  /**
+   * Run-scoped AbortSignal. When provided and fired, the `git worktree add`
+   * subprocess is killed immediately rather than running to completion,
+   * keeping SIGINT-to-exit latency low.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -98,6 +113,7 @@ export async function createWorktree(
     await execFileAsync('git', ['worktree', 'add', worktreePath, 'HEAD'], {
       cwd: opts.gitRoot,
       timeout: GIT_WORKTREE_ADD_TIMEOUT_MS,
+      ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
     opts.logger.debug(
       { event: 'worktree.create', worktreePath, gitRoot: opts.gitRoot, runId: opts.runId },

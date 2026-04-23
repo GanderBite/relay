@@ -20,44 +20,30 @@
 
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-
+import type { AuthState, RaceState, RunnerState } from '@relay/core';
 import {
   ClaudeAuthError,
   CostTracker,
   defaultRegistry,
-  loadRaceSettings,
   loadGlobalSettings,
+  loadRaceSettings,
   loadState,
-  registerDefaultProviders,
-  resolveProvider,
   Orchestrator,
   RaceStateNotFoundError,
+  registerDefaultProviders,
+  resolveProvider,
 } from '@relay/core';
-import type { AuthState, RaceState, RunnerState } from '@relay/core';
-
+import {
+  type FailureStepRow,
+  renderFailureBanner,
+  renderSuccessBanner,
+  type SuccessStepRow,
+} from '../banner.js';
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { renderPausedBanner } from '../paused-banner.js';
-import {
-  ProgressDisplay,
-  type AuthInfo,
-} from '../progress.js';
-import {
-  renderFailureBanner,
-  renderSuccessBanner,
-  type FailureStepRow,
-  type SuccessStepRow,
-} from '../banner.js';
-import {
-  MARK,
-  SYMBOLS,
-  STEP_NAME_WIDTH,
-  gray,
-  green,
-  red,
-  yellow,
-  kvLine,
-} from '../visual.js';
+import { type AuthInfo, ProgressDisplay } from '../progress.js';
+import { gray, green, kvLine, MARK, red, STEP_NAME_WIDTH, SYMBOLS, yellow } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // RaceRef shape — mirrors core/orchestrator/resume.ts RaceRef
@@ -127,8 +113,7 @@ function renderPreResumeRunnerRow(
   const nameCol = runnerId.padEnd(STEP_NAME_WIDTH);
 
   if (stepState.status === 'succeeded') {
-    const timeStr =
-      stepState.completedAt !== undefined ? fmtHHMM(stepState.completedAt) : '--:--';
+    const timeStr = stepState.completedAt !== undefined ? fmtHHMM(stepState.completedAt) : '--:--';
     return green(` ${SYMBOLS.ok} ${nameCol}(cached, ran ${timeStr})`);
   }
 
@@ -194,9 +179,7 @@ function printPreResumeBanner(
     if (stepState === undefined) continue;
 
     const isFirstPending =
-      !foundFirstPending &&
-      stepState.status !== 'succeeded' &&
-      stepState.status !== 'skipped';
+      !foundFirstPending && stepState.status !== 'succeeded' && stepState.status !== 'skipped';
 
     if (isFirstPending) foundFirstPending = true;
 
@@ -249,15 +232,17 @@ function printPreResumeBanner(
 export interface ResumeCommandOptions {
   /** Provider name from --provider flag. Takes precedence over all settings. */
   provider?: string;
+  /**
+   * Commander flips this to `false` when the user passes `--no-worktree`.
+   * Undefined or true leaves the Orchestrator default ('auto') in effect.
+   */
+  worktree?: boolean;
 }
 
 /**
  * Entry point for `relay resume <runId>`.
  */
-export default async function resumeCommand(
-  args: unknown[],
-  opts: unknown,
-): Promise<void> {
+export default async function resumeCommand(args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as ResumeCommandOptions;
   // ---- (1) Parse runId ----
   const runId = typeof args[0] === 'string' ? args[0] : undefined;
@@ -277,7 +262,9 @@ export default async function resumeCommand(
       process.stderr.write(red(`  ${SYMBOLS.fail} no resumable run at ${runId}`) + '\n');
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     } else {
-      process.stderr.write(red(`  ${SYMBOLS.fail} could not read run state for ${runId}: ${e.message}`) + '\n');
+      process.stderr.write(
+        red(`  ${SYMBOLS.fail} could not read run state for ${runId}: ${e.message}`) + '\n',
+      );
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     }
     process.exit(1);
@@ -302,12 +289,13 @@ export default async function resumeCommand(
     raceRef = {
       raceName: p['raceName'] as string,
       raceVersion: p['raceVersion'] as string,
-      racePath:
-        typeof p['racePath'] === 'string' ? p['racePath'] : null,
+      racePath: typeof p['racePath'] === 'string' ? p['racePath'] : null,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    process.stderr.write(red(`  ${SYMBOLS.fail} could not load race-ref.json for run ${runId}: ${msg}`) + '\n');
+    process.stderr.write(
+      red(`  ${SYMBOLS.fail} could not load race-ref.json for run ${runId}: ${msg}`) + '\n',
+    );
     process.stderr.write(gray('  did you mean: relay runs') + '\n');
     process.exit(1);
   }
@@ -316,9 +304,7 @@ export default async function resumeCommand(
     process.stderr.write(
       red(`  ${SYMBOLS.fail} run ${runId} has no recorded race path — cannot resume`) + '\n',
     );
-    process.stderr.write(
-      gray('  start a fresh run: relay run ' + raceRef.raceName + ' .') + '\n',
-    );
+    process.stderr.write(gray('  start a fresh run: relay run ' + raceRef.raceName + ' .') + '\n');
     process.exit(1);
   }
 
@@ -326,11 +312,10 @@ export default async function resumeCommand(
   const flowResult = await loadFlow(raceRef.racePath, process.cwd());
   if (flowResult.isErr()) {
     process.stderr.write(
-      red(`  ${SYMBOLS.fail} could not load race for run ${runId}: ${flowResult.error.message}`) + '\n',
+      red(`  ${SYMBOLS.fail} could not load race for run ${runId}: ${flowResult.error.message}`) +
+        '\n',
     );
-    process.stderr.write(
-      gray('  ensure the race package is built: pnpm build') + '\n',
-    );
+    process.stderr.write(gray('  ensure the race package is built: pnpm build') + '\n');
     process.exit(1);
   }
   const { flow } = flowResult.value;
@@ -339,7 +324,14 @@ export default async function resumeCommand(
   const spentUsd = await loadSpentUsd(runDir);
 
   // ---- (6) Print pre-resume banner ----
-  printPreResumeBanner(runId, raceRef, state, flow.graph.topoOrder, flow.graph.predecessors, spentUsd);
+  printPreResumeBanner(
+    runId,
+    raceRef,
+    state,
+    flow.graph.topoOrder,
+    flow.graph.predecessors,
+    spentUsd,
+  );
 
   // ---- (7) Auth check — must happen before the Orchestrator so we can exit 3 on auth failure ----
   // Resolve the provider via the same chain Orchestrator.resume() uses below
@@ -393,10 +385,7 @@ export default async function resumeCommand(
   const orchestrator = new Orchestrator({ runDir });
 
   const authInfo: AuthInfo = {
-    label:
-      effectiveAuth.billingSource === 'subscription'
-        ? 'subscription (max)'
-        : `api account`,
+    label: effectiveAuth.billingSource === 'subscription' ? 'subscription (max)' : `api account`,
     estUsd: 0,
   };
 
@@ -436,6 +425,9 @@ export default async function resumeCommand(
     if (options.provider !== undefined) {
       resumeOpts.flagProvider = options.provider;
     }
+    if (options.worktree === false) {
+      resumeOpts.worktree = false;
+    }
     const result = await orchestrator.resume(runDir, resumeOpts);
 
     process.removeListener('SIGINT', sigintHandler);
@@ -454,8 +446,7 @@ export default async function resumeCommand(
           model: 'sonnet',
           durationMs:
             stepState?.completedAt !== undefined && stepState.startedAt !== undefined
-              ? new Date(stepState.completedAt).getTime() -
-                new Date(stepState.startedAt).getTime()
+              ? new Date(stepState.completedAt).getTime() - new Date(stepState.startedAt).getTime()
               : 0,
           costUsd: 0,
         };
@@ -498,8 +489,7 @@ export default async function resumeCommand(
           model: 'sonnet',
           durationMs:
             stepState?.completedAt !== undefined && stepState.startedAt !== undefined
-              ? new Date(stepState.completedAt).getTime() -
-                new Date(stepState.startedAt).getTime()
+              ? new Date(stepState.completedAt).getTime() - new Date(stepState.startedAt).getTime()
               : 0,
           costUsd: 0,
         };

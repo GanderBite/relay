@@ -5,20 +5,20 @@
  *
  * Cases: RUNNER-001..008, ABORT-001..005, RESUME-001..006.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ClaudeAuthError, RaceDefinitionError } from '../../src/errors.js';
 import { createOrchestrator, Orchestrator } from '../../src/orchestrator/orchestrator.js';
+import { ProviderRegistry } from '../../src/providers/registry.js';
+import type { InvocationResponse } from '../../src/providers/types.js';
 import { defineRace } from '../../src/race/define.js';
 import { runner } from '../../src/race/runner.js';
-import { ProviderRegistry } from '../../src/providers/registry.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { ClaudeAuthError, RaceDefinitionError } from '../../src/errors.js';
 import { z } from '../../src/zod.js';
-import type { InvocationResponse } from '../../src/providers/types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LINEAR_FLOW_FIXTURE = join(HERE, 'fixtures', 'linear-test-race.ts');
@@ -88,7 +88,11 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const result = await orchestrator.run(linearFlow(), {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    const result = await orchestrator.run(
+      linearFlow(),
+      {},
+      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+    );
 
     expect(result.status).toBe('succeeded');
     expect(order).toEqual(['a', 'b', 'c']);
@@ -128,13 +132,20 @@ describe('Runner — DAG walker', () => {
     });
 
     const provider = new MockProvider({
-      responses: responses as Record<string, InvocationResponse | ((...a: unknown[]) => InvocationResponse)>,
+      responses: responses as Record<
+        string,
+        InvocationResponse | ((...a: unknown[]) => InvocationResponse)
+      >,
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const result = await orchestrator.run(race, {}, { parallelism: MAX, raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    const result = await orchestrator.run(
+      race,
+      {},
+      { parallelism: MAX, raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+    );
 
     expect(result.status).toBe('succeeded');
     expect(maxSeen).toBeLessThanOrEqual(MAX);
@@ -168,7 +179,11 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const result = await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    const result = await orchestrator.run(
+      race,
+      {},
+      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+    );
 
     expect(result.status).toBe('failed');
     expect(bSpy).not.toHaveBeenCalled();
@@ -236,7 +251,13 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await expect(orchestrator.run(race, { repoPath: 123 }, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })).rejects.toBeInstanceOf(RaceDefinitionError);
+    await expect(
+      orchestrator.run(
+        race,
+        { repoPath: 123 },
+        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+      ),
+    ).rejects.toBeInstanceOf(RaceDefinitionError);
   });
 
   it('[RUNNER-006] writes batons + state.json between runners (observable mid-run)', async () => {
@@ -276,7 +297,14 @@ describe('Runner — DAG walker', () => {
   });
 
   it('[RUNNER-007] calls provider.authenticate() exactly once before any invoke', async () => {
-    const authSpy = vi.fn(async () => ({ isOk: () => true, isErr: () => false, value: { ok: true, billingSource: 'local', detail: 'mock' } } as unknown as Awaited<ReturnType<MockProvider['authenticate']>>));
+    const authSpy = vi.fn(
+      async () =>
+        ({
+          isOk: () => true,
+          isErr: () => false,
+          value: { ok: true, billingSource: 'local', detail: 'mock' },
+        }) as unknown as Awaited<ReturnType<MockProvider['authenticate']>>,
+    );
     const provider = new MockProvider({ responses: { a: canned, b: canned, c: canned } });
     // Override authenticate with a spy
     (provider as unknown as { authenticate: typeof authSpy }).authenticate = authSpy;
@@ -306,7 +334,9 @@ describe('Runner — DAG walker', () => {
     const race = linearFlow();
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await expect(orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })).rejects.toBeInstanceOf(ClaudeAuthError);
+    await expect(
+      orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' }),
+    ).rejects.toBeInstanceOf(ClaudeAuthError);
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 });
@@ -324,9 +354,10 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
   it('[ABORT-001] SIGINT mid-run flips run status to aborted and persists state', async () => {
     const provider = new MockProvider({
       responses: {
-        slow: () => new Promise(() => {
-          /* hangs forever */
-        }) as unknown as InvocationResponse,
+        slow: () =>
+          new Promise(() => {
+            /* hangs forever */
+          }) as unknown as InvocationResponse,
       },
     });
     const registry = new ProviderRegistry();
@@ -341,7 +372,15 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const p = orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    // `worktree: false` skips the git-worktree probe so the 80ms SIGINT timer
+    // reliably fires while the step is running, not during the probe's ~80ms
+    // subprocess spawn. The abort contract under test is independent of the
+    // worktree feature; isolation is exercised by dedicated worktree tests.
+    const p = orchestrator.run(
+      race,
+      {},
+      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
+    );
     setTimeout(() => process.emit('SIGINT'), 80);
     const result = await p.catch((e) => e);
 
@@ -367,7 +406,12 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
       },
     });
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const p = orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    // See ABORT-001 for the rationale behind `worktree: false`.
+    const p = orchestrator.run(
+      race,
+      {},
+      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
+    );
     setTimeout(() => process.emit('SIGTERM'), 80);
     await p.catch(() => undefined);
     const state = JSON.parse(await readFile(join(tmp, 'state.json'), 'utf8'));
@@ -382,7 +426,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     // starts, raceAbort sees signal.aborted=true and throws before the factory
     // runs — the listener is never registered and aborted stays empty.
     let signalInflight!: () => void;
-    const inFlight = new Promise<void>((resolve) => { signalInflight = resolve; });
+    const inFlight = new Promise<void>((resolve) => {
+      signalInflight = resolve;
+    });
 
     const provider = new MockProvider({
       responses: {
@@ -405,7 +451,11 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const p = orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    const p = orchestrator.run(
+      race,
+      {},
+      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+    );
     // Send SIGINT only after the step factory confirms it is running.
     void inFlight.then(() => process.emit('SIGINT'));
     await p.catch(() => undefined);
@@ -534,7 +584,11 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    const result = await orchestrator.resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    const result = await orchestrator.resume(tmp, {
+      raceDir: tmp,
+      authTimeoutMs: 1_000,
+      flagProvider: 'mock',
+    });
 
     // The run result should include the pre-resume spend (0.05) in total cost.
     expect(result.cost.totalUsd).toBeGreaterThanOrEqual(0.05);
@@ -579,7 +633,9 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' }).catch(() => undefined);
+    await orchestrator
+      .resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })
+      .catch(() => undefined);
 
     // maxRetries:3 and 2 attempts already used => resume should run exactly 1 more.
     expect(aSpy).toHaveBeenCalledTimes(1);
