@@ -98,6 +98,101 @@ checkpoint  the saved state of a run after each step completes
 
 ---
 
+## Testing your flow
+
+`@relay/core/testing` exports `MockProvider`, a zero-network, zero-cost provider
+you can drop into any Vitest suite. You describe exactly what each step should
+return; the provider replays those responses without spawning a subprocess or
+reaching the Anthropic API.
+
+Import path:
+
+```ts
+import { MockProvider } from '@relay/core/testing';
+```
+
+### Minimal working example
+
+```ts
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createOrchestrator, defineFlow, ProviderRegistry, step, z } from '@relay/core';
+import type { InvocationResponse } from '@relay/core';
+import { MockProvider } from '@relay/core/testing';
+
+const canned: InvocationResponse = {
+  text: '{}',
+  usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+  costUsd: 0,
+  durationMs: 0,
+  numTurns: 1,
+  model: 'mock',
+  stopReason: 'end_turn',
+};
+
+const flow = defineFlow({
+  name: 'hello',
+  version: '0.1.0',
+  input: z.object({}),
+  steps: {
+    greet: step.prompt({ promptFile: 'prompts/greet.md', output: { handoff: 'greet-out' } }),
+  },
+});
+
+describe('hello flow', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-test-'));
+    await writeFile(join(tmp, 'prompts/greet.md'), '# greet', 'utf8');
+  });
+
+  afterEach(() => rm(tmp, { recursive: true, force: true }));
+
+  it('runs the greet step and succeeds', async () => {
+    const provider = new MockProvider({ responses: { greet: canned } });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
+    const result = await orchestrator.run(flow, {}, { flowDir: tmp, flagProvider: 'mock' });
+
+    expect(result.status).toBe('succeeded');
+  });
+});
+```
+
+### Scripting a multi-step exchange
+
+Pass one keyed response per step name. Each value can be a plain
+`InvocationResponse` or a function that receives the `InvocationRequest` and
+`InvocationContext` — useful when you want to capture what the orchestrator
+actually sent to the step, or to vary the response based on context.
+
+```ts
+const provider = new MockProvider({
+  responses: {
+    inventory: (_req, _ctx) => ({
+      ...canned,
+      text: JSON.stringify({ files: 42 }),
+    }),
+    summarise: (req, ctx) => {
+      // req.prompt contains the rendered prompt string
+      // ctx.stepId === 'summarise', ctx.attempt === 1
+      return { ...canned, text: 'summary complete' };
+    },
+  },
+});
+```
+
+If a step runs but no key is found for its `stepId`, the provider returns
+`err(StepFailureError)` — the run records that step as failed, not silently
+skipped. That makes unscripted steps a test error rather than a silent gap.
+
+---
+
 ## License
 
 MIT. Copyright Ganderbite.
