@@ -1,0 +1,47 @@
+{
+  "name": "@relay/example-file-type-router",
+  "version": "0.1.0",
+  "description": "A branch-step example flow that routes a file path to one of three review prompts based on its extension — .ts, .js, or other.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": "./dist/flow.js"
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "displayName": "File Type Router",
+    "tags": [
+      "branch",
+      "routing",
+      "example"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.0,
+      "max": 0.02
+    },
+    "estimatedDurationMin": {
+      "min": 1,
+      "max": 3
+    },
+    "audience": [
+      "dev"
+    ]
+  }
+}

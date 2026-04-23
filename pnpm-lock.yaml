@@ -21,6 +21,24 @@ importers:
         specifier: 0.28.19
         version: 0.28.19(typescript@6.0.3)
 
+  examples/file-type-router:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  examples/git-log-summary:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   examples/hello-world:
     devDependencies:
       '@relay/core':
@@ -31,6 +49,15 @@ importers:
         version: 6.0.3
 
   examples/hello-world-mocked:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  examples/multi-perspective-review:
     devDependencies:
       '@relay/core':
         specifier: workspace:*

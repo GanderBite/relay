@@ -1,0 +1,47 @@
+{
+  "name": "@relay/example-multi-perspective-review",
+  "version": "0.1.0",
+  "description": "A five-step example flow that demonstrates step.parallel(): three reviewers read the same file in parallel (security, performance, readability), then an aggregation step synthesizes their handoffs into a single report.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": "./dist/flow.js"
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "displayName": "Multi-Perspective Review",
+    "tags": [
+      "parallel",
+      "review",
+      "example"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.02,
+      "max": 0.08
+    },
+    "estimatedDurationMin": {
+      "min": 2,
+      "max": 8
+    },
+    "audience": [
+      "dev"
+    ]
+  }
+}
