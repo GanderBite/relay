@@ -1,13 +1,13 @@
 /**
- * Race loader — resolves a name or path to a compiled Race and its package
+ * Flow loader — resolves a name or path to a compiled Flow and its package
  * metadata.
  *
  * Resolution order:
  *   1. Path-like argument (starts with ./, ../, / or contains /) — resolve
- *      to an absolute directory and import <abs>/dist/race.js.
- *   2. Named race in <cwd>/.relay/races/<name>/ — import dist/race.js.
- *   3. Named race in <cwd>/node_modules/@relay/races-<name>/ — import
- *      dist/race.js.
+ *      to an absolute directory and import <abs>/dist/flow.js.
+ *   2. Named flow in <cwd>/.relay/flows/<name>/ — import dist/flow.js.
+ *   3. Named flow in <cwd>/node_modules/@ganderbite/flow-<name>/ — import
+ *      dist/flow.js.
  *   4. Not found — return err instructing the user to run `relay install`.
  *
  * Returns Result<LoadedFlow, FlowLoadError>.
@@ -42,7 +42,7 @@ export class FlowLoadError extends Error {
 // Public return type
 // ---------------------------------------------------------------------------
 
-/** Where the race was found. Used by callers for optional diagnostic logging. */
+/** Where the flow was found. Used by callers for optional diagnostic logging. */
 export type FlowSource = 'path' | 'local' | 'node_modules';
 
 export interface LoadedFlow {
@@ -57,10 +57,10 @@ export interface LoadedFlow {
 // Duck-type guard
 //
 // We can't use instanceof here — the module may come from a different package.
-// Check the three structural fields that every compiled Race must carry:
-//   name    — string (from RaceSpec)
-//   runners — object/record (from RaceSpec)
-//   graph   — object with successors/predecessors/topoOrder (from RaceGraph)
+// Check the three structural fields that every compiled Flow must carry:
+//   name  — string (from FlowSpec)
+//   steps — object/record (from FlowSpec)
+//   graph — object with successors/predecessors/topoOrder (from FlowGraph)
 //
 // successors and predecessors are tested structurally (has .get and .has)
 // rather than with instanceof Map, so frozen objects or future refactors
@@ -149,7 +149,7 @@ async function importFlow(
     );
   }
 
-  // The compiled entry must default-export the Race object.
+  // The compiled entry must default-export the Flow object.
   const defaultExport =
     mod !== null && typeof mod === 'object'
       ? (mod as Record<string, unknown>)['default']
@@ -175,12 +175,12 @@ async function importFlow(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a race name or path to a compiled Race and its package metadata.
+ * Resolve a flow name or path to a compiled Flow and its package metadata.
  *
- * @param nameOrPath  Either a race name (e.g. "codebase-discovery") or a
- *                    filesystem path (e.g. "./my-race", "/abs/path/to/race").
+ * @param nameOrPath  Either a flow name (e.g. "codebase-discovery") or a
+ *                    filesystem path (e.g. "./my-flow", "/abs/path/to/flow").
  * @param cwd         The working directory from which relative paths and the
- *                    .relay/races and node_modules directories are resolved.
+ *                    .relay/flows and node_modules directories are resolved.
  */
 export async function loadFlow(
   nameOrPath: string,

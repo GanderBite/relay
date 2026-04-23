@@ -3,13 +3,13 @@
  *
  * Log source: <cwd>/.relay/runs/<runId>/run.log
  * Each line is a JSON object with shape:
- *   { ts, level, event, runnerId?, data?, ...rest }
+ *   { ts, level, event, stepId?, data?, ...rest }
  *
  * Output format per event:
  *   <HH:MM:SS>  <level colored>  <event>  <key=value pairs>
  *
  * Flags (parsed from process.argv directly — same pattern as runs.ts):
- *   --step <id>    filter to events with matching runnerId
+ *   --step <id>    filter to events with matching stepId
  *   --follow / -f  tail mode: print existing lines then watch for new ones
  *   --level <lvl>  filter to minimum level (debug < info < warn < error)
  *
@@ -83,7 +83,7 @@ interface LogEvent {
   ts?: string;
   level?: string;
   event?: string;
-  runnerId?: string;
+  stepId?: string;
   data?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -126,16 +126,16 @@ function formatTime(ts: string | undefined): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Render a LogEvent's fields (excluding ts, level, event, runnerId, flowName,
+ * Render a LogEvent's fields (excluding ts, level, event, stepId, flowName,
  * runId) as space-separated key=value pairs. Nested data object fields are
  * flattened one level.
  */
 function renderExtras(evt: LogEvent): string {
-  const SKIP = new Set(['ts', 'level', 'event', 'runnerId', 'flowName', 'runId', 'data']);
+  const SKIP = new Set(['ts', 'level', 'event', 'stepId', 'flowName', 'runId', 'data']);
   const pairs: string[] = [];
 
-  if (evt.runnerId !== undefined) {
-    pairs.push(`runnerId=${String(evt.runnerId)}`);
+  if (evt.stepId !== undefined) {
+    pairs.push(`stepId=${String(evt.stepId)}`);
   }
 
   for (const [k, v] of Object.entries(evt)) {
@@ -179,7 +179,7 @@ function shouldShow(evt: LogEvent, flags: LogFlags): boolean {
   if (rank < levelRank(flags.minLevel)) return false;
 
   // Runner filter
-  if (flags.step !== undefined && evt.runnerId !== flags.step) return false;
+  if (flags.step !== undefined && evt.stepId !== flags.step) return false;
 
   return true;
 }

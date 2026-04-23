@@ -8,11 +8,11 @@
 import type { AuthState, CostEstimate } from '@relay/core';
 import {
   DURATION_WIDTH,
+  flowHeader,
   gray,
   green,
   kvLine,
   MODEL_WIDTH,
-  raceHeader,
   red,
   rule,
   STEP_NAME_WIDTH,
@@ -267,7 +267,7 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   const { flowName, runId, steps, totalDurationMs, totalCostUsd, auth, outputPath } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✓"
-  const header = green(raceHeader(flowName, runId, SYMBOLS.ok));
+  const header = green(flowHeader(flowName, runId, SYMBOLS.ok));
 
   // Per-step lines — " ✓ <name padded> <model padded> <dur padded> $cost"
   const stepLines = steps.map((s) => {
@@ -367,7 +367,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const { flowName, runId, steps, spentUsd, handoffId } = opts;
 
   // Header line: "●─▶●─▶●─▶●  codebase-discovery · f9c3a2  ✕"
-  const header = red(raceHeader(flowName, runId, SYMBOLS.fail));
+  const header = red(flowHeader(flowName, runId, SYMBOLS.fail));
 
   // Per-step lines
   const stepLines: string[] = [];

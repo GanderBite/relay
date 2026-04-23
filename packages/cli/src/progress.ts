@@ -18,11 +18,10 @@ import logUpdate from 'log-update';
 
 import {
   DURATION_WIDTH,
+  flowHeader,
   gray,
   green,
-  MARK,
   MODEL_WIDTH,
-  raceHeader,
   red,
   STEP_NAME_WIDTH,
   SYMBOLS,
@@ -34,10 +33,10 @@ import {
 // Defined locally because that module is not in the core package's exports map.
 // ---------------------------------------------------------------------------
 
-type RunnerStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
 
 interface LiveStatePartial {
-  status: RunnerStatus;
+  status: StepStatus;
   attempt: number;
   startedAt: string;
   lastUpdateAt: string;
@@ -319,7 +318,7 @@ export class ProgressDisplay<TInput = unknown> {
     const lines: string[] = [];
 
     // Zone 1 — Header (static, never changes during the run)
-    lines.push(raceHeader(this.#flow.name, this.#runId));
+    lines.push(flowHeader(this.#flow.name, this.#runId));
     lines.push('');
 
     // Zone 2 — Step grid (one row per step)
@@ -343,7 +342,7 @@ export class ProgressDisplay<TInput = unknown> {
 
   #stepRow(state: StepDisplayState): string {
     const live = state.live;
-    const status: RunnerStatus = live?.status ?? 'pending';
+    const status: StepStatus = live?.status ?? 'pending';
 
     // Status symbol
     let sym: string;

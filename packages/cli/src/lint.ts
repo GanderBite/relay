@@ -140,7 +140,7 @@ function prop(obj: unknown, key: string): unknown {
  * Check (1): package.json exists and contains all required fields.
  *
  * Required top-level:  name, version (strict semver), type = "module", main
- * Required relay block: raceName, displayName, tags, estimatedCostUsd,
+ * Required relay block: flowName, displayName, tags, estimatedCostUsd,
  *                       estimatedDurationMin, audience
  */
 async function checkPackageJson(dir: string): Promise<LintFinding[]> {

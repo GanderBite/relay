@@ -47,7 +47,7 @@ interface RawStepState extends StepState {
 }
 
 interface RawMetrics {
-  runnerId: string;
+  stepId: string;
   durationMs?: number;
   costUsd?: number;
   model?: string;
@@ -153,8 +153,8 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
     const raw = await readFile(join(runDir, 'metrics.json'), 'utf8');
     const entries = JSON.parse(raw) as RawMetrics[];
     for (const entry of entries) {
-      if (typeof entry.runnerId === 'string') {
-        map.set(entry.runnerId, entry);
+      if (typeof entry.stepId === 'string') {
+        map.set(entry.stepId, entry);
       }
     }
   } catch {
@@ -174,7 +174,7 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
  * Falls back to a minimal banner if state cannot be loaded.
  */
 export async function renderPausedBanner(
-  raceName: string,
+  flowName: string,
   runId: string,
   runDir: string,
   stepOrder: readonly string[],
@@ -182,7 +182,7 @@ export async function renderPausedBanner(
   // Header: "^C" echo, blank, then the paused header line.
   process.stdout.write('^C\n');
   process.stdout.write('\n');
-  process.stdout.write(`${MARK}  ${raceName} ${SYMBOLS.dot} ${runId}  (paused)\n`);
+  process.stdout.write(`${MARK}  ${flowName} ${SYMBOLS.dot} ${runId}  (paused)\n`);
   process.stdout.write('\n');
 
   // Read state and metrics; on failure render minimal fallback.
