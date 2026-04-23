@@ -149,6 +149,12 @@ export interface InvocationContext {
 
   abortSignal: AbortSignal;
   logger: Logger;
+
+  /**
+   * The working directory the provider's subprocess should run in; undefined
+   * means inherit the parent process cwd.
+   */
+  cwd?: string;
 }
 
 // ---------------------------------------------------------------------------

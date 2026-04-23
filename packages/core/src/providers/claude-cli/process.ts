@@ -16,7 +16,7 @@
  * — the generator never throws.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 
 import type { Logger } from '../../logger.js';
 
@@ -30,6 +30,11 @@ export interface RunClaudeProcessArgs {
   prompt: string;
   abortSignal: AbortSignal;
   logger: Logger;
+  /**
+   * Working directory for the spawned subprocess. When undefined the child
+   * inherits the parent process cwd (spawn's default).
+   */
+  cwd?: string;
 }
 
 export interface RunClaudeProcessResult {
@@ -88,17 +93,21 @@ class StderrRing {
 export async function* runClaudeProcess(
   args: RunClaudeProcessArgs,
 ): AsyncGenerator<unknown, RunClaudeProcessResult, void> {
-  const { binary, cliArgs, env, prompt, abortSignal, logger } = args;
+  const { binary, cliArgs, env, prompt, abortSignal, logger, cwd } = args;
 
   let child: ChildProcess;
   try {
     child = spawn(binary, cliArgs, {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(cwd !== undefined ? { cwd } : {}),
     });
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    logger.debug({ event: 'claude-cli.spawn.failed', binary, message }, 'spawn threw synchronously');
+    logger.debug(
+      { event: 'claude-cli.spawn.failed', binary, message },
+      'spawn threw synchronously',
+    );
     return { exitCode: null, stderr: message, signal: null };
   }
 
@@ -227,10 +236,7 @@ export async function* runClaudeProcess(
     // the stream. If close has already fired we end here ourselves.
     const message = cause.message;
     stderr.append(Buffer.from(message, 'utf8'));
-    logger.debug(
-      { event: 'claude-cli.process.error', message },
-      'child process emitted error',
-    );
+    logger.debug({ event: 'claude-cli.process.error', message }, 'child process emitted error');
   });
 
   child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
@@ -238,9 +244,7 @@ export async function* runClaudeProcess(
     // 'close', so anything left in stdoutBuffer is a final line missing its
     // trailing newline.
     if (stdoutBuffer.length > 0) {
-      const trimmed = stdoutBuffer.endsWith('\r')
-        ? stdoutBuffer.slice(0, -1)
-        : stdoutBuffer;
+      const trimmed = stdoutBuffer.endsWith('\r') ? stdoutBuffer.slice(0, -1) : stdoutBuffer;
       stdoutBuffer = '';
       flushLine(trimmed);
     }

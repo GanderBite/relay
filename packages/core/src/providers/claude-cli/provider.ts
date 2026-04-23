@@ -153,6 +153,7 @@ export class ClaudeCliProvider implements Provider {
       prompt: req.prompt,
       abortSignal: ctx.abortSignal,
       logger: ctx.logger,
+      cwd: ctx.cwd,
     });
 
     let exitResult: RunClaudeProcessResult = {

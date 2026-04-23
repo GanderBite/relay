@@ -12,8 +12,8 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-import { runClaudeProcess } from '../../../src/providers/claude-cli/process.js';
 import type { Logger } from '../../../src/logger.js';
+import { runClaudeProcess } from '../../../src/providers/claude-cli/process.js';
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -34,12 +34,10 @@ function makeChild(): MockChildHandles {
   });
   const stderr = new EventEmitter();
   const stdin = Object.assign(new EventEmitter(), {
-    write: vi.fn(
-      (_chunk: string, _enc: string, cb?: (err?: Error | null) => void) => {
-        if (typeof cb === 'function') cb(null);
-        return true;
-      },
-    ),
+    write: vi.fn((_chunk: string, _enc: string, cb?: (err?: Error | null) => void) => {
+      if (typeof cb === 'function') cb(null);
+      return true;
+    }),
     end: vi.fn(),
   });
   const child = Object.assign(new EventEmitter(), {
@@ -178,11 +176,7 @@ describe('runClaudeProcess', () => {
 
     // Allow a microtask so the runner attaches its handlers and writes stdin.
     await Promise.resolve();
-    expect(child.stdin.write).toHaveBeenCalledWith(
-      'the prompt body',
-      'utf8',
-      expect.any(Function),
-    );
+    expect(child.stdin.write).toHaveBeenCalledWith('the prompt body', 'utf8', expect.any(Function));
     expect(child.stdin.end).toHaveBeenCalledTimes(1);
 
     child.emit('close', 0, null);
@@ -206,10 +200,7 @@ describe('runClaudeProcess', () => {
 
     child.stdout.emit(
       'data',
-      '{"type":"system"}\n' +
-        'this is not json at all\n' +
-        '{"oops":\n' +
-        '{"type":"result"}\n',
+      '{"type":"system"}\n' + 'this is not json at all\n' + '{"oops":\n' + '{"type":"result"}\n',
     );
     child.emit('close', 0, null);
 
@@ -281,10 +272,7 @@ describe('runClaudeProcess', () => {
     const collector = collect(gen);
 
     // 12 KiB single chunk: first 4 KiB 'A', last 8 KiB 'B'. Cap keeps 'B'.
-    const oversize = Buffer.concat([
-      Buffer.alloc(4 * 1024, 0x41),
-      Buffer.alloc(8 * 1024, 0x42),
-    ]);
+    const oversize = Buffer.concat([Buffer.alloc(4 * 1024, 0x41), Buffer.alloc(8 * 1024, 0x42)]);
     child.stderr.emit('data', oversize);
     child.emit('close', 1, null);
 
@@ -434,6 +422,61 @@ describe('runClaudeProcess', () => {
       stderr: 'synchronous spawn failure',
       signal: null,
     });
+  });
+
+  it('[CLI-PROC-012] forwards cwd to spawn when provided', async () => {
+    const { child } = makeChild();
+    spawnMock.mockReturnValue(child);
+
+    const gen = runClaudeProcess({
+      binary: '/usr/bin/claude',
+      cliArgs: ['-p'],
+      env: { PATH: '/usr/bin' },
+      prompt: '',
+      abortSignal: new AbortController().signal,
+      logger: makeLogger(),
+      cwd: '/tmp/worktree',
+    });
+    const collector = collect(gen);
+
+    child.emit('close', 0, null);
+    await collector;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [binaryArg, argsArg, optionsArg] = spawnMock.mock.calls[0];
+    expect(binaryArg).toBe('/usr/bin/claude');
+    expect(argsArg).toEqual(['-p']);
+    expect(optionsArg).toMatchObject({
+      env: { PATH: '/usr/bin' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: '/tmp/worktree',
+    });
+  });
+
+  it('[CLI-PROC-013] omits cwd from spawn options when undefined', async () => {
+    const { child } = makeChild();
+    spawnMock.mockReturnValue(child);
+
+    const gen = runClaudeProcess({
+      binary: '/usr/bin/claude',
+      cliArgs: ['-p'],
+      env: { PATH: '/usr/bin' },
+      prompt: '',
+      abortSignal: new AbortController().signal,
+      logger: makeLogger(),
+    });
+    const collector = collect(gen);
+
+    child.emit('close', 0, null);
+    await collector;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [, , optionsArg] = spawnMock.mock.calls[0];
+    expect(optionsArg).toEqual({
+      env: { PATH: '/usr/bin' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    expect(optionsArg).not.toHaveProperty('cwd');
   });
 
   it('[CLI-PROC-011] CRLF line endings are tolerated', async () => {
