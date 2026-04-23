@@ -6,6 +6,7 @@
  */
 
 import type { AuthState, CostEstimate } from '@relay/core';
+import { fmtCost, fmtDuration } from './format.js';
 import {
   DURATION_WIDTH,
   flowHeader,
@@ -19,42 +20,6 @@ import {
   SYMBOLS,
   WORDMARK,
 } from './visual.js';
-
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Formats a duration in milliseconds as "<N>s" (under 60s) or "<M>m <N>s".
- * No rounding for vibes — exact seconds.
- */
-function fmtDuration(ms: number): string {
-  const totalSec = Math.round(ms / 1000);
-  if (totalSec < 60) return `${totalSec}s`;
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}m ${s}s`;
-}
-
-/**
- * Formats a per-step cost in USD to 3 decimal places using ceiling rounding.
- * Ceiling ensures displayed cost is never under-stated.
- * Example: $0.005
- */
-function fmtStepCost(usd: number): string {
-  const ceiled = Math.ceil(usd * 1000) / 1000;
-  return `$${ceiled.toFixed(3)}`;
-}
-
-/**
- * Formats a total/summary cost in USD to 2 decimal places using ceiling rounding.
- * Ceiling ensures displayed cost is never under-stated.
- * Example: $0.38 for a run total, $0.40 for a pre-run estimate.
- */
-function fmtTotalCost(usd: number): string {
-  const ceiled = Math.ceil(usd * 100) / 100;
-  return `$${ceiled.toFixed(2)}`;
-}
 
 /**
  * Formats an ISO date-time string to "YYYY-MM-DD HH:mmZ" in UTC.
@@ -198,7 +163,7 @@ export function renderStartBanner(opts: StartBannerOptions): string {
     costEstimate !== undefined
       ? kvLine(
           'est',
-          `${fmtTotalCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`,
+          `${fmtCost(costEstimate.maxUsd)}  ${SYMBOLS.dot}  ${stepCount} steps  ${SYMBOLS.dot}  ~${etaMin} min`,
         )
       : undefined;
 
@@ -274,7 +239,7 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
     const nameCol = s.name.padEnd(STEP_NAME_WIDTH);
     const modelCol = s.model.padEnd(MODEL_WIDTH);
     const durCol = fmtDuration(s.durationMs).padEnd(DURATION_WIDTH);
-    const costCol = fmtStepCost(s.costUsd);
+    const costCol = fmtCost(s.costUsd);
     return green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`);
   });
 
@@ -284,8 +249,8 @@ export function renderSuccessBanner(opts: SuccessBannerOptions): string {
   // cost row label depends on billing source
   const costLabel =
     auth.billingSource === 'subscription'
-      ? `${fmtTotalCost(totalCostUsd)}  (estimated api equivalent; billed to subscription)`
-      : `${fmtTotalCost(totalCostUsd)}  (billed to api account)`;
+      ? `${fmtCost(totalCostUsd)}  (estimated api equivalent; billed to subscription)`
+      : `${fmtCost(totalCostUsd)}  (billed to api account)`;
 
   // next: block
   const nextIndent = '    ';
@@ -377,7 +342,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
 
     if (s.status === 'succeeded') {
       const modelCol = s.model.padEnd(MODEL_WIDTH);
-      const costCol = fmtStepCost(s.costUsd);
+      const costCol = fmtCost(s.costUsd);
       stepLines.push(green(` ${SYMBOLS.ok} ${nameCol}${modelCol}${durCol}${costCol}`));
     } else if (s.status === 'failed') {
       // Failed step: show "exit N" in the model column, no cost column
@@ -402,7 +367,7 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
   const totalCount = steps.length;
 
   // Summary line: "3 of 5 steps succeeded · $0.049 spent · state saved"
-  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtTotalCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
+  const summary = `${succeededCount} of ${totalCount} steps succeeded ${SYMBOLS.dot} ${fmtCost(spentUsd)} spent ${SYMBOLS.dot} state saved`;
 
   // "to resume after fixing:" block
   const resumeBlock = ['to resume after fixing:', `    relay resume ${runId}`].join('\n');

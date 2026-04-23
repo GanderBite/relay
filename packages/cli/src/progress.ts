@@ -16,6 +16,7 @@ import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
 
+import { fmtCostApprox, fmtK } from './format.js';
 import {
   DURATION_WIDTH,
   flowHeader,
@@ -54,20 +55,6 @@ export interface AuthInfo {
   label: string;
   /** Estimated cost ceiling in USD; 0 for subscription billing */
   estUsd: number;
-}
-
-// ---------------------------------------------------------------------------
-// Format helpers
-// ---------------------------------------------------------------------------
-
-function fmtK(n: number): string {
-  const k = n / 1000;
-  return k < 10 ? `${k.toFixed(1)}K` : `${Math.round(k)}K`;
-}
-
-function fmtCostUsd(usd: number, inFlight: boolean): string {
-  const s = `$${usd.toFixed(3)}`;
-  return inFlight ? `~${s}` : s;
 }
 
 function fmtElapsedSec(startedAt: string): string {
@@ -328,8 +315,8 @@ export class ProgressDisplay<TInput = unknown> {
     lines.push('');
 
     // Zone 3 — Footer (two lines: totals + blank)
-    const estStr = fmtCostUsd(this.#auth.estUsd, false);
-    const spentStr = fmtCostUsd(this.#computeSpent(), false);
+    const estStr = fmtCostApprox(this.#auth.estUsd);
+    const spentStr = fmtCostApprox(this.#computeSpent());
     const elapsed = this.#runStartedAt !== '' ? fmtHHMM(this.#runStartedAt) : '00:00';
 
     lines.push(
@@ -402,7 +389,7 @@ export class ProgressDisplay<TInput = unknown> {
     const tokOut = state.finalTokensOut ?? 0;
     const tokensCol = `${fmtK(tokIn)}→${fmtK(tokOut)}`.padEnd(13);
     const costUsd = state.finalCostUsd ?? 0;
-    const costStr = fmtCostUsd(costUsd, false);
+    const costStr = fmtCostApprox(costUsd);
 
     if (status === 'succeeded') {
       return ` ${green(SYMBOLS.ok)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${green(costStr)}`;

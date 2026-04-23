@@ -27,6 +27,7 @@ import { join } from 'node:path';
 
 import type { StepState } from '@relay/core';
 
+import { fmtCost, fmtDuration } from './format.js';
 import {
   DURATION_WIDTH,
   gray,
@@ -57,31 +58,6 @@ interface RawState {
   steps?: Record<string, RawStepState>;
 }
 
-// ---------------------------------------------------------------------------
-// Format helpers
-// ---------------------------------------------------------------------------
-
-function fmtDuration(ms: number): string {
-  const totalSec = Math.round(ms / 1000);
-  if (totalSec < 60) {
-    const s = ms / 1000;
-    return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
-  }
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}m ${s}s`;
-}
-
-function fmtStepCost(usd: number): string {
-  const ceiled = Math.ceil(usd * 1000) / 1000;
-  return `$${ceiled.toFixed(3)}`;
-}
-
-function fmtTotalCost(usd: number): string {
-  const ceiled = Math.ceil(usd * 1000) / 1000;
-  return `$${ceiled.toFixed(3)}`;
-}
-
 function stepDurationMs(stepState: RawStepState): number {
   if (typeof stepState.startedAt === 'string' && typeof stepState.completedAt === 'string') {
     const start = Date.parse(stepState.startedAt);
@@ -107,7 +83,7 @@ function renderPausedRunnerRow(
     const model = (metric?.model ?? stepState.model ?? 'sonnet').padEnd(MODEL_WIDTH);
     const durStr = fmtDuration(durationMs).padEnd(DURATION_WIDTH);
     const costUsd = metric?.costUsd ?? 0;
-    const costStr = fmtStepCost(costUsd);
+    const costStr = fmtCost(costUsd);
     return green(` ${SYMBOLS.ok} ${nameCol}${model}${durStr}${costStr}`);
   }
 
@@ -116,7 +92,7 @@ function renderPausedRunnerRow(
     const model = (metric?.model ?? stepState.model ?? 'sonnet').padEnd(MODEL_WIDTH);
     const durStr = fmtDuration(durationMs).padEnd(DURATION_WIDTH);
     const costUsd = metric?.costUsd ?? 0;
-    const costStr = fmtStepCost(costUsd);
+    const costStr = fmtCost(costUsd);
     return red(` ${SYMBOLS.fail} ${nameCol}${model}${durStr}${costStr}`);
   }
 
@@ -214,7 +190,7 @@ export async function renderPausedBanner(
     totalSpent += m.costUsd ?? 0;
   }
 
-  process.stdout.write(`state saved. ${fmtTotalCost(totalSpent)} spent.\n`);
+  process.stdout.write(`state saved. ${fmtCost(totalSpent)} spent.\n`);
   process.stdout.write('\n');
   process.stdout.write(`resume: relay resume ${runId}\n`);
 }

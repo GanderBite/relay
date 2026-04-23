@@ -30,6 +30,7 @@ import {
   TimeoutError,
 } from '@relay/core';
 import { CommanderError } from 'commander';
+import { fmtDuration } from './format.js';
 import { gray, red } from './visual.js';
 
 // ---------------------------------------------------------------------------
@@ -86,18 +87,6 @@ const BLANK = '';
  */
 function remediation(command: string): string {
   return `${INDENT}→ ${command}`;
-}
-
-/**
- * Format a millisecond duration as a human-readable string.
- * Uses exact values — no rounding for vibes.
- */
-function formatMs(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes === 0) return `${seconds}s`;
-  return `${minutes}m ${seconds}s`;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +156,7 @@ export function formatError(err: unknown): string {
   // AuthTimeoutError — must come before TimeoutError (subclass)
   // ----------------------------------------------------------------
   if (err instanceof AuthTimeoutError) {
-    const humanTime = formatMs(err.timeoutMs);
+    const humanTime = fmtDuration(err.timeoutMs);
     return [
       red(`✕ Authentication for provider '${err.providerName}' timed out after ${humanTime}`),
       BLANK,
@@ -184,7 +173,7 @@ export function formatError(err: unknown): string {
   if (err instanceof TimeoutError) {
     const stepId = err.stepId;
     const timeoutMs = err.timeoutMs;
-    const humanTime = formatMs(timeoutMs);
+    const humanTime = fmtDuration(timeoutMs);
 
     const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
     const artifactPath =

@@ -1,7 +1,7 @@
 /**
  * relay config — view or edit global Relay settings (~/.relay/settings.json).
  *
- * Subcommands (parsed from process.argv):
+ * Subcommands (routed via Commander in dispatcher.ts):
  *   relay config list            print all settings (default when no subcommand)
  *   relay config get <key>       print one value, or "(not set)" when absent
  *   relay config set <key> <v>   write one value atomically
@@ -40,29 +40,6 @@ type ValidKey = (typeof VALID_KEYS)[number];
 
 /** Column width for the key in `config list` output. */
 const KEY_COL_WIDTH = 18;
-
-// ---------------------------------------------------------------------------
-// Subcommand routing — parse from process.argv
-// ---------------------------------------------------------------------------
-
-/**
- * Extract the subcommand and its arguments from process.argv.
- * process.argv for `relay config set provider claude-cli` is:
- *   [..., 'config', 'set', 'provider', 'claude-cli']
- */
-function parseSubcommand(): { sub: string; subArgs: string[] } {
-  const argv = process.argv;
-  const configIdx = argv.lastIndexOf('config');
-  if (configIdx === -1 || configIdx + 1 >= argv.length) {
-    return { sub: 'list', subArgs: [] };
-  }
-  const after = argv.slice(configIdx + 1).filter((a) => !a.startsWith('--'));
-  if (after.length === 0) {
-    return { sub: 'list', subArgs: [] };
-  }
-  const sub = after[0] ?? 'list';
-  return { sub, subArgs: after.slice(1) };
-}
 
 // ---------------------------------------------------------------------------
 // Key validation
@@ -161,10 +138,10 @@ function mergeSettingValue(
 }
 
 // ---------------------------------------------------------------------------
-// Subcommand implementations
+// Subcommand action functions (exported for use by dispatcher)
 // ---------------------------------------------------------------------------
 
-async function cmdList(): Promise<void> {
+export async function listAction(): Promise<void> {
   process.stdout.write(`${MARK}  relay config\n`);
   process.stdout.write('\n');
 
@@ -202,7 +179,7 @@ async function cmdList(): Promise<void> {
   }
 }
 
-async function cmdGet(key: string): Promise<void> {
+export async function getAction(key: string): Promise<void> {
   if (!isValidKey(key)) {
     printUnknownKey(key);
     process.exit(1);
@@ -231,7 +208,7 @@ async function cmdGet(key: string): Promise<void> {
   process.stdout.write(`${String(val)}\n`);
 }
 
-async function cmdSet(key: string, rawValue: string): Promise<void> {
+export async function setAction(key: string, rawValue: string): Promise<void> {
   if (!isValidKey(key)) {
     printUnknownKey(key);
     process.exit(1);
@@ -282,46 +259,12 @@ function printUnknownKey(key: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Entry point
+// Entry point — default export retained for bare `relay config` (→ list)
 // ---------------------------------------------------------------------------
 
 /**
- * Entry point for `relay config`.
- * Receives args=[] and opts from the dispatcher; subcommand is parsed from
- * process.argv directly (same pattern as runs.ts).
+ * Default export for bare `relay config` with no subcommand — runs list.
  */
-export default async function configCommand(_args: unknown[], _opts: unknown): Promise<void> {
-  const { sub, subArgs } = parseSubcommand();
-
-  switch (sub) {
-    case 'list': {
-      await cmdList();
-      break;
-    }
-    case 'get': {
-      const key = subArgs[0] ?? '';
-      if (key === '') {
-        process.stderr.write(`${red(SYMBOLS.fail)} usage: relay config get <key>\n`);
-        process.exit(1);
-      }
-      await cmdGet(key);
-      break;
-    }
-    case 'set': {
-      const key = subArgs[0] ?? '';
-      const val = subArgs[1] ?? '';
-      if (key === '' || val === '') {
-        process.stderr.write(`${red(SYMBOLS.fail)} usage: relay config set <key> <value>\n`);
-        process.exit(1);
-      }
-      await cmdSet(key, val);
-      break;
-    }
-    default: {
-      // Unrecognised subcommand — treat as 'list' with a warning, or fall
-      // through to list output. Per spec, no subcommand → list.
-      await cmdList();
-      break;
-    }
-  }
+export default async function configCommand(): Promise<void> {
+  await listAction();
 }

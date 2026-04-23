@@ -212,38 +212,44 @@ export function buildProgram(): Command {
     });
 
   // -------------------------------------------------------------- config --
-  // The config command parses subcommands internally via process.argv.
-  // Commander definitions here improve help text and tab completion only.
   const configCmd = program
     .command('config')
     .description('view or edit Relay configuration (get <key> | set <key> <value> | list)')
     .action(async () => {
-      const handler = await loadCommand('config');
-      await handler([], program.opts());
+      const { default: configCommand } = (await import('./commands/config.js')) as {
+        default: () => Promise<void>;
+      };
+      await configCommand();
     });
 
   configCmd
     .command('list')
     .description('print all settings')
     .action(async () => {
-      const handler = await loadCommand('config');
-      await handler([], program.opts());
+      const { listAction } = (await import('./commands/config.js')) as {
+        listAction: () => Promise<void>;
+      };
+      await listAction();
     });
 
   configCmd
     .command('get <key>')
     .description('print the value of one setting')
-    .action(async () => {
-      const handler = await loadCommand('config');
-      await handler([], program.opts());
+    .action(async (key: string) => {
+      const { getAction } = (await import('./commands/config.js')) as {
+        getAction: (key: string) => Promise<void>;
+      };
+      await getAction(key);
     });
 
   configCmd
     .command('set <key> <value>')
     .description('write one setting atomically')
-    .action(async () => {
-      const handler = await loadCommand('config');
-      await handler([], program.opts());
+    .action(async (key: string, value: string) => {
+      const { setAction } = (await import('./commands/config.js')) as {
+        setAction: (key: string, value: string) => Promise<void>;
+      };
+      await setAction(key, value);
     });
 
   // ----------------------------------------------------------------- help --
