@@ -81,7 +81,7 @@ function isZodIssueArray(value: unknown): value is z.core.$ZodIssue[] {
   );
 }
 
-type WriteError = HandoffSchemaError | HandoffWriteError | FlowDefinitionError;
+export type WriteError = HandoffSchemaError | HandoffWriteError | FlowDefinitionError;
 type ReadError = HandoffNotFoundError | HandoffSchemaError | HandoffIoError | FlowDefinitionError;
 
 export class HandoffStore {

@@ -14,7 +14,7 @@ import type { Flow, Step } from './types.js';
  * `*StepSpec` without the `id` field, which the flow compiler injects from
  * the record key.
  */
-type StepBuilderOutput =
+export type StepBuilderOutput =
   | PromptStepBuilderOutput
   | ScriptStepBuilderOutput
   | BranchStepBuilderOutput
@@ -26,7 +26,7 @@ type StepBuilderOutput =
  * `id`) rather than the compiled `Step` type so callers do not have to set
  * placeholder ids manually.
  */
-interface FlowInput<TInput> {
+export interface FlowInput<TInput> {
   name: string;
   version: string;
   description?: string;

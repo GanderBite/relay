@@ -3,12 +3,6 @@ import type { ParallelStepSpec } from '../../flow/types.js';
 import type { Logger } from '../../logger.js';
 
 /**
- * The value returned by a branch dispatch call. Callers own the shape;
- * the parallel executor treats it as opaque.
- */
-export type StepResult = unknown;
-
-/**
  * Status snapshot for a branch as seen by the parallel executor. The executor
  * consults this before dispatching to avoid re-running a branch that already
  * succeeded on a prior attempt of the parent parallel step.
@@ -35,20 +29,20 @@ export interface ParallelExecutorContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
-  dispatch: (branchStepId: string) => Promise<StepResult>;
+  dispatch: (branchStepId: string) => Promise<unknown>;
   getBranchStatus?: (branchStepId: string) => BranchStatusSnapshot;
-  getBranchResult?: (branchStepId: string) => StepResult | undefined;
+  getBranchResult?: (branchStepId: string) => unknown;
 }
 
 export interface ParallelStepResult {
   kind: 'parallel';
-  branches: Record<string, StepResult>;
+  branches: Record<string, unknown>;
 }
 
 interface BranchOutcome {
   branchId: string;
   status: 'fulfilled' | 'rejected' | 'skipped';
-  value?: StepResult;
+  value?: unknown;
   reason?: unknown;
 }
 
@@ -114,7 +108,7 @@ export async function executeParallel(
     );
   }
 
-  const branchResults: Record<string, StepResult> = {};
+  const branchResults: Record<string, unknown> = {};
   for (const outcome of outcomes) {
     if (outcome.status === 'rejected') continue;
     branchResults[outcome.branchId] = outcome.value;

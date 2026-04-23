@@ -15,9 +15,9 @@ export {
 
 /** Stable string constants — the GitHub repo URL and the issues URL. */
 export { GITHUB_ISSUES_URL, GITHUB_URL } from './constants.js';
-
 /** Arguments for `assemblePrompt`. */
-export type { AssemblePromptArgs } from './context-inject.js';
+/** Union of error types returned by `loadHandoffValues`. */
+export type { AssemblePromptArgs, LoadHandoffValuesError } from './context-inject.js';
 
 /**
  * Assembles a prompt string by interpolating handoff values into a template.
@@ -110,7 +110,8 @@ export {
   TimeoutError,
   toFlowDefError,
 } from './errors.js';
-
+/** Input shape accepted by `defineFlow`, and the union of step builder outputs it accepts. */
+export type { FlowInput, StepBuilderOutput } from './flow/define.js';
 /**
  * Compiles a flow definition into a frozen `Flow` object.
  *
@@ -187,24 +188,30 @@ export type {
  * - `RunState` — full run checkpoint persisted to `state.json`.
  */
 export type {
+  BranchStep,
   BranchStepSpec,
   Flow,
   FlowGraph,
   FlowSpec,
   FlowStatus,
+  ParallelStep,
   ParallelStepSpec,
+  PromptStep,
   PromptStepOutput,
   PromptStepSpec,
   RunState,
+  ScriptStep,
   ScriptStepSpec,
   Step,
   StepBase,
   StepKind,
   StepState,
   StepStatus,
+  TerminalStep,
   TerminalStepSpec,
 } from './flow/types.js';
-
+/** Union of error types returned by `HandoffStore.write`. */
+export type { WriteError } from './handoffs.js';
 /**
  * Reads and writes handoff JSON files under `<runDir>/handoffs/`.
  *
@@ -229,11 +236,16 @@ export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
+  BranchStepResult,
   OrchestratorOptions,
+  ParallelStepResult,
+  PromptStepResult,
   RunOptions,
   RunResult,
+  ScriptStepResult,
   StepExecutionContext,
   StepResult,
+  TerminalStepResult,
 } from './orchestrator/index.js';
 
 /**

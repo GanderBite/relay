@@ -50,7 +50,7 @@ export function assemblePrompt({
   );
 }
 
-type LoadHandoffValuesError =
+export type LoadHandoffValuesError =
   | HandoffNotFoundError
   | HandoffSchemaError
   | HandoffIoError
