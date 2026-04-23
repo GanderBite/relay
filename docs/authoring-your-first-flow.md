@@ -84,15 +84,16 @@ The `.` argument tells the CLI to load the flow from the current directory. The 
 Expected output at start (abbreviated):
 
 ```
-●─▶●─▶●─▶●  my-flow  a1b2c3
+●─▶●─▶●─▶●  relay
 
 flow     my-flow v0.1.0
 input    the water cycle
-run      a1b2c3  ·  2026-04-23 09:14
+run      a1b2c3  ·  2026-04-23 09:14Z
 bill     subscription (max)  ·  no api charges
-est      ~0.00  ·  1 step  ·  ~1 min
+est      ~$0.00  ·  1 step  ·  ~1 min
 
-state is saved after every step.
+press ctrl-c any time — state is saved after every step.
+───────────────────────────────────────────────────────
 
  ⠋ first          sonnet     turn 1
 ```
@@ -102,12 +103,14 @@ The `run` row gives you the run ID. You will need it in step 6 if you resume. Th
 When the step completes, the success banner appears:
 
 ```
-●─▶●─▶●─▶●  my-flow  a1b2c3  ✓
+●─▶●─▶●─▶●  my-flow · a1b2c3  ✓
 
- ✓ first          sonnet     3.2s    0.8K→0.1K    $0.000
+ ✓ first          sonnet     3.2s    $0.000
 
-total  3.2s  ·  $0.000
-output .relay/runs/a1b2c3
+all 1 steps succeeded in 3.2s
+
+cost     $0.000  (estimated api equivalent; billed to subscription)
+output   .relay/runs/a1b2c3/handoffs/result.json
 ```
 
 The handoff `result` is written to `.relay/runs/a1b2c3/handoffs/result.json`. You can inspect it directly:
@@ -161,19 +164,28 @@ relay run . --subject "photosynthesis"
 The step fails and the failure banner appears:
 
 ```
-●─▶●─▶●─▶●  my-flow  b2c3d4  ✕
+●─▶●─▶●─▶●  my-flow · b2c3d4  ✕
 
- ✕ first          sonnet     2.8s                 $0.000
-   HandoffSchemaError: handoff "result" failed schema validation
-   [0] path: summary · required
-   [1] path: wordCount · required
+ ✕ first          exit 1     0.2s
+     branch 'first' raised HandoffSchemaError
+     handoff 'result' missing required field: summary, wordCount
 
-spent $0.000
+0 of 1 steps succeeded · $0.000 spent · state saved
+
+to resume after fixing:
+    relay resume b2c3d4
+
+to restart from scratch:
+    relay run my-flow . --fresh
+
+to inspect:
+    relay logs b2c3d4                   full structured log
+    cat ./.relay/runs/b2c3d4/handoffs/result.json
 ```
 
 The run ID `b2c3d4` and the step ID `first` are both present in the banner. The checkpoint up to (but not including) the failed step is saved on disk.
 
-For a full explanation of `HandoffSchemaError` and other step errors, see [`docs/troubleshooting.md`](troubleshooting.md#handoffschemerror).
+For a full explanation of `HandoffSchemaError` and other step errors, see [`docs/troubleshooting.md`](troubleshooting.md#handoffschemaerror).
 
 ---
 
@@ -320,30 +332,33 @@ relay run . --subject "the carbon cycle"
 The progress display shows both steps in sequence:
 
 ```
-●─▶●─▶●─▶●  my-flow  c3d4e5
+●─▶●─▶●─▶●  relay
 
 flow     my-flow v0.1.0
 input    the carbon cycle
-run      c3d4e5  ·  2026-04-23 09:31
+run      c3d4e5  ·  2026-04-23 09:31Z
 bill     subscription (max)  ·  no api charges
-est      ~0.00  ·  2 steps  ·  ~2 min
+est      ~$0.00  ·  2 steps  ·  ~2 min
 
-state is saved after every step.
+press ctrl-c any time — state is saved after every step.
+───────────────────────────────────────────────────────
 
- ✓ first          sonnet     3.1s    0.8K→0.1K    $0.000
+ ✓ first          sonnet     3.1s    $0.000
  ⠋ second         sonnet     turn 2
 ```
 
 When both steps complete:
 
 ```
-●─▶●─▶●─▶●  my-flow  c3d4e5  ✓
+●─▶●─▶●─▶●  my-flow · c3d4e5  ✓
 
- ✓ first          sonnet     3.1s    0.8K→0.1K    $0.000
- ✓ second         sonnet     5.4s    0.4K→0.6K    $0.000
+ ✓ first          sonnet     3.1s    $0.000
+ ✓ second         sonnet     5.4s    $0.000
 
-total  8.5s  ·  $0.000
-output .relay/runs/c3d4e5/report.md
+all 2 steps succeeded in 8.5s
+
+cost     $0.000  (estimated api equivalent; billed to subscription)
+output   .relay/runs/c3d4e5/report.md
 ```
 
 The `output` line points at the artifact `second` produced. Open it:
