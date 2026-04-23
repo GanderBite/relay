@@ -9,7 +9,7 @@
  *   - include: copy every allowlisted host env var at its real value, and
  *   - suppress: set every non-allowlisted host env var to `undefined`.
  *
- * The subprocess runner documents `undefined` values as the way to remove an
+ * The subprocess step documents `undefined` values as the way to remove an
  * inherited var during the merge. The returned object is therefore
  * `Record<string, string | undefined>` — a patch, not a standalone env.
  *
@@ -90,7 +90,7 @@ export interface BuildEnvAllowlistOptions {
  *
  * Walks process.env once and for each key either:
  *   - copies the real value (allowlisted via exact match or prefix), or
- *   - emits `undefined` (instructs the subprocess runner to strip the
+ *   - emits `undefined` (instructs the subprocess step to strip the
  *     inherited var).
  *
  * Always-suppressed keys are then force-set to `undefined` regardless of
@@ -131,7 +131,7 @@ export function buildEnvAllowlist(
       // Include: forward the real host value.
       result[key] = value;
     } else {
-      // Suppress: tell the subprocess runner to drop this inherited var.
+      // Suppress: tell the subprocess step to drop this inherited var.
       result[key] = undefined;
     }
   }

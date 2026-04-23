@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Hoisted counter + target pattern so the vi.mock factory reaches them. Each
 // test sets `failStateSave.target` to the runDir and `failStateSave.failAfter`
@@ -26,11 +26,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ) {
       const dstStr = typeof dst === 'string' ? dst : dst.toString();
       const target = failStateSave.target;
-      if (
-        target !== null &&
-        dstStr === join(target, 'state.json') &&
-        !failStateSave.consumed
-      ) {
+      if (target !== null && dstStr === join(target, 'state.json') && !failStateSave.consumed) {
         if (failStateSave.seen >= failStateSave.failAfter) {
           failStateSave.consumed = true;
           throw Object.assign(new Error('injected state.json rename failure'), {
@@ -44,14 +40,14 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
+import { StateWriteError } from '../../src/errors.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
-import { MockProvider } from '../../src/testing/mock-provider.js';
-import { RaceStateWriteError } from '../../src/errors.js';
-import { z } from '../../src/zod.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
+import { MockProvider } from '../../src/testing/mock-provider.js';
+import { z } from '../../src/zod.js';
 
 const canned: InvocationResponse = {
   text: 'ok',
@@ -64,25 +60,25 @@ const canned: InvocationResponse = {
 };
 
 function twoStepFlow() {
-  return defineRace({
+  return defineFlow({
     name: 'two-step',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      a: runner.prompt({
+    steps: {
+      a: step.prompt({
         promptFile: 'p.md',
-        output: { baton: 'a-out' },
+        output: { handoff: 'a-out' },
       }),
-      b: runner.prompt({
+      b: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['a'],
-        output: { baton: 'b-out' },
+        output: { handoff: 'b-out' },
       }),
     },
   });
 }
 
-describe('Runner — state save failure escalation', () => {
+describe('Step — state save failure escalation', () => {
   let tmp: string;
 
   beforeEach(async () => {
@@ -101,11 +97,11 @@ describe('Runner — state save failure escalation', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('rejects with RaceStateWriteError when an early run-level save fails and does not resolve as succeeded', async () => {
-    // RaceStateMachine.init() renames state.json once before the runner's explicit
+  it('rejects with StateWriteError when an early run-level save fails and does not resolve as succeeded', async () => {
+    // StateMachine.init() renames state.json once before the step's explicit
     // initialSave runs. failAfter=1 lets the init write through and trips the
     // initialSave — an early-path write failure that must surface as a
-    // rejected Runner.run() promise, not a silent success.
+    // rejected Orchestrator.run()() promise, not a silent success.
     failStateSave.target = tmp;
     failStateSave.failAfter = 1;
 
@@ -118,18 +114,20 @@ describe('Runner — state save failure escalation', () => {
       runDir: tmp,
     });
 
-    const thrown = await orchestrator.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
+    const thrown = await orchestrator
+      .run(twoStepFlow(), {}, { flagProvider: 'mock' })
+      .catch((e: unknown) => e);
 
-    expect(thrown).toBeInstanceOf(RaceStateWriteError);
+    expect(thrown).toBeInstanceOf(StateWriteError);
     expect(failStateSave.consumed).toBe(true);
   });
 
-  it('rejects with RaceStateWriteError when the step startSave fails and does not hang', async () => {
-    // RaceStateMachine.init() renames state.json once and the explicit initialSave
-    // renames it once more before the walker dispatches any runner. failAfter=2
+  it('rejects with StateWriteError when the step startSave fails and does not hang', async () => {
+    // StateMachine.init() renames state.json once and the explicit initialSave
+    // renames it once more before the walker dispatches any step. failAfter=2
     // lets those two pre-execution writes through and trips step-a's startSave
-    // — the first save that runs inside dispatchRunner. The leak guarded here:
-    // if dispatchRunner reserved an inflight slot before the save, the walker
+    // — the first save that runs inside dispatchStep. The leak guarded here:
+    // if dispatchStep reserved an inflight slot before the save, the walker
     // would hang waiting on a phantom in-flight count after the error drains
     // into the completions queue. This test asserts the rejection surfaces
     // within the vitest per-test timeout instead of requiring the fallback.
@@ -145,14 +143,16 @@ describe('Runner — state save failure escalation', () => {
       runDir: tmp,
     });
 
-    const thrown = await orchestrator.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
+    const thrown = await orchestrator
+      .run(twoStepFlow(), {}, { flagProvider: 'mock' })
+      .catch((e: unknown) => e);
 
-    expect(thrown).toBeInstanceOf(RaceStateWriteError);
+    expect(thrown).toBeInstanceOf(StateWriteError);
     expect(failStateSave.consumed).toBe(true);
   }, 5_000);
 
-  it('rejects with RaceStateWriteError when the walker completion save fails', async () => {
-    // RaceStateMachine.init() + the explicit initialSave after input validation
+  it('rejects with StateWriteError when the walker completion save fails', async () => {
+    // StateMachine.init() + the explicit initialSave after input validation
     // both rename state.json before any step dispatches. Then step-a's
     // startSave runs. failAfter=3 lets those three pre-execution writes
     // through and trips the next write — the walker's post-completion save
@@ -177,7 +177,7 @@ describe('Runner — state save failure escalation', () => {
 
     expect(outcome.kind).toBe('rejected');
     if (outcome.kind === 'rejected') {
-      expect(outcome.error).toBeInstanceOf(RaceStateWriteError);
+      expect(outcome.error).toBeInstanceOf(StateWriteError);
     }
     expect(failStateSave.consumed).toBe(true);
   });

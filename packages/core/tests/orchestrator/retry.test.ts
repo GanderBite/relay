@@ -2,14 +2,13 @@
  * Sprint 5 task_38 contract tests for withRetry.
  * References packages/core/src/orchestrator/retry.ts — not yet implemented.
  */
-import { describe, it, expect, vi } from 'vitest';
-
-import { withRetry } from '../../src/orchestrator/retry.js';
+import { describe, expect, it, vi } from 'vitest';
 import { TimeoutError } from '../../src/errors.js';
 import { createLogger } from '../../src/logger.js';
+import { withRetry } from '../../src/orchestrator/retry.js';
 
 function base() {
-  return { logger: createLogger({ raceName: 'f', runId: 'r' }), runnerId: 's' };
+  return { logger: createLogger({ flowName: 'f', runId: 'r' }), stepId: 's' };
 }
 
 describe('withRetry (sprint 5 task_38)', () => {

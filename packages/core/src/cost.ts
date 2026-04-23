@@ -2,18 +2,18 @@ import { readFile } from 'node:fs/promises';
 
 import { err, fromPromise, ok, type Result } from 'neverthrow';
 
-import { MetricsWriteError, RaceStateCorruptError } from './errors.js';
+import { MetricsWriteError, StateCorruptError } from './errors.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
 import { z } from './zod.js';
 
 // ---------------------------------------------------------------------------
-// RunnerMetrics — one entry per completed prompt runner
+// StepMetrics — one entry per completed prompt step
 // ---------------------------------------------------------------------------
 
-export interface RunnerMetrics {
-  runnerId: string;
-  raceName: string;
+export interface StepMetrics {
+  stepId: string;
+  flowName: string;
   runId: string;
   /** ISO-8601 timestamp of when the step completed. */
   timestamp: string;
@@ -40,9 +40,9 @@ export interface RunnerMetrics {
 // Internal schemas — validate metrics.json on load, not exported
 // ---------------------------------------------------------------------------
 
-const RunnerMetricsSchema: z.ZodType<RunnerMetrics> = z.object({
-  runnerId: z.string(),
-  raceName: z.string(),
+const StepMetricsSchema: z.ZodType<StepMetrics> = z.object({
+  stepId: z.string(),
+  flowName: z.string(),
   runId: z.string(),
   timestamp: z.string(),
   model: z.string(),
@@ -58,7 +58,7 @@ const RunnerMetricsSchema: z.ZodType<RunnerMetrics> = z.object({
   isError: z.boolean().optional(),
 });
 
-const RunnerMetricsArraySchema: z.ZodType<RunnerMetrics[]> = z.array(RunnerMetricsSchema);
+const StepMetricsArraySchema: z.ZodType<StepMetrics[]> = z.array(StepMetricsSchema);
 
 // ---------------------------------------------------------------------------
 // CostSummary — aggregate view returned by CostTracker.summary()
@@ -74,9 +74,9 @@ export interface CostSummary {
   /** Count of all entries, regardless of whether costUsd is present. */
   costTotal: number;
   /** Defensive copy of recorded entries. */
-  perStep: RunnerMetrics[];
+  perStep: StepMetrics[];
   /**
-   * Per-model aggregation keyed by the raw `RunnerMetrics.model` string. Each
+   * Per-model aggregation keyed by the raw `StepMetrics.model` string. Each
    * entry holds the same totals as the top-level but scoped to entries that
    * named that model.
    */
@@ -102,7 +102,7 @@ function isCostKnown(v: number | undefined): v is number {
 
 export class CostTracker {
   readonly #metricsPath: string;
-  #entries: RunnerMetrics[] = [];
+  #entries: StepMetrics[] = [];
   #costKnownCount = 0;
 
   constructor(metricsPath: string) {
@@ -116,7 +116,7 @@ export class CostTracker {
    * Returns ok(undefined) on success.
    * Returns err(MetricsWriteError) when the atomic write fails.
    */
-  async record(metrics: RunnerMetrics): Promise<Result<void, MetricsWriteError>> {
+  async record(metrics: StepMetrics): Promise<Result<void, MetricsWriteError>> {
     this.#entries.push(metrics);
     if (isCostKnown(metrics.costUsd)) {
       this.#costKnownCount += 1;
@@ -152,12 +152,10 @@ export class CostTracker {
       totalUsd += entry.costUsd ?? 0;
       totalTokens += entryTokens;
 
-      const bucket = (perModel[entry.model] ??= {
-        totalUsd: 0,
-        totalTokens: 0,
-        stepCount: 0,
-        costKnown: 0,
-      });
+      if (perModel[entry.model] === undefined) {
+        perModel[entry.model] = { totalUsd: 0, totalTokens: 0, stepCount: 0, costKnown: 0 };
+      }
+      const bucket = perModel[entry.model]!;
       bucket.totalUsd += entry.costUsd ?? 0;
       bucket.totalTokens += entryTokens;
       bucket.stepCount += 1;
@@ -180,10 +178,10 @@ export class CostTracker {
    *
    * ENOENT is treated as a fresh run — resets to an empty list and returns ok(undefined).
    * Other read errors return err(MetricsWriteError).
-   * A file whose JSON is malformed or does not match the RunnerMetrics array
-   * shape returns err(RaceStateCorruptError).
+   * A file whose JSON is malformed or does not match the StepMetrics array
+   * shape returns err(StateCorruptError).
    */
-  async load(): Promise<Result<void, RaceStateCorruptError | MetricsWriteError>> {
+  async load(): Promise<Result<void, StateCorruptError | MetricsWriteError>> {
     const readResult = await fromPromise(
       readFile(this.#metricsPath, { encoding: 'utf8' }),
       (e) => e as NodeJS.ErrnoException,
@@ -196,18 +194,16 @@ export class CostTracker {
         this.#costKnownCount = 0;
         return ok(undefined);
       }
-      return err(
-        new MetricsWriteError(`failed to read metrics.json: ${e.message ?? String(e)}`),
-      );
+      return err(new MetricsWriteError(`failed to read metrics.json: ${e.message ?? String(e)}`));
     }
 
-    const parseResult = parseWithSchema(readResult.value, RunnerMetricsArraySchema);
+    const parseResult = parseWithSchema(readResult.value, StepMetricsArraySchema);
     if (parseResult.isErr()) {
       return err(
-        new RaceStateCorruptError(
-          'metrics.json is malformed: ' + parseResult.error.message,
-          { path: this.#metricsPath, cause: parseResult.error.details?.cause },
-        ),
+        new StateCorruptError('metrics.json is malformed: ' + parseResult.error.message, {
+          path: this.#metricsPath,
+          cause: parseResult.error.details?.cause,
+        }),
       );
     }
 

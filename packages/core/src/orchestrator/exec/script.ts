@@ -1,21 +1,21 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { StepFailureError } from '../../errors.js';
+import type { ScriptStepSpec } from '../../flow/types.js';
 import type { Logger } from '../../logger.js';
-import { RunnerFailureError } from '../../errors.js';
-import type { ScriptRunnerSpec } from '../../race/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { runProcess } from './process.js';
 import { splitShell } from './shlex.js';
 
 export interface ScriptExecContext {
   runDir: string;
-  runnerId: string;
+  stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
 }
 
-export interface ScriptRunnerResult {
+export interface ScriptStepResult {
   exitCode: number;
   stdout: string | undefined;
   stderr: string | undefined;
@@ -23,46 +23,44 @@ export interface ScriptRunnerResult {
 }
 
 export async function executeScript(
-  runner: ScriptRunnerSpec,
+  step: ScriptStepSpec,
   ctx: ScriptExecContext,
-): Promise<ScriptRunnerResult> {
-  const { runDir, runnerId, attempt, abortSignal, logger } = ctx;
+): Promise<ScriptStepResult> {
+  const { runDir, stepId, attempt, abortSignal, logger } = ctx;
 
-  const rawArgs = Array.isArray(runner.run) ? runner.run : splitShell(runner.run);
+  const rawArgs = Array.isArray(step.run) ? step.run : splitShell(step.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new RunnerFailureError(
-      `runner "${runnerId}" has an empty run command`,
-      runnerId,
-      attempt,
-    );
+    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt);
   }
 
-  const cwd = runner.cwd ?? runDir;
+  const cwd = step.cwd ?? runDir;
 
   // user-controlled shell; claude env allowlist does not apply.
   const baseEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
   );
-  const env: Record<string, string> = { ...baseEnv, ...(runner.env ?? {}) };
+  const env: Record<string, string> = { ...baseEnv, ...(step.env ?? {}) };
 
-  const hasArtifact = runner.output?.artifact !== undefined;
+  const hasArtifact = step.output?.artifact !== undefined;
 
   const result = await runProcess({
     cmd,
     args,
     cwd,
     env,
-    timeoutMs: runner.timeoutMs,
+    timeoutMs: step.timeoutMs,
     abortSignal,
     captureStdout: true,
     captureStderr: true,
     logger,
-    runnerId,
+    stepId,
   });
 
   if (hasArtifact && result.stdout !== undefined) {
-    const artifactName = runner.output?.artifact;
+    const artifactName = step.output?.artifact;
     if (artifactName !== undefined) {
       const artifactsDir = join(runDir, 'artifacts');
       await mkdir(artifactsDir, { recursive: true });
@@ -72,7 +70,7 @@ export async function executeScript(
     }
   }
 
-  const onExit = runner.onExit;
+  const onExit = step.onExit;
   const exitCodeKey = String(result.exitCode);
 
   if (onExit !== undefined) {
@@ -89,9 +87,9 @@ export async function executeScript(
   }
 
   if (result.exitCode !== 0) {
-    throw new RunnerFailureError(
-      `runner "${runnerId}" exited with code ${result.exitCode}`,
-      runnerId,
+    throw new StepFailureError(
+      `step "${stepId}" exited with code ${result.exitCode}`,
+      stepId,
       attempt,
       { exitCode: result.exitCode, stderr: result.stderr ?? '' },
     );

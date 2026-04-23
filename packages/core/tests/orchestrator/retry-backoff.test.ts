@@ -1,18 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
-
-import { withRetry, shouldRetry } from '../../src/orchestrator/retry.js';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ClaudeAuthError,
-  RaceDefinitionError,
-  BatonSchemaError,
+  FlowDefinitionError,
+  HandoffSchemaError,
   ProviderAuthError,
   ProviderRateLimitError,
   TimeoutError,
 } from '../../src/errors.js';
 import { createLogger } from '../../src/logger.js';
+import { shouldRetry, withRetry } from '../../src/orchestrator/retry.js';
 
 function base() {
-  return { logger: createLogger({ raceName: 'f', runId: 'r' }), runnerId: 's' };
+  return { logger: createLogger({ flowName: 'f', runId: 'r' }), stepId: 's' };
 }
 
 describe('withRetry backoff + jitter', () => {
@@ -61,7 +60,7 @@ describe('withRetry backoff + jitter', () => {
   it('emits a logger.warn with event=retry on each retry', async () => {
     const warn = vi.fn();
     const logger = {
-      ...createLogger({ raceName: 'f', runId: 'r' }),
+      ...createLogger({ flowName: 'f', runId: 'r' }),
       warn,
     } as unknown as ReturnType<typeof createLogger>;
 
@@ -70,14 +69,14 @@ describe('withRetry backoff + jitter', () => {
       return 'done';
     });
 
-    const result = await withRetry(fn, { logger, runnerId: 's', maxRetries: 3 });
+    const result = await withRetry(fn, { logger, stepId: 's', maxRetries: 3 });
     expect(result).toBe('done');
     expect(warn).toHaveBeenCalledTimes(2);
 
     const firstCallArgs = warn.mock.calls[0];
     expect(firstCallArgs?.[0]).toMatchObject({
       event: 'retry',
-      runnerId: 's',
+      stepId: 's',
       attempt: 1,
       nextAttempt: 2,
       message: 'boom-1',
@@ -98,8 +97,8 @@ describe('shouldRetry predicate', () => {
     expect(shouldRetry(new TimeoutError('t', 's', 100))).toBe(false);
     expect(shouldRetry(new ClaudeAuthError('auth'))).toBe(false);
     expect(shouldRetry(new ProviderAuthError('auth', 'custom'))).toBe(false);
-    expect(shouldRetry(new RaceDefinitionError('bad flow'))).toBe(false);
-    expect(shouldRetry(new BatonSchemaError('schema', 'h1', []))).toBe(false);
+    expect(shouldRetry(new FlowDefinitionError('bad flow'))).toBe(false);
+    expect(shouldRetry(new HandoffSchemaError('schema', 'h1', []))).toBe(false);
   });
 
   it('returns true for transient errors', () => {

@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import { RaceDefinitionError } from '../errors.js';
+import { FlowDefinitionError } from '../errors.js';
 import { z } from '../zod.js';
 
 function escapeString(value: string): string {
@@ -19,39 +19,38 @@ export function safeStringify(value: unknown): string {
 }
 
 /**
- * Parse a JSON string into an unknown value. Returns a `RaceDefinitionError`
+ * Parse a JSON string into an unknown value. Returns a `FlowDefinitionError`
  * on any parse failure rather than throwing, so callers can chain `.mapErr`
  * to a more specific error type if needed.
  */
-export function safeParse(text: string): Result<unknown, RaceDefinitionError> {
+export function safeParse(text: string): Result<unknown, FlowDefinitionError> {
   try {
     return ok(JSON.parse(text) as unknown);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    return err(new RaceDefinitionError('JSON parse failed: ' + message, { cause: message }));
+    return err(new FlowDefinitionError('JSON parse failed: ' + message, { cause: message }));
   }
 }
 
 /**
  * Parse a JSON string and validate the result against a Zod schema. Propagates
  * parse failures from `safeParse` and maps Zod validation failures to a
- * `RaceDefinitionError` whose message includes a human-readable summary of the
+ * `FlowDefinitionError` whose message includes a human-readable summary of the
  * issues. Returns the typed value `T` on success so callers get a typed object,
  * not `unknown`.
  */
 export function parseWithSchema<T>(
   text: string,
   schema: z.ZodType<T>,
-): Result<T, RaceDefinitionError> {
+): Result<T, FlowDefinitionError> {
   const parsed = safeParse(text);
   if (parsed.isErr()) return err(parsed.error);
   const validated = schema.safeParse(parsed.value);
   if (!validated.success) {
     return err(
-      new RaceDefinitionError(
-        'JSON did not match schema: ' + z.prettifyError(validated.error),
-        { cause: validated.error.issues },
-      ),
+      new FlowDefinitionError('JSON did not match schema: ' + z.prettifyError(validated.error), {
+        cause: validated.error.issues,
+      }),
     );
   }
   return ok(validated.data);

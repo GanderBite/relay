@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import type { Logger } from '../../logger.js';
 import { TimeoutError } from '../../errors.js';
+import type { Logger } from '../../logger.js';
 
 const STDOUT_LIMIT = 10 * 1024 * 1024; // 10 MB per stream
 const STDERR_LIMIT = 10 * 1024 * 1024;
@@ -17,7 +17,7 @@ export interface RunProcessOptions {
   captureStdout: boolean;
   captureStderr: boolean;
   logger: Logger;
-  runnerId: string;
+  stepId: string;
 }
 
 export interface RunProcessResult {
@@ -45,7 +45,7 @@ export async function runProcess(opts: RunProcessOptions): Promise<RunProcessRes
     captureStdout,
     captureStderr,
     logger,
-    runnerId,
+    stepId,
   } = opts;
 
   const internalAbort = new AbortController();
@@ -82,7 +82,7 @@ export async function runProcess(opts: RunProcessOptions): Promise<RunProcessRes
       if (stdoutBytes >= STDOUT_LIMIT) {
         if (stdoutBytes === STDOUT_LIMIT) {
           logger.warn(
-            { event: 'stdout.truncated', runnerId, limitBytes: STDOUT_LIMIT },
+            { event: 'stdout.truncated', stepId, limitBytes: STDOUT_LIMIT },
             'stdout exceeded buffer limit and was truncated',
           );
           stdoutBytes += 1; // ensure the warn fires only once
@@ -103,7 +103,7 @@ export async function runProcess(opts: RunProcessOptions): Promise<RunProcessRes
       if (stderrBytes >= STDERR_LIMIT) {
         if (stderrBytes === STDERR_LIMIT) {
           logger.warn(
-            { event: 'stderr.truncated', runnerId, limitBytes: STDERR_LIMIT },
+            { event: 'stderr.truncated', stepId, limitBytes: STDERR_LIMIT },
             'stderr exceeded buffer limit and was truncated',
           );
           stderrBytes += 1; // ensure the warn fires only once
@@ -141,8 +141,8 @@ export async function runProcess(opts: RunProcessOptions): Promise<RunProcessRes
 
   if (timedOut) {
     throw new TimeoutError(
-      `runner "${runnerId}" exceeded timeout of ${timeoutMs ?? 0}ms`,
-      runnerId,
+      `step "${stepId}" exceeded timeout of ${timeoutMs ?? 0}ms`,
+      stepId,
       timeoutMs ?? 0,
     );
   }

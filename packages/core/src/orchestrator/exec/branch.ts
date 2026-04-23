@@ -1,60 +1,58 @@
+import { StepFailureError } from '../../errors.js';
+import type { BranchStepSpec } from '../../flow/types.js';
 import type { Logger } from '../../logger.js';
-import { RunnerFailureError } from '../../errors.js';
-import type { BranchRunnerSpec } from '../../race/types.js';
 import { runProcess } from './process.js';
 import { splitShell } from './shlex.js';
 
 export interface BranchExecContext {
   runDir: string;
-  runnerId: string;
+  stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
 }
 
-export interface BranchRunnerResult {
+export interface BranchStepResult {
   exitCode: number;
   next?: string;
 }
 
 export async function executeBranch(
-  runner: BranchRunnerSpec,
+  step: BranchStepSpec,
   ctx: BranchExecContext,
-): Promise<BranchRunnerResult> {
-  const { runDir, runnerId, attempt, abortSignal, logger } = ctx;
+): Promise<BranchStepResult> {
+  const { runDir, stepId, attempt, abortSignal, logger } = ctx;
 
-  const rawArgs = Array.isArray(runner.run) ? runner.run : splitShell(runner.run);
+  const rawArgs = Array.isArray(step.run) ? step.run : splitShell(step.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new RunnerFailureError(
-      `runner "${runnerId}" has an empty run command`,
-      runnerId,
-      attempt,
-    );
+    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt);
   }
 
-  const cwd = runner.cwd ?? runDir;
+  const cwd = step.cwd ?? runDir;
 
   const baseEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
   );
-  const env: Record<string, string> = { ...baseEnv, ...(runner.env ?? {}) };
+  const env: Record<string, string> = { ...baseEnv, ...(step.env ?? {}) };
 
   const result = await runProcess({
     cmd,
     args,
     cwd,
     env,
-    timeoutMs: runner.timeoutMs,
+    timeoutMs: step.timeoutMs,
     abortSignal,
     captureStdout: false,
     captureStderr: false,
     logger,
-    runnerId,
+    stepId,
   });
 
   const exitCodeKey = String(result.exitCode);
-  const mapped = runner.onExit[exitCodeKey];
+  const mapped = step.onExit[exitCodeKey];
 
   if (mapped !== undefined) {
     const next = mapped === 'abort' || mapped === 'continue' ? undefined : mapped;
@@ -62,9 +60,9 @@ export async function executeBranch(
   }
 
   if (result.exitCode !== 0) {
-    throw new RunnerFailureError(
-      `runner "${runnerId}" exited with code ${result.exitCode}`,
-      runnerId,
+    throw new StepFailureError(
+      `step "${stepId}" exited with code ${result.exitCode}`,
+      stepId,
       attempt,
       { exitCode: result.exitCode },
     );

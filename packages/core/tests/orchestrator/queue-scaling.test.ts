@@ -1,21 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
-import { ProviderRegistry } from '../../src/providers/registry.js';
-import { MockProvider } from '../../src/testing/mock-provider.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { createLogger } from '../../src/logger.js';
-import { z } from '../../src/zod.js';
+import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
+import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
+import { MockProvider } from '../../src/testing/mock-provider.js';
+import { z } from '../../src/zod.js';
 
 const CANNED: InvocationResponse = {
-  // Prompt executor expects valid JSON in text when the runner output uses a
-  // baton. An empty object satisfies any optional Zod schema and the
-  // BatonStore write without additional configuration.
+  // Prompt executor expects valid JSON in text when the step output uses a
+  // handoff. An empty object satisfies any optional Zod schema and the
+  // HandoffStore write without additional configuration.
   text: '{}',
   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
   durationMs: 0,
@@ -33,38 +32,38 @@ const CANNED: InvocationResponse = {
  * With the queued Set the same walk is O(N) total.
  */
 function buildChainFlow(n: number) {
-  const runners: Record<string, ReturnType<typeof runner.prompt>> = {};
+  const steps: Record<string, ReturnType<typeof step.prompt>> = {};
   const responses: Record<string, InvocationResponse> = {};
 
   for (let i = 0; i < n; i++) {
     const id = `s${i}`;
     const dependsOn = i === 0 ? undefined : [`s${i - 1}`];
-    runners[id] = runner.prompt({
+    steps[id] = step.prompt({
       promptFile: 'p.md',
       dependsOn,
-      output: { baton: `${id}-out` },
+      output: { handoff: `${id}-out` },
     });
     responses[id] = CANNED;
   }
 
   return {
-    race: defineRace({
+    flow: defineFlow({
       name: 'chain-200',
       version: '0.1.0',
       input: z.object({}),
-      runners,
+      steps,
     }),
     responses,
   };
 }
 
-describe('Runner — ready queue O(1) membership', () => {
+describe('Step — ready queue O(1) membership', () => {
   let tmp: string;
 
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-queue-scaling-'));
-    // Prompt executor reads the promptFile relative to raceDir. Provide a
-    // minimal stub so the runner can load it without hitting ENOENT.
+    // Prompt executor reads the promptFile relative to flowDir. Provide a
+    // minimal stub so the step can load it without hitting ENOENT.
     await writeFile(join(tmp, 'p.md'), 'prompt stub', 'utf8');
   });
 
@@ -72,17 +71,19 @@ describe('Runner — ready queue O(1) membership', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('completes a 200-step chain within wall-clock budget with MockProvider', { timeout: 30_000 }, async () => {
+  it('completes a 200-step chain within wall-clock budget with MockProvider', {
+    timeout: 30_000,
+  }, async () => {
     const N = 200;
-    const { race, responses } = buildChainFlow(N);
+    const { flow, responses } = buildChainFlow(N);
 
     const provider = new MockProvider({ responses });
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    // A silent logger avoids 200 lines of JSON noise in the test runner
-    // output while keeping the runner's internal logging paths exercised.
-    const silentLogger = createLogger({ raceName: 'chain-200', runId: 'test', level: 'silent' });
+    // A silent logger avoids 200 lines of JSON noise in the test step
+    // output while keeping the step's internal logging paths exercised.
+    const silentLogger = createLogger({ flowName: 'chain-200', runId: 'test', level: 'silent' });
 
     const orchestrator = createOrchestrator({
       providers: registry,
@@ -91,12 +92,12 @@ describe('Runner — ready queue O(1) membership', () => {
     });
 
     const start = Date.now();
-    const result = await orchestrator.run(race, {}, { raceDir: tmp, flagProvider: 'mock' });
+    const result = await orchestrator.run(flow, {}, { flowDir: tmp, flagProvider: 'mock' });
     const elapsed = Date.now() - start;
 
     expect(result.status).toBe('succeeded');
-    // 30 000 ms accommodates real disk I/O (atomic state.json writes, baton
-    // writes) across 200 serial runners even on slow CI machines. The O(N^2)
+    // 30 000 ms accommodates real disk I/O (atomic state.json writes, handoff
+    // writes) across 200 serial steps even on slow CI machines. The O(N^2)
     // pathology from a linear queue.includes() scan would add quadratic
     // overhead on top of this baseline — catastrophic at N=200, visible as
     // multi-second blowup well within the 30 s cap.

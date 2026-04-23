@@ -1,43 +1,43 @@
 import { err, ok, type Result } from 'neverthrow';
 import { GITHUB_ISSUES_URL } from '../constants.js';
-import { RaceDefinitionError } from '../errors.js';
+import { FlowDefinitionError } from '../errors.js';
 import { lookup } from '../util/map-utils.js';
-import type { RaceGraph, Runner } from './types.js';
+import type { FlowGraph, Step } from './types.js';
 
-export type { RaceGraph } from './types.js';
+export type { FlowGraph } from './types.js';
 
 export function buildGraph(
-  runners: Record<string, Runner>,
+  steps: Record<string, Step>,
   start?: string,
-): Result<RaceGraph, RaceDefinitionError> {
-  const keys = Object.keys(runners);
+): Result<FlowGraph, FlowDefinitionError> {
+  const keys = Object.keys(steps);
 
   if (keys.length === 0) {
     return err(
-      new RaceDefinitionError(
-        'race has no runners. Add at least one step via `runners: { ... }` in defineRace(...).',
+      new FlowDefinitionError(
+        'flow has no steps. Add at least one step via `steps: { ... }` in defineFlow(...).',
       ),
     );
   }
 
-  const runnerMap = new Map<string, Runner>();
+  const stepMap = new Map<string, Step>();
   for (const key of keys) {
-    const runner = runners[key];
-    if (runner === undefined) {
+    const step = steps[key];
+    if (step === undefined) {
       return err(
-        new RaceDefinitionError(
-          `runner "${key}" is undefined. Assign a value via runner.prompt(...), runner.script(...), runner.branch(...), runner.parallel(...), or runner.terminal(...) in defineRace(...).`,
+        new FlowDefinitionError(
+          `step "${key}" is undefined. Assign a value via step.prompt(...), step.script(...), step.branch(...), step.parallel(...), or step.terminal(...) in defineFlow(...).`,
         ),
       );
     }
-    if (runner.id !== key && runner.id !== '') {
+    if (step.id !== key && step.id !== '') {
       return err(
-        new RaceDefinitionError(
-          `step key "${key}" does not match injected id "${runner.id}". Use the same id for both the "runners" map key and any explicit runner.id — remove the conflicting value from the runner builder arguments.`,
+        new FlowDefinitionError(
+          `step key "${key}" does not match injected id "${step.id}". Use the same id for both the "steps" map key and any explicit step.id — remove the conflicting value from the step builder arguments.`,
         ),
       );
     }
-    runnerMap.set(key, runner);
+    stepMap.set(key, step);
   }
 
   const successors = new Map<string, Set<string>>();
@@ -48,22 +48,22 @@ export function buildGraph(
   }
 
   const addEdge = (from: string, to: string): void => {
-    // Invariant: `from` and `to` are both keys in runnerMap, so both maps
+    // Invariant: `from` and `to` are both keys in stepMap, so both maps
     // have an entry initialised to an empty Set above.
     successors.get(from)?.add(to);
     predecessors.get(to)?.add(from);
   };
 
   for (const key of keys) {
-    // Invariant: `key` was just inserted into runnerMap above.
-    const runner = lookup(runnerMap, key)._unsafeUnwrap();
+    // Invariant: `key` was just inserted into stepMap above.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
 
-    if (runner.dependsOn !== undefined) {
-      for (const dep of runner.dependsOn) {
-        if (!runnerMap.has(dep)) {
+    if (step.dependsOn !== undefined) {
+      for (const dep of step.dependsOn) {
+        if (!stepMap.has(dep)) {
           return err(
-            new RaceDefinitionError(
-              `runner "${key}" depends on unknown runner "${dep}". Remove "${dep}" from runner "${key}"'s dependsOn array or define a step with id "${dep}" in defineRace(...).`,
+            new FlowDefinitionError(
+              `step "${key}" depends on unknown step "${dep}". Remove "${dep}" from step "${key}"'s dependsOn array or define a step with id "${dep}" in defineFlow(...).`,
             ),
           );
         }
@@ -71,19 +71,19 @@ export function buildGraph(
       }
     }
 
-    if (runner.kind === 'parallel') {
-      for (const branch of runner.branches) {
+    if (step.kind === 'parallel') {
+      for (const branch of step.branches) {
         if (branch === key) {
           return err(
-            new RaceDefinitionError(
-              `parallel runner "${key}" lists itself in "branches". Remove "${key}" from the branches array in defineRace(...) — a parallel runner cannot fan out to itself.`,
+            new FlowDefinitionError(
+              `parallel step "${key}" lists itself in "branches". Remove "${key}" from the branches array in defineFlow(...) — a parallel step cannot fan out to itself.`,
             ),
           );
         }
-        if (!runnerMap.has(branch)) {
+        if (!stepMap.has(branch)) {
           return err(
-            new RaceDefinitionError(
-              `parallel runner "${key}" branches to unknown runner "${branch}". Remove "${branch}" from runner "${key}"'s branches array or define a step with id "${branch}" in defineRace(...).`,
+            new FlowDefinitionError(
+              `parallel step "${key}" branches to unknown step "${branch}". Remove "${branch}" from step "${key}"'s branches array or define a step with id "${branch}" in defineFlow(...).`,
             ),
           );
         }
@@ -95,43 +95,42 @@ export function buildGraph(
         addEdge(key, branch);
       }
 
-      if (runner.onAllComplete !== undefined && !runnerMap.has(runner.onAllComplete)) {
+      if (step.onAllComplete !== undefined && !stepMap.has(step.onAllComplete)) {
         return err(
-          new RaceDefinitionError(
-            `parallel runner "${key}" onAllComplete references unknown runner "${runner.onAllComplete}". Set onAllComplete to an existing runner id or define a step with id "${runner.onAllComplete}" in defineRace(...).`,
+          new FlowDefinitionError(
+            `parallel step "${key}" onAllComplete references unknown step "${step.onAllComplete}". Set onAllComplete to an existing step id or define a step with id "${step.onAllComplete}" in defineFlow(...).`,
           ),
         );
       }
     }
 
     // `onFail` exists on every step kind except 'terminal'. Narrow by kind
-    // before reading. Parallel's onFail is limited to 'abort' | <runnerId>,
+    // before reading. Parallel's onFail is limited to 'abort' | <stepId>,
     // so only 'abort' is an early-return here; 'continue' is not valid for
     // parallel at the type level.
-    if (runner.kind !== 'terminal' && runner.onFail !== undefined) {
-      const onFail = runner.onFail;
-      const isLiteral =
-        onFail === 'abort' || (runner.kind !== 'parallel' && onFail === 'continue');
-      if (!isLiteral && !runnerMap.has(onFail)) {
+    if (step.kind !== 'terminal' && step.onFail !== undefined) {
+      const onFail = step.onFail;
+      const isLiteral = onFail === 'abort' || (step.kind !== 'parallel' && onFail === 'continue');
+      if (!isLiteral && !stepMap.has(onFail)) {
         return err(
-          new RaceDefinitionError(
-            `runner "${key}" onFail references unknown runner "${onFail}". Set onFail to "abort", "continue", or an existing runner id in defineRace(...).`,
+          new FlowDefinitionError(
+            `step "${key}" onFail references unknown step "${onFail}". Set onFail to "abort", "continue", or an existing step id in defineFlow(...).`,
           ),
         );
       }
     }
 
-    if (runner.kind === 'script' || runner.kind === 'branch') {
-      const onExit = runner.onExit;
+    if (step.kind === 'script' || step.kind === 'branch') {
+      const onExit = step.onExit;
       if (onExit !== undefined) {
         for (const exitKey of Object.keys(onExit)) {
           const value = onExit[exitKey];
           if (value === undefined) continue;
           if (value === 'abort' || value === 'continue') continue;
-          if (!runnerMap.has(value)) {
+          if (!stepMap.has(value)) {
             return err(
-              new RaceDefinitionError(
-                `runner "${key}" onExit["${exitKey}"] references unknown runner "${value}". Set onExit["${exitKey}"] to "abort", "continue", or an existing runner id in defineRace(...).`,
+              new FlowDefinitionError(
+                `step "${key}" onExit["${exitKey}"] references unknown step "${value}". Set onExit["${exitKey}"] to "abort", "continue", or an existing step id in defineFlow(...).`,
               ),
             );
           }
@@ -144,18 +143,18 @@ export function buildGraph(
   if (topoResult.isErr()) return err(topoResult.error);
   const topoOrder = topoResult.value;
 
-  const rootRunners = keys
+  const rootSteps = keys
     // Invariant: every key in `keys` was initialised in `predecessors`.
-    .filter((k) => (lookup(predecessors, k)._unsafeUnwrap()).size === 0)
+    .filter((k) => lookup(predecessors, k)._unsafeUnwrap().size === 0)
     .sort();
 
-  const entryResult = resolveEntry(runnerMap, rootRunners, start);
+  const entryResult = resolveEntry(stepMap, rootSteps, start);
   if (entryResult.isErr()) return err(entryResult.error);
   const entry = entryResult.value;
 
   const ancestorSets = computeAncestorSets(topoOrder, predecessors);
 
-  const ctxResult = validateContextFrom(keys, runnerMap, ancestorSets);
+  const ctxResult = validateContextFrom(keys, stepMap, ancestorSets);
   if (ctxResult.isErr()) return err(ctxResult.error);
 
   const frozenSuccessors = new Map<string, ReadonlySet<string>>();
@@ -170,7 +169,7 @@ export function buildGraph(
     successors: frozenSuccessors,
     predecessors: frozenPredecessors,
     topoOrder,
-    rootRunners,
+    rootSteps,
     entry,
   });
 }
@@ -179,7 +178,7 @@ function kahnTopoSort(
   keys: readonly string[],
   predecessors: Map<string, Set<string>>,
   successors: Map<string, Set<string>>,
-): Result<readonly string[], RaceDefinitionError> {
+): Result<readonly string[], FlowDefinitionError> {
   const inDegree = new Map<string, number>();
   for (const key of keys) {
     // Invariant: `key` was initialised in `predecessors` by the caller.
@@ -213,8 +212,8 @@ function kahnTopoSort(
   const remaining = new Set(keys.filter((k) => (inDegree.get(k) ?? 0) > 0));
   const path = traceCycle(remaining, successors);
   return err(
-    new RaceDefinitionError(
-      `cycle detected in runner dependencies: ${path.join(' -> ')}. Remove one of the dependsOn references in this cycle so the race has a valid topological order.`,
+    new FlowDefinitionError(
+      `cycle detected in step dependencies: ${path.join(' -> ')}. Remove one of the dependsOn references in this cycle so the flow has a valid topological order.`,
       { cycle: path },
     ),
   );
@@ -270,67 +269,67 @@ function traceCycle(
 }
 
 function resolveEntry(
-  runnerMap: Map<string, Runner>,
-  rootRunners: readonly string[],
+  stepMap: Map<string, Step>,
+  rootSteps: readonly string[],
   start: string | undefined,
-): Result<string, RaceDefinitionError> {
+): Result<string, FlowDefinitionError> {
   if (start !== undefined) {
-    if (!runnerMap.has(start)) {
+    if (!stepMap.has(start)) {
       return err(
-        new RaceDefinitionError(
-          `start runner "${start}" is not defined in this race. Set start to an existing runner id or add a step with id "${start}" in defineRace(...).`,
+        new FlowDefinitionError(
+          `start step "${start}" is not defined in this flow. Set start to an existing step id or add a step with id "${start}" in defineFlow(...).`,
         ),
       );
     }
     return ok(start);
   }
 
-  if (rootRunners.length === 1) {
-    const entry = rootRunners[0];
+  if (rootSteps.length === 1) {
+    const entry = rootSteps[0];
     if (entry === undefined) {
       // Defensive fallback when an invariant violation leaks through the guard.
       return err(
-        new RaceDefinitionError(
-          `unexpected graph state: rootRunners[0] is undefined despite length === 1. This is likely a bug in Relay — please report it at ${GITHUB_ISSUES_URL}.`,
+        new FlowDefinitionError(
+          `unexpected graph state: rootSteps[0] is undefined despite length === 1. This is likely a bug in Relay — please report it at ${GITHUB_ISSUES_URL}.`,
         ),
       );
     }
     return ok(entry);
   }
 
-  if (rootRunners.length === 0) {
+  if (rootSteps.length === 0) {
     return err(
-      new RaceDefinitionError(
-        'race has no entry runner — every step has a predecessor. Remove a dependsOn reference on one step so it becomes a root, or set start: "<runnerId>" in defineRace(...) to pick an entry.',
+      new FlowDefinitionError(
+        'flow has no entry step — every step has a predecessor. Remove a dependsOn reference on one step so it becomes a root, or set start: "<stepId>" in defineFlow(...) to pick an entry.',
       ),
     );
   }
 
   return err(
-    new RaceDefinitionError(
-      `race has multiple root runners (${rootRunners.join(', ')}). Set start: "${rootRunners[0] ?? '<runnerId>'}" (or another valid runner id) in defineRace(...) to pick an entry point.`,
-      { rootRunners: [...rootRunners] },
+    new FlowDefinitionError(
+      `flow has multiple root steps (${rootSteps.join(', ')}). Set start: "${rootSteps[0] ?? '<stepId>'}" (or another valid step id) in defineFlow(...) to pick an entry point.`,
+      { rootSteps: [...rootSteps] },
     ),
   );
 }
 
-function batonNameOf(runner: Runner): string | undefined {
-  if (runner.kind === 'prompt') {
-    return 'baton' in runner.output ? runner.output.baton : undefined;
+function handoffNameOf(step: Step): string | undefined {
+  if (step.kind === 'prompt') {
+    return 'handoff' in step.output ? step.output.handoff : undefined;
   }
   return undefined;
 }
 
 function validateContextFrom(
   keys: readonly string[],
-  runnerMap: Map<string, Runner>,
+  stepMap: Map<string, Step>,
   ancestorSets: ReadonlyMap<string, ReadonlySet<string>>,
-): Result<void, RaceDefinitionError> {
+): Result<void, FlowDefinitionError> {
   const producers = new Map<string, Set<string>>();
   for (const key of keys) {
-    // Invariant: every `key` was inserted into `runnerMap` by the caller.
-    const runner = lookup(runnerMap, key)._unsafeUnwrap();
-    const name = batonNameOf(runner);
+    // Invariant: every `key` was inserted into `stepMap` by the caller.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const name = handoffNameOf(step);
     if (name === undefined) continue;
     let set = producers.get(name);
     if (set === undefined) {
@@ -341,22 +340,22 @@ function validateContextFrom(
   }
 
   for (const key of keys) {
-    // Invariant: every `key` was inserted into `runnerMap` by the caller.
-    const runner = lookup(runnerMap, key)._unsafeUnwrap();
+    // Invariant: every `key` was inserted into `stepMap` by the caller.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
 
     // Only prompt steps declare `contextFrom`. Narrow before reading.
-    if (runner.kind !== 'prompt') continue;
-    if (runner.contextFrom === undefined || runner.contextFrom.length === 0) continue;
+    if (step.kind !== 'prompt') continue;
+    if (step.contextFrom === undefined || step.contextFrom.length === 0) continue;
 
     // Invariant: every `key` has an entry in `ancestorSets` (computed in topo order).
     const ancestors = lookup(ancestorSets, key)._unsafeUnwrap();
 
-    for (const required of runner.contextFrom) {
+    for (const required of step.contextFrom) {
       const writers = producers.get(required);
       if (writers === undefined) {
         return err(
-          new RaceDefinitionError(
-            `runner "${key}" contextFrom references unknown baton "${required}". Remove "${required}" from runner "${key}"'s contextFrom array or add an upstream prompt runner whose output declares baton: "${required}" in defineRace(...).`,
+          new FlowDefinitionError(
+            `step "${key}" contextFrom references unknown handoff "${required}". Remove "${required}" from step "${key}"'s contextFrom array or add an upstream prompt step whose output declares handoff: "${required}" in defineFlow(...).`,
           ),
         );
       }
@@ -371,8 +370,8 @@ function validateContextFrom(
 
       if (!hasAncestorWriter) {
         return err(
-          new RaceDefinitionError(
-            `runner "${key}" contextFrom references baton "${required}" that is not produced by any upstream runner. Add a dependsOn link from runner "${key}" to the runner that writes baton "${required}" in defineRace(...).`,
+          new FlowDefinitionError(
+            `step "${key}" contextFrom references handoff "${required}" that is not produced by any upstream step. Add a dependsOn link from step "${key}" to the step that writes handoff "${required}" in defineFlow(...).`,
           ),
         );
       }
@@ -384,9 +383,9 @@ function validateContextFrom(
 
 /**
  * Compute each step's ancestor set in a single linear pass over the topological
- * order. Ancestors(runner) = union over each predecessor p of (Ancestors(p) ∪ {p}).
+ * order. Ancestors(step) = union over each predecessor p of (Ancestors(p) ∪ {p}).
  * Because topoOrder guarantees predecessors are visited before their successors,
- * every predecessor's ancestor set is already memoized when we reach the runner.
+ * every predecessor's ancestor set is already memoized when we reach the step.
  * This replaces the previous per-step DFS, which was O(V * (V+E)) in aggregate.
  */
 function computeAncestorSets(

@@ -1,50 +1,50 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
-  ERROR_CODES,
   AtomicWriteError,
   ClaudeAuthError,
-  RaceDefinitionError,
-  BatonIoError,
-  BatonNotFoundError,
-  BatonSchemaError,
-  BatonWriteError,
+  ERROR_CODES,
+  FlowDefinitionError,
+  HandoffIoError,
+  HandoffNotFoundError,
+  HandoffSchemaError,
+  HandoffWriteError,
   MetricsWriteError,
-  PipelineError,
+  type PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
-  RaceStateCorruptError,
-  RaceStateNotFoundError,
-  RaceStateTransitionError,
-  RaceStateVersionMismatchError,
-  RaceStateWriteError,
-  RunnerFailureError,
+  StateCorruptError,
+  StateNotFoundError,
+  StateTransitionError,
+  StateVersionMismatchError,
+  StateWriteError,
+  StepFailureError,
   TimeoutError,
 } from '../src/errors.js';
-import { safeParse, safeStringify, parseWithSchema } from '../src/util/json.js';
+import { parseWithSchema, safeParse, safeStringify } from '../src/util/json.js';
 import { lookup, ValueNotFoundError } from '../src/util/map-utils.js';
 import { z } from '../src/zod.js';
 
 describe('Error hierarchy', () => {
   it('[ERROR-001] every concrete error class has a stable code from ERROR_CODES', () => {
     const instances: PipelineError[] = [
-      new RaceDefinitionError('msg'),
-      new RunnerFailureError('msg', 'step-1', 1),
+      new FlowDefinitionError('msg'),
+      new StepFailureError('msg', 'step-1', 1),
       new ClaudeAuthError('msg'),
-      new BatonSchemaError('msg', 'h', []),
-      new BatonIoError('msg', 'h'),
-      new BatonNotFoundError('msg', 'h'),
-      new BatonWriteError('msg', 'h'),
+      new HandoffSchemaError('msg', 'h', []),
+      new HandoffIoError('msg', 'h'),
+      new HandoffNotFoundError('msg', 'h'),
+      new HandoffWriteError('msg', 'h'),
       new MetricsWriteError('msg'),
-      new RaceStateCorruptError('msg'),
-      new RaceStateNotFoundError('msg', '/dir'),
-      new RaceStateTransitionError('msg', 'step-1'),
-      new RaceStateVersionMismatchError(
+      new StateCorruptError('msg'),
+      new StateNotFoundError('msg', '/dir'),
+      new StateTransitionError('msg', 'step-1'),
+      new StateVersionMismatchError(
         'msg',
-        { raceName: 'a', raceVersion: '1' },
-        { raceName: 'b', raceVersion: '2' },
+        { flowName: 'a', flowVersion: '1' },
+        { flowName: 'b', flowVersion: '2' },
       ),
-      new RaceStateWriteError('msg'),
+      new StateWriteError('msg'),
       new TimeoutError('msg', 'step-1', 5000),
       new ProviderAuthError('msg', 'mock'),
       new ProviderCapabilityError('msg', 'mock', 'structuredOutput'),
@@ -63,11 +63,11 @@ describe('Error hierarchy', () => {
     expect(seen.size).toBe(instances.length);
   });
 
-  it('[ERROR-002] RunnerFailureError preserves runnerId + attempt as own properties', () => {
-    const e = new RunnerFailureError('nope', 'inventory', 3);
-    expect(e.runnerId).toBe('inventory');
+  it('[ERROR-002] StepFailureError preserves stepId + attempt as own properties', () => {
+    const e = new StepFailureError('nope', 'inventory', 3);
+    expect(e.stepId).toBe('inventory');
     expect(e.attempt).toBe(3);
-    expect(e.code).toBe(ERROR_CODES.RUNNER_FAILURE);
+    expect(e.code).toBe(ERROR_CODES.STEP_FAILURE);
   });
 });
 
@@ -76,7 +76,7 @@ describe('util/json', () => {
     const r = parseWithSchema('not json {', z.object({ x: z.string() }));
     expect(r.isErr()).toBe(true);
     const err = r._unsafeUnwrapErr();
-    expect(err).toBeInstanceOf(RaceDefinitionError);
+    expect(err).toBeInstanceOf(FlowDefinitionError);
     expect(typeof err.details?.cause).toBe('string');
     expect((err.details?.cause as string).length).toBeGreaterThan(0);
   });
@@ -98,11 +98,11 @@ describe('util/json', () => {
     expect(r._unsafeUnwrap()).toEqual({ x: 1 });
   });
 
-  it('safeParse returns err(RaceDefinitionError) on invalid JSON', () => {
+  it('safeParse returns err(FlowDefinitionError) on invalid JSON', () => {
     const r = safeParse('not json');
     expect(r.isErr()).toBe(true);
-    expect(r._unsafeUnwrapErr()).toBeInstanceOf(RaceDefinitionError);
-    expect(r._unsafeUnwrapErr().code).toBe(ERROR_CODES.RACE_DEFINITION);
+    expect(r._unsafeUnwrapErr()).toBeInstanceOf(FlowDefinitionError);
+    expect(r._unsafeUnwrapErr().code).toBe(ERROR_CODES.FLOW_DEFINITION);
   });
 });
 

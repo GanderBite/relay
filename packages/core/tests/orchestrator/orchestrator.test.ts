@@ -1,6 +1,6 @@
 /**
- * Sprint 5 contract tests for Runner, abort handling, and resume protocol.
- * These reference packages/core/src/orchestrator/runner.ts and resume.ts — both are
+ * Sprint 5 contract tests for Step, abort handling, and resume protocol.
+ * These reference packages/core/src/orchestrator/step.ts and resume.ts — both are
  * not yet implemented. Tests will fail collection until sprint 5 lands.
  *
  * Cases: RUNNER-001..008, ABORT-001..005, RESUME-001..006.
@@ -11,17 +11,17 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ClaudeAuthError, RaceDefinitionError } from '../../src/errors.js';
+import { ClaudeAuthError, FlowDefinitionError } from '../../src/errors.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { createOrchestrator, Orchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { z } from '../../src/zod.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LINEAR_FLOW_FIXTURE = join(HERE, 'fixtures', 'linear-test-race.ts');
+const LINEAR_FLOW_FIXTURE = join(HERE, 'fixtures', 'linear-test-flow.ts');
 
 const canned: InvocationResponse = {
   text: '{}',
@@ -34,31 +34,31 @@ const canned: InvocationResponse = {
 };
 
 function linearFlow() {
-  return defineRace({
+  return defineFlow({
     name: 'linear',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
-      b: runner.prompt({
+    steps: {
+      a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
+      b: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['a'],
-        output: { baton: 'b-out' },
+        output: { handoff: 'b-out' },
       }),
-      c: runner.prompt({
+      c: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['b'],
-        output: { baton: 'c-out' },
+        output: { handoff: 'c-out' },
       }),
     },
   });
 }
 
-describe('Runner — DAG walker', () => {
+describe('Step — DAG walker', () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'relay-runner-'));
+    tmp = await mkdtemp(join(tmpdir(), 'relay-step-'));
     await writeFile(join(tmp, 'p.md'), '# test prompt', 'utf8');
   });
 
@@ -71,15 +71,15 @@ describe('Runner — DAG walker', () => {
     const provider = new MockProvider({
       responses: {
         a: (_req, ctx) => {
-          order.push(ctx.runnerId);
+          order.push(ctx.stepId);
           return canned;
         },
         b: (_req, ctx) => {
-          order.push(ctx.runnerId);
+          order.push(ctx.stepId);
           return canned;
         },
         c: (_req, ctx) => {
-          order.push(ctx.runnerId);
+          order.push(ctx.stepId);
           return canned;
         },
       },
@@ -91,7 +91,7 @@ describe('Runner — DAG walker', () => {
     const result = await orchestrator.run(
       linearFlow(),
       {},
-      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+      { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
     );
 
     expect(result.status).toBe('succeeded');
@@ -103,14 +103,14 @@ describe('Runner — DAG walker', () => {
     const N = 10;
     let inflight = 0;
     let maxSeen = 0;
-    const branches: Record<string, ReturnType<typeof runner.prompt>> = {};
+    const branches: Record<string, ReturnType<typeof step.prompt>> = {};
     const responses: Record<string, unknown> = {};
     for (let i = 0; i < N; i++) {
       const id = `l${i}`;
-      branches[id] = runner.prompt({
+      branches[id] = step.prompt({
         promptFile: 'p.md',
         dependsOn: ['r'],
-        output: { baton: `${id}-out` },
+        output: { handoff: `${id}-out` },
       });
       responses[id] = async () => {
         inflight++;
@@ -120,12 +120,12 @@ describe('Runner — DAG walker', () => {
         return canned;
       };
     }
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'fan',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        r: runner.terminal({}),
+      steps: {
+        r: step.terminal({}),
         ...branches,
       },
       start: 'r',
@@ -142,9 +142,9 @@ describe('Runner — DAG walker', () => {
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     const result = await orchestrator.run(
-      race,
+      flow,
       {},
-      { parallelism: MAX, raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+      { parallelism: MAX, flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
     );
 
     expect(result.status).toBe('succeeded');
@@ -152,16 +152,16 @@ describe('Runner — DAG walker', () => {
   });
 
   it('[RUNNER-003] onFail=abort stops the run and skips dependents', async () => {
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'chain',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
-        b: runner.prompt({
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
+        b: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['a'],
-          output: { baton: 'b-out' },
+          output: { handoff: 'b-out' },
         }),
       },
     });
@@ -180,36 +180,36 @@ describe('Runner — DAG walker', () => {
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     const result = await orchestrator.run(
-      race,
+      flow,
       {},
-      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+      { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
     );
 
     expect(result.status).toBe('failed');
     expect(bSpy).not.toHaveBeenCalled();
     const state = JSON.parse(await readFile(join(tmp, 'state.json'), 'utf8'));
-    expect(state.runners.a.status).toBe('failed');
-    expect(state.runners.b.status).toBe('pending');
+    expect(state.steps.a.status).toBe('failed');
+    expect(state.steps.b.status).toBe('pending');
   });
 
   it('[RUNNER-004] onFail=continue lets downstream steps run', async () => {
     // Contract: step 'a' fails with onFail:'continue' — b and c still run.
     // Details of final run status left to implementation (could be 'succeeded' or 'failed').
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'soft',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({
+      steps: {
+        a: step.prompt({
           promptFile: 'p.md',
-          output: { baton: 'a-out' },
+          output: { handoff: 'a-out' },
           onFail: 'continue',
         }),
-        b: runner.prompt({ promptFile: 'p.md', output: { baton: 'b-out' } }),
-        c: runner.prompt({
+        b: step.prompt({ promptFile: 'p.md', output: { handoff: 'b-out' } }),
+        c: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['b'],
-          output: { baton: 'c-out' },
+          output: { handoff: 'c-out' },
         }),
       },
       start: 'a',
@@ -230,19 +230,19 @@ describe('Runner — DAG walker', () => {
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(bSpy).toHaveBeenCalled();
     expect(cSpy).toHaveBeenCalled();
   });
 
-  it('[RUNNER-005] input validation: invalid input rejects with RaceDefinitionError before any invoke', async () => {
-    const race = defineRace({
+  it('[RUNNER-005] input validation: invalid input rejects with FlowDefinitionError before any invoke', async () => {
+    const flow = defineFlow({
       name: 'typed',
       version: '0.1.0',
       input: z.object({ repoPath: z.string() }),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
     });
 
@@ -253,14 +253,14 @@ describe('Runner — DAG walker', () => {
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     await expect(
       orchestrator.run(
-        race,
+        flow,
         { repoPath: 123 },
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
       ),
-    ).rejects.toBeInstanceOf(RaceDefinitionError);
+    ).rejects.toBeInstanceOf(FlowDefinitionError);
   });
 
-  it('[RUNNER-006] writes batons + state.json between runners (observable mid-run)', async () => {
+  it('[RUNNER-006] writes handoffs + state.json between steps (observable mid-run)', async () => {
     let stateMidRun: unknown;
     const provider = new MockProvider({
       responses: {
@@ -274,26 +274,26 @@ describe('Runner — DAG walker', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'two',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
-        b: runner.prompt({
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
+        b: step.prompt({
           promptFile: 'p.md',
           dependsOn: ['a'],
-          output: { baton: 'b-out' },
+          output: { handoff: 'b-out' },
         }),
       },
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
-    const mid = stateMidRun as { runners: Record<string, { status: string }> };
-    expect(mid.runners.a.status).toBe('succeeded');
-    expect(mid.runners.b.status).toBe('running');
+    const mid = stateMidRun as { steps: Record<string, { status: string }> };
+    expect(mid.steps.a.status).toBe('succeeded');
+    expect(mid.steps.b.status).toBe('running');
   });
 
   it('[RUNNER-007] calls provider.authenticate() exactly once before any invoke', async () => {
@@ -311,10 +311,10 @@ describe('Runner — DAG walker', () => {
 
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = linearFlow();
+    const flow = linearFlow();
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(authSpy).toHaveBeenCalledTimes(1);
   });
@@ -331,17 +331,17 @@ describe('Runner — DAG walker', () => {
 
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = linearFlow();
+    const flow = linearFlow();
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     await expect(
-      orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' }),
+      orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' }),
     ).rejects.toBeInstanceOf(ClaudeAuthError);
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 });
 
-describe('Runner — abort handling (sprint 5 task_40)', () => {
+describe('Step — abort handling (sprint 5 task_40)', () => {
   let tmp: string;
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-abort-'));
@@ -362,12 +362,12 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'abortable',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        slow: runner.prompt({ promptFile: 'p.md', output: { baton: 's-out' } }),
+      steps: {
+        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
       },
     });
 
@@ -377,9 +377,9 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     // subprocess spawn. The abort contract under test is independent of the
     // worktree feature; isolation is exercised by dedicated worktree tests.
     const p = orchestrator.run(
-      race,
+      flow,
       {},
-      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
+      { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
     );
     setTimeout(() => process.emit('SIGINT'), 80);
     const result = await p.catch((e) => e);
@@ -387,7 +387,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const stateRaw = await readFile(join(tmp, 'state.json'), 'utf8');
     const state = JSON.parse(stateRaw);
     expect(state.status).toBe('aborted');
-    expect(state.runners.slow.status).toBe('failed');
+    expect(state.steps.slow.status).toBe('failed');
     void result;
   });
 
@@ -397,20 +397,20 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'a2',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        slow: runner.prompt({ promptFile: 'p.md', output: { baton: 's-out' } }),
+      steps: {
+        slow: step.prompt({ promptFile: 'p.md', output: { handoff: 's-out' } }),
       },
     });
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     // See ABORT-001 for the rationale behind `worktree: false`.
     const p = orchestrator.run(
-      race,
+      flow,
       {},
-      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
+      { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
     );
     setTimeout(() => process.emit('SIGTERM'), 80);
     await p.catch(() => undefined);
@@ -422,7 +422,7 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const aborted: string[] = [];
     // Resolved by the factory once the step is confirmed in-flight, then we
     // send SIGINT. Without this gate the 50ms fixed delay races against
-    // raceStateMachine.save() (a file write); if abort fires before the executor
+    // stateMachine.save() (a file write); if abort fires before the executor
     // starts, raceAbort sees signal.aborted=true and throws before the factory
     // runs — the listener is never registered and aborted stays empty.
     let signalInflight!: () => void;
@@ -441,20 +441,20 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'a3',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     const p = orchestrator.run(
-      race,
+      flow,
       {},
-      { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
+      { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' },
     );
     // Send SIGINT only after the step factory confirms it is running.
     void inFlight.then(() => process.emit('SIGINT'));
@@ -467,16 +467,16 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
     const provider = new MockProvider({ responses: { a: canned } });
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'a4',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
     });
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     const after = process.listenerCount('SIGINT');
     expect(after).toBe(before);
   });
@@ -488,22 +488,22 @@ describe('Runner — abort handling (sprint 5 task_40)', () => {
 
     const registry = new ProviderRegistry();
     registry.register(provider);
-    const race = defineRace({
+    const flow = defineFlow({
       name: 'a5',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', output: { baton: 'a-out' } }),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
       },
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.run(race, {}, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.run(flow, {}, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
     expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('Runner — resume protocol (sprint 5 task_41)', () => {
+describe('Step — resume protocol (sprint 5 task_41)', () => {
   let tmp: string;
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-resume-'));
@@ -513,26 +513,26 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  async function seedState(runners: Record<string, { status: string; attempts: number }>) {
+  async function seedState(steps: Record<string, { status: string; attempts: number }>) {
     const state = {
       runId: 'r1',
-      raceName: 'linear',
-      raceVersion: '0.1.0',
+      flowName: 'linear',
+      flowVersion: '0.1.0',
       status: 'failed',
       startedAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       input: {},
-      runners,
+      steps,
     };
     await writeFile(join(tmp, 'state.json'), JSON.stringify(state), 'utf8');
     await writeFile(
-      join(tmp, 'race-ref.json'),
-      JSON.stringify({ raceName: 'linear', raceVersion: '0.1.0', racePath: LINEAR_FLOW_FIXTURE }),
+      join(tmp, 'flow-ref.json'),
+      JSON.stringify({ flowName: 'linear', flowVersion: '0.1.0', flowPath: LINEAR_FLOW_FIXTURE }),
       'utf8',
     );
   }
 
-  it('[RESUME-001] re-runs only pending/failed runners; succeeded ones are not re-invoked', async () => {
+  it('[RESUME-001] re-runs only pending/failed steps; succeeded ones are not re-invoked', async () => {
     await seedState({
       a: { status: 'succeeded', attempts: 1 },
       b: { status: 'failed', attempts: 1 },
@@ -547,7 +547,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     registry.register(provider);
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(aSpy).not.toHaveBeenCalled();
     expect(bSpy).toHaveBeenCalled();
@@ -559,8 +559,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
       join(tmp, 'metrics.json'),
       JSON.stringify([
         {
-          runnerId: 'a',
-          raceName: 'linear',
+          stepId: 'a',
+          flowName: 'linear',
           runId: 'r1',
           timestamp: '2026-01-01T00:00:00.000Z',
           model: 'mock',
@@ -585,7 +585,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     registry.register(provider);
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     const result = await orchestrator.resume(tmp, {
-      raceDir: tmp,
+      flowDir: tmp,
       authTimeoutMs: 1_000,
       flagProvider: 'mock',
     });
@@ -594,8 +594,8 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     expect(result.cost.totalUsd).toBeGreaterThanOrEqual(0.05);
   });
 
-  it('[RESUME-003] reads race-ref.json to re-import the race', async () => {
-    // When race-ref.json is missing, resume must fail with a clear error.
+  it('[RESUME-003] reads flow-ref.json to re-import the flow', async () => {
+    // When flow-ref.json is missing, resume must fail with a clear error.
     const provider = new MockProvider({ responses: {} });
     const registry = new ProviderRegistry();
     registry.register(provider);
@@ -603,12 +603,12 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     await expect(orchestrator.resume(tmp)).rejects.toBeTruthy();
   });
 
-  it('[RESUME-004] refuses on raceName mismatch with actionable error', async () => {
+  it('[RESUME-004] refuses on flowName mismatch with actionable error', async () => {
     await seedState({ a: { status: 'succeeded', attempts: 1 } });
     // write flow-ref that points at a flow with a different name
     await writeFile(
-      join(tmp, 'race-ref.json'),
-      JSON.stringify({ raceName: 'oldFlow', raceVersion: '1.0.0', path: '/not/used' }),
+      join(tmp, 'flow-ref.json'),
+      JSON.stringify({ flowName: 'oldFlow', flowVersion: '1.0.0', path: '/not/used' }),
       'utf8',
     );
 
@@ -634,7 +634,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     registry.register(provider);
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
     await orchestrator
-      .resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })
+      .resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' })
       .catch(() => undefined);
 
     // maxRetries:3 and 2 attempts already used => resume should run exactly 1 more.
@@ -652,11 +652,11 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const provider = new MockProvider({
       responses: {
         b: (_req, ctx) => {
-          callOrder.push(ctx.runnerId);
+          callOrder.push(ctx.stepId);
           return canned;
         },
         c: (_req, ctx) => {
-          callOrder.push(ctx.runnerId);
+          callOrder.push(ctx.stepId);
           return canned;
         },
       },
@@ -664,7 +664,7 @@ describe('Runner — resume protocol (sprint 5 task_41)', () => {
     const registry = new ProviderRegistry();
     registry.register(provider);
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    await orchestrator.resume(tmp, { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
+    await orchestrator.resume(tmp, { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock' });
 
     expect(callOrder[0]).toBe('b');
     expect(callOrder).toContain('c');

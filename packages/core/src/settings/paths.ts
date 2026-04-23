@@ -5,6 +5,6 @@ export function globalSettingsPath(): string {
   return join(homedir(), '.relay', 'settings.json');
 }
 
-export function raceSettingsPath(raceDir: string): string {
-  return join(raceDir, 'settings.json');
+export function flowSettingsPath(flowDir: string): string {
+  return join(flowDir, 'settings.json');
 }

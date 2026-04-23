@@ -4,8 +4,8 @@
  * Runs at the start of each run so two concurrent runs cannot corrupt each
  * other's working files — the subprocess (claude -p) is spawned with the
  * worktree path as its cwd, so every Read/Edit/Bash/Write it performs lands
- * in an isolated checkout. The worktree is removed in the Runner's finally
- * block.
+ * in an isolated checkout. The worktree is removed in the Orchestrator's
+ * finally block.
  *
  * All three helpers return Result<T, PipelineError>. They never throw, and
  * they never pass user-supplied data through a shell — execFile takes an arg
@@ -70,7 +70,7 @@ export async function isGitRepo(
       return err(
         new PipelineError(
           `git rev-parse --show-toplevel produced empty output in "${dir}"`,
-          ERROR_CODES.RUNNER_FAILURE,
+          ERROR_CODES.STEP_FAILURE,
           { dir },
         ),
       );
@@ -80,7 +80,7 @@ export async function isGitRepo(
     return err(
       new PipelineError(
         `not a git repository at "${dir}": ${errorMessageOf(caught)}`,
-        ERROR_CODES.RUNNER_FAILURE,
+        ERROR_CODES.STEP_FAILURE,
         { dir, cause: errorMessageOf(caught) },
       ),
     );
@@ -147,7 +147,7 @@ export async function createWorktree(
     return err(
       new PipelineError(
         `failed to create git worktree at "${worktreePath}": ${message}`,
-        ERROR_CODES.RUNNER_FAILURE,
+        ERROR_CODES.STEP_FAILURE,
         { worktreePath, gitRoot: opts.gitRoot, runId: opts.runId, cause: message },
       ),
     );
@@ -166,7 +166,7 @@ export interface RemoveWorktreeOptions {
  * returns ok(undefined) without touching the filesystem or git metadata.
  *
  * Uses --force so an in-progress index/lockfile left by a crashed subprocess
- * does not block cleanup. The caller is the Runner's finally block; a stray
+ * does not block cleanup. The caller is the Orchestrator's finally block; a stray
  * err here would mask the real failure that triggered the finally.
  */
 export async function removeWorktree(
@@ -211,7 +211,7 @@ export async function removeWorktree(
     return err(
       new PipelineError(
         `failed to remove git worktree at "${opts.worktreePath}": ${message}`,
-        ERROR_CODES.RUNNER_FAILURE,
+        ERROR_CODES.STEP_FAILURE,
         { worktreePath: opts.worktreePath, gitRoot: opts.gitRoot, cause: message },
       ),
     );

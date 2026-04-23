@@ -5,40 +5,40 @@
  * Receives the run directory as the first command-line argument.
  *
  * Behavior:
- *   - Runner "a": completes immediately with a valid JSON baton response.
- *   - Runner "b": sends process.send({ type: 'live-state-observed' }) to the
+ *   - Step "a": completes immediately with a valid JSON handoff response.
+ *   - Step "b": sends process.send({ type: 'live-state-observed' }) to the
  *     parent once its stream() is invoked (which happens after the live-state
  *     file for "b" is written to disk), then hangs forever. The parent SIGKILL
  *     terminates the process before the stream resolves.
  *
- * The orchestrator writes race-ref.json pointing to crash-test-race.ts so
- * that Orchestrator.resume() in the parent can re-import the race.
+ * The orchestrator writes flow-ref.json pointing to crash-test-flow.ts so
+ * that Orchestrator.resume() in the parent can re-import the flow.
  */
 import { writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ok, type Result } from 'neverthrow';
-import { createOrchestrator, ProviderRegistry } from '@relay/core';
 import type {
   AuthState,
   InvocationContext,
   InvocationEvent,
   InvocationRequest,
   InvocationResponse,
+  PipelineError,
   Provider,
   ProviderCapabilities,
 } from '@relay/core';
-import type { PipelineError } from '@relay/core';
-import { race } from './crash-test-race.ts';
+import { createOrchestrator, ProviderRegistry } from '@relay/core';
+import { ok, type Result } from 'neverthrow';
+import { flow } from './crash-test-flow.ts';
 
 const runDir = process.argv[2];
 if (typeof runDir !== 'string' || runDir.length === 0) {
-  process.stderr.write('child-runner: missing runDir argument\n');
+  process.stderr.write('child-step: missing runDir argument\n');
   process.exit(1);
 }
 
 const hereDir = dirname(fileURLToPath(import.meta.url));
-const racePath = join(hereDir, 'crash-test-race.ts');
+const flowPath = join(hereDir, 'crash-test-flow.ts');
 
 const ZERO_USAGE = {
   inputTokens: 10,
@@ -82,10 +82,10 @@ const provider: Provider = {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
-    if (ctx.runnerId === 'a') {
+    if (ctx.stepId === 'a') {
       return ok(STEP_A_RESPONSE);
     }
-    // Runner "b": signal parent, then hang forever.
+    // Step "b": signal parent, then hang forever.
     if (!ipCSent) {
       ipCSent = true;
       if (typeof process.send === 'function') {
@@ -97,18 +97,15 @@ const provider: Provider = {
     });
   },
 
-  async *stream(
-    _req: InvocationRequest,
-    ctx: InvocationContext,
-  ): AsyncIterable<InvocationEvent> {
-    if (ctx.runnerId === 'a') {
+  async *stream(_req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
+    if (ctx.stepId === 'a') {
       yield { type: 'turn.start', turn: 1 };
       yield { type: 'text.delta', delta: '{"ok":true}' };
       yield { type: 'usage', usage: ZERO_USAGE };
       yield { type: 'turn.end', turn: 1 };
       return;
     }
-    // Runner "b": signal parent, then hang forever inside the async generator.
+    // Step "b": signal parent, then hang forever inside the async generator.
     if (!ipCSent) {
       ipCSent = true;
       if (typeof process.send === 'function') {
@@ -124,7 +121,7 @@ const provider: Provider = {
 const registry = new ProviderRegistry();
 registry.register(provider);
 
-// The prompt executor reads promptFile relative to raceDir. Write a minimal
+// The prompt executor reads promptFile relative to flowDir. Write a minimal
 // template so the executor does not trip on ENOENT during both steps.
 await writeFile(join(hereDir, 'p.md'), 'ping', 'utf8');
 
@@ -134,14 +131,18 @@ const orchestrator = createOrchestrator({
 });
 
 try {
-  await orchestrator.run(race, {}, {
-    racePath,
-    raceDir: hereDir,
-    authTimeoutMs: 5_000,
-    flagProvider: 'mock',
-  });
+  await orchestrator.run(
+    flow,
+    {},
+    {
+      flowPath,
+      flowDir: hereDir,
+      authTimeoutMs: 5_000,
+      flagProvider: 'mock',
+    },
+  );
 } catch {
-  // run() may throw if the process is still alive when the race fails;
-  // the parent SIGKILLs this process before that happens in normal test race.
+  // run() may throw if the process is still alive when the flow fails;
+  // the parent SIGKILLs this process before that happens in normal test flow.
   process.exit(1);
 }

@@ -1,23 +1,23 @@
 /**
  * Contract tests for the per-usage-event live-state cadence in executePrompt.
  *
- * Each prompt runner must rewrite <runDir>/live/<runnerId>.json on every token-
+ * Each prompt step must rewrite <runDir>/live/<stepId>.json on every token-
  * usage event the provider emits, not just once at the end of the invocation.
  * The CLI progress display watches this file to animate token/turn counters
- * within a single long-running prompt runner.
+ * within a single long-running prompt step.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
+
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ok, type Result } from 'neverthrow';
-
-import { executePrompt } from '../../../src/orchestrator/exec/prompt.js';
-import { BatonStore } from '../../../src/batons.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CostTracker } from '../../../src/cost.js';
-import { createLogger } from '../../../src/logger.js';
-import type { PromptRunnerSpec } from '../../../src/race/types.js';
 import type { PipelineError } from '../../../src/errors.js';
+import type { PromptStepSpec } from '../../../src/flow/types.js';
+import { HandoffStore } from '../../../src/handoffs.js';
+import { createLogger } from '../../../src/logger.js';
+import { executePrompt } from '../../../src/orchestrator/exec/prompt.js';
 import type {
   AuthState,
   InvocationContext,
@@ -88,7 +88,7 @@ function scriptedProvider(
   };
 }
 
-function promptSpec(id: string, artifactName: string): PromptRunnerSpec {
+function promptSpec(id: string, artifactName: string): PromptStepSpec {
   return {
     id,
     kind: 'prompt',
@@ -99,13 +99,13 @@ function promptSpec(id: string, artifactName: string): PromptRunnerSpec {
 
 describe('executePrompt live-state cadence', () => {
   let tmp: string;
-  let raceDir: string;
+  let flowDir: string;
 
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-live-cadence-'));
-    raceDir = join(tmp, 'flow');
-    await mkdir(join(raceDir, 'prompts'), { recursive: true });
-    await writeFile(join(raceDir, 'prompts', 'p.md'), 'Hello', 'utf8');
+    flowDir = join(tmp, 'flow');
+    await mkdir(join(flowDir, 'prompts'), { recursive: true });
+    await writeFile(join(flowDir, 'prompts', 'p.md'), 'Hello', 'utf8');
   });
 
   afterEach(async () => {
@@ -113,22 +113,22 @@ describe('executePrompt live-state cadence', () => {
   });
 
   function makeCtxBase() {
-    const batonStore = new BatonStore(tmp);
+    const handoffStore = new HandoffStore(tmp);
     const costTracker = new CostTracker(join(tmp, 'metrics.json'));
     return {
       runDir: tmp,
-      raceDir,
-      raceName: 'f',
+      flowDir,
+      flowName: 'f',
       runId: 'r',
-      batonStore,
+      handoffStore,
       costTracker,
-      logger: createLogger({ raceName: 'f', runId: 'r' }),
+      logger: createLogger({ flowName: 'f', runId: 'r' }),
       abortSignal: new AbortController().signal,
     };
   }
 
   it('writes at least two live-state snapshots when the provider emits two usage events', async () => {
-    const runnerId = 'greet';
+    const stepId = 'greet';
     const events: InvocationEvent[] = [
       { type: 'turn.start', turn: 1 },
       {
@@ -149,9 +149,7 @@ describe('executePrompt live-state cadence', () => {
     const observed: number[] = [];
     const provider = scriptedProvider(events, '', async (event) => {
       if (event.type !== 'usage') return;
-      const raw = await readFile(join(tmp, 'live', `${runnerId}.json`), 'utf8').catch(
-        () => null,
-      );
+      const raw = await readFile(join(tmp, 'live', `${stepId}.json`), 'utf8').catch(() => null);
       if (raw === null) return;
       const parsed = JSON.parse(raw) as { tokensSoFar?: number };
       if (typeof parsed.tokensSoFar === 'number') {
@@ -159,14 +157,14 @@ describe('executePrompt live-state cadence', () => {
       }
     });
 
-    const runner = promptSpec(runnerId, 'out.txt');
+    const step = promptSpec(stepId, 'out.txt');
     const ctx = {
       ...makeCtxBase(),
-      runnerId,
+      stepId,
       provider,
       attempt: 1,
     };
-    await executePrompt(runner, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    await executePrompt(step, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(observed.length).toBeGreaterThanOrEqual(2);
     expect(observed[0]).toBe(5);
@@ -174,7 +172,7 @@ describe('executePrompt live-state cadence', () => {
   });
 
   it('updates tokensSoFar cumulatively across usage events and persists the aggregated text', async () => {
-    const runnerId = 'aggregate';
+    const stepId = 'aggregate';
     const fragments = ['{"ok":', 'true}'];
     const events: InvocationEvent[] = [
       { type: 'turn.start', turn: 1 },
@@ -204,29 +202,27 @@ describe('executePrompt live-state cadence', () => {
     const tokenSeries: number[] = [];
     const provider = scriptedProvider(events, fragments.join(''), async (event) => {
       if (event.type !== 'usage') return;
-      const raw = await readFile(join(tmp, 'live', `${runnerId}.json`), 'utf8').catch(
-        () => null,
-      );
+      const raw = await readFile(join(tmp, 'live', `${stepId}.json`), 'utf8').catch(() => null);
       if (raw === null) return;
       const parsed = JSON.parse(raw) as { tokensSoFar?: number };
       if (typeof parsed.tokensSoFar === 'number') tokenSeries.push(parsed.tokensSoFar);
     });
 
-    const runner = promptSpec(runnerId, 'out.json');
+    const step = promptSpec(stepId, 'out.json');
     const ctx = {
       ...makeCtxBase(),
-      runnerId,
+      stepId,
       provider,
       attempt: 1,
     };
-    await executePrompt(runner, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    await executePrompt(step, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(tokenSeries).toEqual([15, 30]);
 
     // Final on-disk file reflects the last usage snapshot and carries the
     // 'running' status — executePrompt never writes a terminal live-state; the
-    // Runner is responsible for the success/failure write-back.
-    const finalRaw = await readFile(join(tmp, 'live', `${runnerId}.json`), 'utf8');
+    // Step is responsible for the success/failure write-back.
+    const finalRaw = await readFile(join(tmp, 'live', `${stepId}.json`), 'utf8');
     const final = JSON.parse(finalRaw) as {
       status: string;
       tokensSoFar: number;

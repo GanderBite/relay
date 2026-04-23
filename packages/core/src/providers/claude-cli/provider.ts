@@ -27,7 +27,7 @@
  *     This is mandatory for TOS safety.
  *   - Abort plumbing: the InvocationContext.abortSignal is forwarded straight
  *     to runClaudeProcess; no extra AbortController is constructed.
- *   - No provider-level retries. Runner retries are owned by the Runner.
+ *   - No provider-level retries. Step retries are owned by the Orchestrator.
  *   - On non-zero exit, classifyExit produces a typed PipelineError; stream()
  *     emits a stream.error event instead of throwing; invoke() returns err(...)
  *     — neither path throws to the caller.
@@ -35,7 +35,7 @@
 
 import { err, ok, type Result } from 'neverthrow';
 
-import { PipelineError, RunnerFailureError } from '../../errors.js';
+import { PipelineError, StepFailureError } from '../../errors.js';
 import type {
   AuthState,
   InvocationContext,
@@ -54,8 +54,8 @@ import { type RunClaudeProcessResult, runClaudeProcess } from './process.js';
 import { extractResultSummary, mergeUsage, translateCliMessage } from './translate.js';
 
 // ---------------------------------------------------------------------------
-// Capabilities — published to the Runner so static capability checks can
-// run at race-load time, before any tokens are spent.
+// Capabilities — published to the Orchestrator so static capability checks can
+// run at flow-load time, before any tokens are spent.
 // ---------------------------------------------------------------------------
 
 const CAPABILITIES: ProviderCapabilities = {
@@ -133,7 +133,7 @@ export class ClaudeCliProvider implements Provider {
     const binary = this.#options.binaryPath ?? DEFAULT_BINARY;
 
     ctx.logger.debug(
-      { runnerId: ctx.runnerId, attempt: ctx.attempt, binary, argCount: cliArgs.length },
+      { stepId: ctx.stepId, attempt: ctx.attempt, binary, argCount: cliArgs.length },
       'claude-cli stream opening',
     );
 
@@ -226,7 +226,7 @@ export class ClaudeCliProvider implements Provider {
       exitCode: exitResult.exitCode,
       stderr: exitResult.stderr,
       aborted: ctx.abortSignal.aborted,
-      runnerId: ctx.runnerId,
+      stepId: ctx.stepId,
       attempt: ctx.attempt,
       providerName: this.name,
     });
@@ -240,8 +240,8 @@ export class ClaudeCliProvider implements Provider {
 
   async *stream(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent> {
     try {
-      for await (const runner of this.#iterate(req, ctx)) {
-        for (const event of runner.events) {
+      for await (const step of this.#iterate(req, ctx)) {
+        for (const event of step.events) {
           yield event;
         }
       }
@@ -254,9 +254,9 @@ export class ClaudeCliProvider implements Provider {
       const error =
         cause instanceof PipelineError
           ? cause
-          : new RunnerFailureError(
+          : new StepFailureError(
               cause instanceof Error ? cause.message : String(cause),
-              ctx.runnerId,
+              ctx.stepId,
               ctx.attempt,
               { cause, providerName: this.name },
             );
@@ -284,13 +284,13 @@ export class ClaudeCliProvider implements Provider {
     let streamCostUsd: number | undefined;
 
     try {
-      for await (const runner of this.#iterate(req, ctx)) {
-        lastRawMessage = runner.raw;
-        if (isResultMessage(runner.raw)) {
-          lastResultMessage = runner.raw;
+      for await (const step of this.#iterate(req, ctx)) {
+        lastRawMessage = step.raw;
+        if (isResultMessage(step.raw)) {
+          lastResultMessage = step.raw;
         }
 
-        for (const event of runner.events) {
+        for (const event of step.events) {
           switch (event.type) {
             case 'text.delta':
               accumulatedText += event.delta;
@@ -315,17 +315,17 @@ export class ClaudeCliProvider implements Provider {
       // The only thrown values from #iterate() are PipelineErrors produced by
       // classifyExit — every other failure mode (malformed lines, spawn
       // failure) is captured as a terminal-value envelope inside the
-      // subprocess runner. A non-PipelineError here would mean a contract
+      // subprocess step. A non-PipelineError here would mean a contract
       // violation upstream. invoke() must never throw per the Provider
-      // contract, so wrap any non-PipelineError in a RunnerFailureError and
+      // contract, so wrap any non-PipelineError in a StepFailureError and
       // return it via err(...) instead of rethrowing.
       if (isPipelineError(cause)) {
         return err(cause);
       }
       return err(
-        new RunnerFailureError(
+        new StepFailureError(
           cause instanceof Error ? cause.message : String(cause),
-          ctx.runnerId,
+          ctx.stepId,
           ctx.attempt,
           { cause, providerName: this.name },
         ),

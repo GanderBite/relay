@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-
+import { beforeEach, describe, expect, it } from 'vitest';
+import { FlowDefinitionError } from '../../src/errors.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { RaceDefinitionError } from '../../src/errors.js';
 
 function canned() {
   return {
@@ -24,7 +23,7 @@ describe('ProviderRegistry', () => {
   });
 
   it('[REGISTRY-001] register + get roundtrips a provider by name', () => {
-    const p = new MockProvider({ responses: { runner: canned() } });
+    const p = new MockProvider({ responses: { step: canned() } });
     const reg = registry.register(p);
     expect(reg.isOk()).toBe(true);
     const got = registry.get('mock');
@@ -39,7 +38,7 @@ describe('ProviderRegistry', () => {
     const second = registry.register(p2);
     expect(second.isErr()).toBe(true);
     const err = second._unsafeUnwrapErr();
-    expect(err).toBeInstanceOf(RaceDefinitionError);
+    expect(err).toBeInstanceOf(FlowDefinitionError);
     expect(err.message).toContain('mock');
   });
 

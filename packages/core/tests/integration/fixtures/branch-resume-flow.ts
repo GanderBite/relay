@@ -1,5 +1,5 @@
 /**
- * Race fixture for branch-topology resume tests.
+ * Flow fixture for branch-topology resume tests.
  *
  * Topology: entry -> b1 -> b2 -> end
  *                    ^
@@ -7,48 +7,48 @@
  *             skipped in the injected state to simulate that the
  *             branch predicate selected path B)
  *
- * This fixture is imported dynamically by resume() via importRace().
+ * This fixture is imported dynamically by resume() via importFlow().
  * It must compile under --experimental-strip-types and must be importable
- * both from vitest (for the test runner) and via pathToFileURL().
+ * both from vitest (for the test step) and via pathToFileURL().
  */
-import { defineRace, runner, z } from '@relay/core';
+import { defineFlow, step, z } from '@relay/core';
 
-export const race = defineRace({
+export const flow = defineFlow({
   name: 'branch-resume-flow',
   version: '0.1.0',
   input: z.object({}),
   start: 'entry',
-  runners: {
-    entry: runner.prompt({
+  steps: {
+    entry: step.prompt({
       promptFile: 'p.md',
-      output: { baton: 'entry-out' },
+      output: { handoff: 'entry-out' },
     }),
-    b1: runner.prompt({
+    b1: step.prompt({
       promptFile: 'p.md',
       dependsOn: ['entry'],
-      output: { baton: 'b1-out' },
+      output: { handoff: 'b1-out' },
     }),
-    b2: runner.prompt({
+    b2: step.prompt({
       promptFile: 'p.md',
       dependsOn: ['b1'],
-      output: { baton: 'b2-out' },
+      output: { handoff: 'b2-out' },
     }),
-    a1: runner.prompt({
+    a1: step.prompt({
       promptFile: 'p.md',
       dependsOn: ['entry'],
-      output: { baton: 'a1-out' },
+      output: { handoff: 'a1-out' },
     }),
-    a2: runner.prompt({
+    a2: step.prompt({
       promptFile: 'p.md',
       dependsOn: ['a1'],
-      output: { baton: 'a2-out' },
+      output: { handoff: 'a2-out' },
     }),
-    end: runner.prompt({
+    end: step.prompt({
       promptFile: 'p.md',
       dependsOn: ['b2'],
-      output: { baton: 'end-out' },
+      output: { handoff: 'end-out' },
     }),
   },
 });
 
-export default race;
+export default flow;

@@ -1,24 +1,24 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative } from 'node:path';
-import { BatonStore } from '../batons.js';
 import { CostTracker } from '../cost.js';
 import {
   AuthTimeoutError,
   ERROR_CODES,
+  FlowDefinitionError,
   PipelineError,
-  RaceDefinitionError,
-  RaceStateWriteError,
-  toRaceDefError,
+  StateWriteError,
+  toFlowDefError,
 } from '../errors.js';
+import type { Flow, RunState, Step, StepState } from '../flow/types.js';
+import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
 import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
-import type { Race, RaceState, Runner, RunnerState } from '../race/types.js';
 import { createWorktree, isGitRepo, removeWorktree } from '../runner/worktree.js';
-import { loadGlobalSettings, loadRaceSettings } from '../settings/load.js';
+import { loadFlowSettings, loadGlobalSettings } from '../settings/load.js';
 import { resolveProvider } from '../settings/resolve.js';
-import { loadState, RaceStateMachine, verifyCompatibility } from '../state.js';
+import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
 
 import { checkCapabilities } from './capability-check.js';
@@ -28,22 +28,22 @@ import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
 import { executeTerminal } from './exec/terminal.js';
 import { clearLiveDir } from './live-state.js';
-import { importRace, loadRaceRef, seedReadyQueueForResume } from './resume.js';
+import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { withRetry } from './retry.js';
-import type { RunnerResult } from './types.js';
+import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
-// Mirrors the default in race/schemas.ts. Duplicated here so the Runner
-// can backstop hand-built PromptRunnerSpec values that bypassed the schema parse
+// Mirrors the default in flow/schemas.ts. Duplicated here so the Orchestrator
+// can backstop hand-built PromptStepSpec values that bypassed the schema parse
 // (e.g. spec literals authored without going through promptStep(...)).
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
 // Wall-clock cap on a single provider.authenticate() call. A misconfigured
 // auth probe (e.g. a hung `claude --version` subprocess) or a custom provider
-// whose authenticate() never resolves would otherwise wedge the Runner before
+// whose authenticate() never resolves would otherwise wedge the Orchestrator before
 // any step executes and bypass every step-level timeout. Configurable per-run
 // via RunOptions.authTimeoutMs so integration tests can shorten it.
 const DEFAULT_AUTH_TIMEOUT_MS = 30_000;
-const RACE_REF_FILENAME = 'race-ref.json';
+const FLOW_REF_FILENAME = 'flow-ref.json';
 const METRICS_FILENAME = 'metrics.json';
 const RUN_LOG_FILENAME = 'run.log';
 
@@ -56,38 +56,38 @@ export interface OrchestratorOptions {
 /**
  * Options passed to `Orchestrator.run()` and `Orchestrator.resume()`.
  *
- * @remarks RunOptions is defined here rather than in a separate runner/types.ts
+ * @remarks RunOptions is defined here rather than in a separate step/types.ts
  * — it intentionally co-locates with the Orchestrator class that consumes it.
  */
 export interface RunOptions {
   resumeFrom?: string;
   parallelism?: number;
   /**
-   * Directory the race package lives in — used to resolve prompt template
-   * paths (runner.promptFile) relative to the race AND to locate the per-race
+   * Directory the flow package lives in — used to resolve prompt template
+   * paths (step.promptFile) relative to the flow AND to locate the per-flow
    * `settings.json` for provider resolution. Defaults to process.cwd().
-   * Set explicitly when the Runner is embedded in a host process whose cwd
-   * is not the race's directory.
+   * Set explicitly when the Orchestrator is embedded in a host process whose cwd
+   * is not the flow's directory.
    */
-  raceDir?: string;
+  flowDir?: string;
   /**
-   * Absolute path to the race module that produced the supplied Race. When
-   * present, persisted in `race-ref.json` so `Orchestrator.resume(runDir)` can
-   * re-import the race in a fresh process. When absent, run() still proceeds
+   * Absolute path to the flow module that produced the supplied Flow. When
+   * present, persisted in `flow-ref.json` so `Orchestrator.resume(runDir)` can
+   * re-import the flow in a fresh process. When absent, run() still proceeds
    * — resume later rejects with an actionable message if the caller omitted
    * the path and the run crashes.
    */
-  racePath?: string;
+  flowPath?: string;
   /**
    * Wall-clock cap (milliseconds) on each provider.authenticate() call. When
-   * the cap fires, the Runner raises `AuthTimeoutError` before any step runs.
+   * the cap fires, the Orchestrator raises `AuthTimeoutError` before any step runs.
    * Defaults to 30_000. Tests typically shorten this to keep the suite fast.
    */
   authTimeoutMs?: number;
   /**
    * Provider name supplied via the CLI `--provider` flag. When set it wins
-   * over per-race and per-user settings during resolution. Leave undefined to
-   * fall back to the race's `settings.json`, then `~/.relay/settings.json`,
+   * over per-flow and per-user settings during resolution. Leave undefined to
+   * fall back to the flow's `settings.json`, then `~/.relay/settings.json`,
    * and finally `NoProviderConfiguredError` if neither carries a name.
    */
   flagProvider?: string;
@@ -97,14 +97,14 @@ export interface RunOptions {
    * file edit lands in an isolated checkout that is torn down when the run
    * finishes.
    *
-   * - `'auto'` (default): create a worktree when the raceDir is inside a git
+   * - `'auto'` (default): create a worktree when the flowDir is inside a git
    *   repo; silently proceed without one when git is unavailable or the
    *   directory is not a working tree.
-   * - `true`: require a worktree. If git is missing or the raceDir is not in
+   * - `true`: require a worktree. If git is missing or the flowDir is not in
    *   a repo, the run fails before any step executes.
    * - `false`: disable the feature. Subprocesses inherit the parent cwd.
    *
-   * When the race has no prompt runners the worktree is created and
+   * When the flow has no prompt steps the worktree is created and
    * immediately torn down; use `worktree: false` for script-only races.
    */
   worktree?: boolean | 'auto';
@@ -120,25 +120,25 @@ export interface RunResult {
 }
 
 /**
- * Context threaded into every per-runner executor. Executors receive a tailored
- * subset of this shape; the Runner builds each per-runner ctx from this central
+ * Context threaded into every per-step executor. Executors receive a tailored
+ * subset of this shape; the Orchestrator builds each per-step ctx from this central
  * bag plus the resolved provider binding.
  *
  * Auth is enforced at provider selection: the configured provider's authenticate()
- * runs before the race starts. No auth escape hatch is threaded through this context.
+ * runs before the flow starts. No auth escape hatch is threaded through this context.
  */
-export interface RunnerExecutionContext {
-  race: Race<unknown>;
+export interface StepExecutionContext {
+  flow: Flow<unknown>;
   runDir: string;
   runId: string;
-  raceName: string;
-  raceDir: string;
-  runnerId: string;
+  flowName: string;
+  flowDir: string;
+  stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
-  batonStore: BatonStore;
+  handoffStore: HandoffStore;
   costTracker: CostTracker;
-  raceStateMachine: RaceStateMachine;
+  stateMachine: StateMachine;
   logger: Logger;
   providers: ProviderRegistry;
   provider: Provider;
@@ -172,7 +172,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Internal marker for aborts surfaced through the runner's race. A dedicated
+ * Internal marker for aborts surfaced through the step's flow. A dedicated
  * class keeps `instanceof` checks unambiguous without pulling DOMException
  * across the public surface.
  */
@@ -190,7 +190,7 @@ function isAbortLike(err: unknown): boolean {
 }
 
 /**
- * Orchestrator drives the execution of a compiled Race. Construct via
+ * Orchestrator drives the execution of a compiled Flow. Construct via
  * `createOrchestrator` (preferred) or `new Orchestrator(opts)`. A single Orchestrator instance
  * may serve multiple sequential `run()` calls; concurrent calls share state
  * and are not supported.
@@ -206,15 +206,15 @@ export class Orchestrator {
     this.#runDirOverride = opts.runDir;
   }
 
-  async run<TInput>(race: Race<TInput>, input: unknown, opts: RunOptions = {}): Promise<RunResult> {
+  async run<TInput>(flow: Flow<TInput>, input: unknown, opts: RunOptions = {}): Promise<RunResult> {
     const runId = shortRunId();
     const runDir = this.#runDirOverride ?? defaultRunDir(runId);
     const parallelism = opts.parallelism ?? DEFAULT_PARALLELISM;
-    const raceDir = opts.raceDir ?? process.cwd();
+    const flowDir = opts.flowDir ?? process.cwd();
 
-    const parsed = race.input.safeParse(input);
+    const parsed = flow.input.safeParse(input);
     if (!parsed.success) {
-      throw toRaceDefError(parsed.error, `invalid input for race "${race.name}"`);
+      throw toFlowDefError(parsed.error, `invalid input for flow "${flow.name}"`);
     }
     const validatedInput: TInput = parsed.data;
 
@@ -222,33 +222,33 @@ export class Orchestrator {
     await clearLiveDir(runDir);
     await mkdir(join(runDir, 'live'), { recursive: true });
 
-    await this.#writeRaceRef(runDir, race, opts.racePath);
+    await this.#writeFlowRef(runDir, flow, opts.flowPath);
 
     const logger =
       this.#logger ??
       createLogger({
-        raceName: race.name,
+        flowName: flow.name,
         runId,
         logFile: join(runDir, RUN_LOG_FILENAME),
       });
 
-    const batonStore = new BatonStore(runDir);
+    const handoffStore = new HandoffStore(runDir);
     const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
-    const raceStateMachine = new RaceStateMachine(runDir, race.name, race.version, runId);
+    const stateMachine = new StateMachine(runDir, flow.name, flow.version, runId);
 
-    const initResult = await raceStateMachine.init(race.graph.topoOrder);
+    const initResult = await stateMachine.init(flow.graph.topoOrder);
     if (initResult.isErr()) throw initResult.error;
 
-    raceStateMachine.getState().input = validatedInput;
-    const initialSave = await raceStateMachine.save();
+    stateMachine.getState().input = validatedInput;
+    const initialSave = await stateMachine.save();
     if (initialSave.isErr()) throw initialSave.error;
 
     // Provider resolution happens BEFORE any step runs, so a misconfiguration
     // surfaces as a single typed error (NoProviderConfiguredError or
-    // RaceDefinitionError) rather than a half-executed run.
-    const provider = await this.#resolveRunProvider(this.#providers, raceDir, opts.flagProvider);
-    const providerByRunner = checkCapabilities(race as Race<unknown>, provider);
-    const uniqueProviders = new Set<Provider>([provider, ...providerByRunner.values()]);
+    // FlowDefinitionError) rather than a half-executed run.
+    const provider = await this.#resolveRunProvider(this.#providers, flowDir, opts.flagProvider);
+    const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
+    const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
     let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
@@ -279,7 +279,7 @@ export class Orchestrator {
       // immediately be torn down. `worktree: true` still fails fast here —
       // before the DAG walker dispatches any step.
       const worktree = await this.#setupWorktree(
-        raceDir,
+        flowDir,
         runId,
         opts,
         logger,
@@ -292,21 +292,21 @@ export class Orchestrator {
         runStatus = 'aborted';
       } else {
         runStatus = await this.#walkDag({
-          race: race as Race<unknown>,
+          flow: flow as Flow<unknown>,
           runDir,
           runId,
-          raceDir,
+          flowDir,
           parallelism,
           abortController,
-          batonStore,
+          handoffStore,
           costTracker,
-          raceStateMachine,
+          stateMachine,
           logger,
-          providerByRunner,
+          providerByStep,
           providers: this.#providers,
           provider,
           validatedInput,
-          initialQueue: [...race.graph.rootRunners],
+          initialQueue: [...flow.graph.rootSteps],
           invocationCwd: worktree.worktreeCwd,
         });
       }
@@ -323,11 +323,11 @@ export class Orchestrator {
       await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
-    const markResult = raceStateMachine.markRun(runStatus);
+    const markResult = stateMachine.markRun(runStatus);
     if (markResult.isErr()) throw markResult.error;
-    const finalSave = await raceStateMachine.save();
+    const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
-    raceStateMachine.clearRunnerResults();
+    stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
       logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
@@ -335,7 +335,7 @@ export class Orchestrator {
 
     const summary = costTracker.summary();
     const artifacts: string[] = [];
-    for (const state of Object.values(raceStateMachine.getState().runners)) {
+    for (const state of Object.values(stateMachine.getState().steps)) {
       if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
     }
 
@@ -350,8 +350,8 @@ export class Orchestrator {
   }
 
   /**
-   * Resume a run from its persisted state. Loads state.json + race-ref.json
-   * from `runDir`, re-imports the race module, rehydrates the state machine
+   * Resume a run from its persisted state. Loads state.json + flow-ref.json
+   * from `runDir`, re-imports the flow module, rehydrates the state machine
    * and cost tracker, and executes any remaining steps through the same DAG
    * walker as run(). Succeeded steps are never re-invoked; failed steps are
    * reset to pending so the retry loop can take another attempt (the prior
@@ -384,66 +384,66 @@ export class Orchestrator {
         break;
     }
 
-    const raceRefResult = await loadRaceRef(runDir);
-    if (raceRefResult.isErr()) {
+    const flowRefResult = await loadFlowRef(runDir);
+    if (flowRefResult.isErr()) {
       throw new PipelineError(
-        `resume could not read race-ref.json at "${runDir}": ${raceRefResult.error.message}. ` +
-          'A resumable run records race-ref.json at run start; without it the Runner cannot re-import the race.',
+        `resume could not read flow-ref.json at "${runDir}": ${flowRefResult.error.message}. ` +
+          'A resumable run records flow-ref.json at run start; without it the Orchestrator cannot re-import the flow.',
         ERROR_CODES.STATE_NOT_FOUND,
         { runDir },
       );
     }
-    const raceRef = raceRefResult.value;
+    const flowRef = flowRefResult.value;
 
-    // Catch mismatches recorded in race-ref.json vs. state.json before doing
+    // Catch mismatches recorded in flow-ref.json vs. state.json before doing
     // any disk import — the state file is authoritative on what ran, so an
-    // inconsistent race-ref is also a resume-blocker.
+    // inconsistent flow-ref is also a resume-blocker.
     if (
-      raceRef.raceName !== persistedState.raceName ||
-      raceRef.raceVersion !== persistedState.raceVersion
+      flowRef.flowName !== persistedState.flowName ||
+      flowRef.flowVersion !== persistedState.flowVersion
     ) {
       throw new PipelineError(
-        `race-ref.json refers to "${raceRef.raceName}@${raceRef.raceVersion}" but state.json was written by "${persistedState.raceName}@${persistedState.raceVersion}". ` +
+        `flow-ref.json refers to "${flowRef.flowName}@${flowRef.flowVersion}" but state.json was written by "${persistedState.flowName}@${persistedState.flowVersion}". ` +
           'Start a fresh run.',
         ERROR_CODES.STATE_VERSION_MISMATCH,
         { runDir },
       );
     }
 
-    if (raceRef.racePath === null) {
+    if (flowRef.flowPath === null) {
       throw new PipelineError(
-        'resume requires the original race file path; pass `racePath` to run() or re-invoke the CLI with the race path.',
+        'resume requires the original flow file path; pass `flowPath` to run() or re-invoke the CLI with the flow path.',
         ERROR_CODES.STATE_NOT_FOUND,
-        { runDir, raceName: raceRef.raceName },
+        { runDir, flowName: flowRef.flowName },
       );
     }
 
-    const race = await importRace(raceRef.racePath);
+    const flow = await importFlow(flowRef.flowPath);
 
     const verify = verifyCompatibility(persistedState, {
-      raceName: race.name,
-      raceVersion: race.version,
+      flowName: flow.name,
+      flowVersion: flow.version,
     });
     if (verify.isErr()) throw verify.error;
 
     const runId = persistedState.runId;
-    const raceDir = opts.raceDir ?? dirname(raceRef.racePath);
+    const flowDir = opts.flowDir ?? dirname(flowRef.flowPath);
 
     const logger =
       this.#logger ??
       createLogger({
-        raceName: race.name,
+        flowName: flow.name,
         runId,
         logFile: join(runDir, RUN_LOG_FILENAME),
       });
 
-    const batonStore = new BatonStore(runDir);
+    const handoffStore = new HandoffStore(runDir);
     const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
     const loadMetricsResult = await costTracker.load();
     if (loadMetricsResult.isErr()) throw loadMetricsResult.error;
 
-    const raceStateMachine = new RaceStateMachine(runDir, race.name, race.version, runId);
-    raceStateMachine.hydrate(persistedState);
+    const stateMachine = new StateMachine(runDir, flow.name, flow.version, runId);
+    stateMachine.hydrate(persistedState);
 
     // Crash robustness: a SIGKILL (or OS crash) bypasses markRun(), so steps
     // can be persisted in 'running' status with no in-flight work to complete
@@ -451,12 +451,12 @@ export class Orchestrator {
     // pass picks them up. Without this, those steps get filtered out of the
     // ready queue and the resumed run deadlocks.
     const zombieSweepIso = nowIso();
-    const sweptRunners: Record<string, RunnerState> = { ...persistedState.runners };
+    const sweptSteps: Record<string, StepState> = { ...persistedState.steps };
     let hasZombie = false;
-    for (const [runnerId, runnerState] of Object.entries(persistedState.runners)) {
-      if (runnerState.status === 'running') {
-        sweptRunners[runnerId] = {
-          ...runnerState,
+    for (const [stepId, stepState] of Object.entries(persistedState.steps)) {
+      if (stepState.status === 'running') {
+        sweptSteps[stepId] = {
+          ...stepState,
           status: 'failed',
           completedAt: zombieSweepIso,
           errorMessage: 'run aborted by crash',
@@ -465,27 +465,27 @@ export class Orchestrator {
       }
     }
     if (hasZombie) {
-      raceStateMachine.hydrate({ ...persistedState, runners: sweptRunners });
+      stateMachine.hydrate({ ...persistedState, steps: sweptSteps });
     }
 
     // Flip failed steps back to pending so the retry loop can take another
-    // attempt. resetRunner preserves the attempts counter so maxRetries budgets
+    // attempt. resetStep preserves the attempts counter so maxRetries budgets
     // carry across resume.
-    for (const [runnerId, runnerState] of Object.entries(raceStateMachine.getState().runners)) {
-      if (runnerState.status === 'failed') {
-        const resetResult = raceStateMachine.resetRunner(runnerId);
+    for (const [stepId, stepState] of Object.entries(stateMachine.getState().steps)) {
+      if (stepState.status === 'failed') {
+        const resetResult = stateMachine.resetStep(stepId);
         if (resetResult.isErr()) throw resetResult.error;
       }
     }
 
-    const markRunning = raceStateMachine.markRun('running');
+    const markRunning = stateMachine.markRun('running');
     if (markRunning.isErr()) throw markRunning.error;
-    const savedStart = await raceStateMachine.save();
+    const savedStart = await stateMachine.save();
     if (savedStart.isErr()) throw savedStart.error;
 
-    const provider = await this.#resolveRunProvider(this.#providers, raceDir, opts.flagProvider);
-    const providerByRunner = checkCapabilities(race as Race<unknown>, provider);
-    const uniqueProviders = new Set<Provider>([provider, ...providerByRunner.values()]);
+    const provider = await this.#resolveRunProvider(this.#providers, flowDir, opts.flagProvider);
+    const providerByStep = checkCapabilities(flow as Flow<unknown>, provider);
+    const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
     let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
@@ -517,7 +517,7 @@ export class Orchestrator {
       // block; if that cleanup was skipped by a SIGKILL, the worktree lives
       // under $TMPDIR/relay-worktrees where the OS reclaims it.
       const worktree = await this.#setupWorktree(
-        raceDir,
+        flowDir,
         runId,
         opts,
         logger,
@@ -529,22 +529,22 @@ export class Orchestrator {
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
       } else {
-        const initialQueue = seedReadyQueueForResume(race, raceStateMachine.getState());
+        const initialQueue = seedReadyQueueForResume(flow, stateMachine.getState());
         runStatus = await this.#walkDag({
-          race: race as Race<unknown>,
+          flow: flow as Flow<unknown>,
           runDir,
           runId,
-          raceDir,
+          flowDir,
           parallelism,
           abortController,
-          batonStore,
+          handoffStore,
           costTracker,
-          raceStateMachine,
+          stateMachine,
           logger,
-          providerByRunner,
+          providerByStep,
           providers: this.#providers,
           provider,
-          validatedInput: raceStateMachine.getState().input,
+          validatedInput: stateMachine.getState().input,
           initialQueue,
           invocationCwd: worktree.worktreeCwd,
         });
@@ -562,11 +562,11 @@ export class Orchestrator {
       await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
-    const markResult = raceStateMachine.markRun(runStatus);
+    const markResult = stateMachine.markRun(runStatus);
     if (markResult.isErr()) throw markResult.error;
-    const finalSave = await raceStateMachine.save();
+    const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
-    raceStateMachine.clearRunnerResults();
+    stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
       logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
@@ -574,7 +574,7 @@ export class Orchestrator {
 
     const summary = costTracker.summary();
     const artifacts: string[] = [];
-    for (const state of Object.values(raceStateMachine.getState().runners)) {
+    for (const state of Object.values(stateMachine.getState().steps)) {
       if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
     }
 
@@ -593,18 +593,18 @@ export class Orchestrator {
    * provider authentication, the DAG walker, and every side effect of a fresh
    * resume — by contract a succeeded run is idempotent. Pulls cost totals
    * from metrics.json via CostTracker.load() (the state.json snapshot does
-   * not carry per-runner token counts), aggregates artifacts across every
-   * succeeded runner, and derives durationMs from the recorded startedAt /
+   * not carry per-step token counts), aggregates artifacts across every
+   * succeeded step, and derives durationMs from the recorded startedAt /
    * updatedAt span so the returned shape matches a first-run RunResult.
    */
-  async #rebuildSucceededResult(runDir: string, persistedState: RaceState): Promise<RunResult> {
+  async #rebuildSucceededResult(runDir: string, persistedState: RunState): Promise<RunResult> {
     const costTracker = new CostTracker(join(runDir, METRICS_FILENAME));
     const loadResult = await costTracker.load();
     if (loadResult.isErr()) throw loadResult.error;
     const summary = costTracker.summary();
 
     const artifacts: string[] = [];
-    for (const state of Object.values(persistedState.runners)) {
+    for (const state of Object.values(persistedState.steps)) {
       if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
     }
 
@@ -625,7 +625,7 @@ export class Orchestrator {
   /**
    * Bring up a per-run git worktree so the provider subprocess operates on an
    * isolated checkout. The return value carries the worktree path, the
-   * enclosing git root, and the worktree-equivalent of `raceDir` — the
+   * enclosing git root, and the worktree-equivalent of `flowDir` — the
    * subprocess cwd the walker passes to each executor. When isolation is
    * disabled or silently skipped (auto mode outside a git repo), all three
    * fields are undefined and the subprocess inherits the parent cwd.
@@ -636,7 +636,7 @@ export class Orchestrator {
    * logs a debug breadcrumb when the repo is unavailable.
    */
   async #setupWorktree(
-    raceDir: string,
+    flowDir: string,
     runId: string,
     opts: RunOptions,
     logger: Logger,
@@ -659,12 +659,12 @@ export class Orchestrator {
       return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
     }
 
-    const probeDir = isAbsolute(raceDir) ? raceDir : join(process.cwd(), raceDir);
+    const probeDir = isAbsolute(flowDir) ? flowDir : join(process.cwd(), flowDir);
     const gitResult = await isGitRepo(probeDir, signal);
     if (gitResult.isErr()) {
       if (required) throw gitResult.error;
       logger.debug(
-        { event: 'worktree.skip_no_repo', raceDir: probeDir },
+        { event: 'worktree.skip_no_repo', flowDir: probeDir },
         'not a git repo; proceeding without worktree isolation',
       );
       return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
@@ -690,13 +690,13 @@ export class Orchestrator {
 
     const worktreePath = createResult.value;
 
-    // Map the original raceDir onto its equivalent path inside the worktree so
+    // Map the original flowDir onto its equivalent path inside the worktree so
     // the subprocess runs at the same relative location it would in the real
-    // checkout. When raceDir is outside gitRoot (e.g. a race installed in
+    // checkout. When flowDir is outside gitRoot (e.g. a flow installed in
     // node_modules that sits alongside the repo rather than inside it) the
     // relative path starts with '..'; joining that onto worktreePath would
     // escape the isolated checkout entirely, so we fall back to the worktree
-    // root. The race package is still read from its original raceDir — only
+    // root. The flow package is still read from its original flowDir — only
     // the subprocess cwd is rebased.
     const rel = relative(gitRoot, probeDir);
     const worktreeCwd =
@@ -735,25 +735,25 @@ export class Orchestrator {
   }
 
   /**
-   * Run the per-run provider resolution chain — flag → race settings → global
+   * Run the per-run provider resolution chain — flag → flow settings → global
    * settings → registry. Surfaces typed errors verbatim so the CLI exit-code
    * mapper can branch on `NoProviderConfiguredError` (E_NO_PROVIDER) and on a
-   * `RaceDefinitionError` for an unknown provider name. Settings file IO
+   * `FlowDefinitionError` for an unknown provider name. Settings file IO
    * errors are also bubbled — a malformed settings.json must not silently
    * collapse to a different provider.
    */
   async #resolveRunProvider(
     registry: ProviderRegistry,
-    raceDir: string,
+    flowDir: string,
     flagProvider: string | undefined,
   ): Promise<Provider> {
     const globalResult = await loadGlobalSettings();
     if (globalResult.isErr()) throw globalResult.error;
-    const raceResult = await loadRaceSettings(raceDir);
-    if (raceResult.isErr()) throw raceResult.error;
+    const flowResult = await loadFlowSettings(flowDir);
+    if (flowResult.isErr()) throw flowResult.error;
 
     const args: Parameters<typeof resolveProvider>[0] = {
-      raceSettings: raceResult.value,
+      flowSettings: flowResult.value,
       globalSettings: globalResult.value,
       registry,
     };
@@ -766,17 +766,17 @@ export class Orchestrator {
     return resolved.value;
   }
 
-  async #writeRaceRef<TInput>(
+  async #writeFlowRef<TInput>(
     runDir: string,
-    race: Race<TInput>,
-    racePath: string | undefined,
+    flow: Flow<TInput>,
+    flowPath: string | undefined,
   ): Promise<void> {
     const payload = {
-      raceName: race.name,
-      raceVersion: race.version,
-      racePath: racePath ?? null,
+      flowName: flow.name,
+      flowVersion: flow.version,
+      flowPath: flowPath ?? null,
     };
-    const result = await atomicWriteJson(join(runDir, RACE_REF_FILENAME), payload);
+    const result = await atomicWriteJson(join(runDir, FLOW_REF_FILENAME), payload);
     if (result.isErr()) throw result.error;
   }
 
@@ -849,41 +849,41 @@ export class Orchestrator {
   }
 
   async #walkDag(args: {
-    race: Race<unknown>;
+    flow: Flow<unknown>;
     runDir: string;
     runId: string;
-    raceDir: string;
+    flowDir: string;
     parallelism: number;
     abortController: AbortController;
-    batonStore: BatonStore;
+    handoffStore: HandoffStore;
     costTracker: CostTracker;
-    raceStateMachine: RaceStateMachine;
+    stateMachine: StateMachine;
     logger: Logger;
-    providerByRunner: Map<string, Provider>;
+    providerByStep: Map<string, Provider>;
     providers: ProviderRegistry;
     provider: Provider;
     validatedInput: unknown;
     initialQueue: string[];
     /**
      * Working directory handed to every provider invocation for this run —
-     * typically the per-run worktree path (or its raceDir-equivalent subpath)
+     * typically the per-run worktree path (or its flowDir-equivalent subpath)
      * when isolation is active. Undefined when worktree isolation is disabled
      * or auto-skipped, so the subprocess inherits the parent cwd.
      */
     invocationCwd: string | undefined;
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
     const {
-      race,
+      flow,
       runDir,
       runId,
-      raceDir,
+      flowDir,
       parallelism,
       abortController,
-      batonStore,
+      handoffStore,
       costTracker,
-      raceStateMachine,
+      stateMachine,
       logger,
-      providerByRunner,
+      providerByStep,
       providers,
       provider,
       validatedInput,
@@ -897,9 +897,9 @@ export class Orchestrator {
     const queued = new Set<string>(initialQueue);
     const inflight = new Set<string>();
     const completions: Array<{
-      runnerId: string;
+      stepId: string;
       error?: unknown;
-      result?: RunnerResult;
+      result?: StepResult;
     }> = [];
     let notify: (() => void) | null = null;
     let runFailed = false;
@@ -929,7 +929,7 @@ export class Orchestrator {
       // Named handler + finally cleanup so each raceAbort call removes its own
       // listener on the happy path. Without removal, listeners accumulate on the
       // shared AbortController for the lifetime of the run — node prints a
-      // MaxListenersExceededWarning at 11+ on any reasonably sized race.
+      // MaxListenersExceededWarning at 11+ on any reasonably sized flow.
       const raceAbort = async <T>(work: Promise<T>): Promise<T> => {
         if (abortController.signal.aborted) {
           throw new RunAbortedError();
@@ -950,120 +950,117 @@ export class Orchestrator {
         }
       };
 
-      const runExecutor = async (runner: Runner, attempt: number): Promise<RunnerResult> => {
-        const runnerLogger = logger.child({ runnerId: runner.id });
-        const baseCtx: RunnerExecutionContext = {
-          race,
+      const runExecutor = async (step: Step, attempt: number): Promise<StepResult> => {
+        const stepLogger = logger.child({ stepId: step.id });
+        const baseCtx: StepExecutionContext = {
+          flow,
           runDir,
           runId,
-          raceName: race.name,
-          raceDir,
-          runnerId: runner.id,
+          flowName: flow.name,
+          flowDir,
+          stepId: step.id,
           attempt,
           abortSignal: abortController.signal,
-          batonStore,
+          handoffStore,
           costTracker,
-          raceStateMachine,
-          logger: runnerLogger,
+          stateMachine,
+          logger: stepLogger,
           providers,
           provider,
           ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
         };
 
-        switch (runner.kind) {
+        switch (step.kind) {
           case 'prompt': {
-            const runnerProvider = providerByRunner.get(runner.id);
-            if (runnerProvider === undefined) {
-              throw new RaceDefinitionError(
-                `no provider resolved for prompt runner "${runner.id}"`,
-                { runnerId: runner.id },
-              );
+            const stepProvider = providerByStep.get(step.id);
+            if (stepProvider === undefined) {
+              throw new FlowDefinitionError(`no provider resolved for prompt step "${step.id}"`, {
+                stepId: step.id,
+              });
             }
-            return executePrompt(runner, {
+            return executePrompt(step, {
               runDir,
-              raceDir,
-              raceName: race.name,
+              flowDir,
+              flowName: flow.name,
               runId,
-              runnerId: runner.id,
+              stepId: step.id,
               attempt,
               abortSignal: abortController.signal,
-              batonStore,
+              handoffStore,
               costTracker,
-              logger: runnerLogger,
-              provider: runnerProvider,
+              logger: stepLogger,
+              provider: stepProvider,
               inputVars,
               ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
             });
           }
           case 'script':
-            return executeScript(runner, {
+            return executeScript(step, {
               runDir,
-              runnerId: runner.id,
+              stepId: step.id,
               attempt,
               abortSignal: abortController.signal,
-              logger: runnerLogger,
+              logger: stepLogger,
             });
           case 'branch':
-            return executeBranch(runner, {
+            return executeBranch(step, {
               runDir,
-              runnerId: runner.id,
+              stepId: step.id,
               attempt,
               abortSignal: abortController.signal,
-              logger: runnerLogger,
+              logger: stepLogger,
             });
           case 'parallel':
-            return executeParallel(runner, {
-              runnerId: runner.id,
-              runner,
+            return executeParallel(step, {
+              stepId: step.id,
+              step,
               attempt,
               abortSignal: abortController.signal,
-              logger: runnerLogger,
+              logger: stepLogger,
               // Branches share the same dispatch path as top-level steps so each
               // branch honors its own maxRetries/timeoutMs/abort policy. Without
               // this, a branch with maxRetries: 3 dispatched via parallel would
               // fail on the first attempt regardless of its own retry budget.
-              dispatch: (branchRunnerId: string): Promise<RunnerResult> =>
-                dispatchRunner(branchRunnerId),
-              // On retry (the Runner re-dispatched the parent parallel runner
+              dispatch: (branchStepId: string): Promise<StepResult> => dispatchStep(branchStepId),
+              // On retry (the Orchestrator re-dispatched the parent parallel step
               // after a mixed-outcome first attempt) or on a resumed run, some
               // branches may already be in 'succeeded' status. Re-dispatching
-              // those trips startRunner's pending-only guard with a confusing
-              // RaceStateTransitionError. Expose both the current branch status and
+              // those trips startStep's pending-only guard with a confusing
+              // StateTransitionError. Expose both the current branch status and
               // any cached result so the parallel executor can short-circuit.
-              getBranchStatus: (branchRunnerId: string) => {
-                const branchState = raceStateMachine.getState().runners[branchRunnerId];
+              getBranchStatus: (branchStepId: string) => {
+                const branchState = stateMachine.getState().steps[branchStepId];
                 return branchState?.status ?? 'unknown';
               },
-              getBranchResult: (branchRunnerId: string) =>
-                raceStateMachine.getRunnerResult(branchRunnerId),
+              getBranchResult: (branchStepId: string) => stateMachine.getStepResult(branchStepId),
             });
           case 'terminal':
-            return executeTerminal(runner, baseCtx);
+            return executeTerminal(step, baseCtx);
         }
       };
 
-      const runnerRetryBudget = (
-        runner: Runner,
+      const stepRetryBudget = (
+        step: Step,
       ): { maxRetries: number; timeoutMs: number | undefined } => {
-        if (runner.kind === 'prompt') {
+        if (step.kind === 'prompt') {
           // Backstop for the default prompt timeout. The schema applies the same value
-          // when authors run their race through runner.prompt(...), but the Runner
-          // also accepts hand-built PromptRunnerSpec literals; without this fallback
+          // when authors run their flow through step.prompt(...), but the Orchestrator
+          // also accepts hand-built PromptStepSpec literals; without this fallback
           // a runaway invocation could stream tokens indefinitely.
           return {
-            maxRetries: runner.maxRetries ?? 0,
-            timeoutMs: runner.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
+            maxRetries: step.maxRetries ?? 0,
+            timeoutMs: step.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
           };
         }
-        if (runner.kind === 'script' || runner.kind === 'branch') {
-          return { maxRetries: runner.maxRetries ?? 0, timeoutMs: runner.timeoutMs };
+        if (step.kind === 'script' || step.kind === 'branch') {
+          return { maxRetries: step.maxRetries ?? 0, timeoutMs: step.timeoutMs };
         }
         return { maxRetries: 0, timeoutMs: undefined };
       };
 
-      const promptRunnerOutput = (
-        result: RunnerResult,
-      ): { batons?: readonly string[]; artifacts?: readonly string[] } => {
+      const promptStepOutput = (
+        result: StepResult,
+      ): { handoffs?: readonly string[]; artifacts?: readonly string[] } => {
         if (
           typeof result !== 'object' ||
           result === null ||
@@ -1072,47 +1069,47 @@ export class Orchestrator {
         ) {
           return {};
         }
-        // PromptRunnerResult tracks batons (keys produced via output.baton)
+        // PromptStepResult tracks handoffs (keys produced via output.handoff)
         // and artifacts (file paths produced via output.artifact) as independent
-        // arrays. completeRunner persists both projections on RunnerState verbatim
-        // so RunResult.artifacts surfaces every file the runner produced and
-        // resume can introspect which batons landed without re-reading them.
-        return { batons: result.batons, artifacts: result.artifacts };
+        // arrays. completeStep persists both projections on StepState verbatim
+        // so RunResult.artifacts surfaces every file the step produced and
+        // resume can introspect which handoffs landed without re-reading them.
+        return { handoffs: result.handoffs, artifacts: result.artifacts };
       };
 
       /**
-       * Run one step end-to-end: state transitions, retry, abort race, and
-       * either completeRunner (with the executor's result) or failRunner on error.
-       * Returns the executor's RunnerResult so callers like the parallel executor
+       * Run one step end-to-end: state transitions, retry, abort flow, and
+       * either completeStep (with the executor's result) or failStep on error.
+       * Returns the executor's StepResult so callers like the parallel executor
        * can use the value; throws on failure (including abort) so awaiters get
        * the same error class withRetry+raceAbort produce.
        *
        * The DAG walker calls this and pushes the outcome into the completions
        * queue; the parallel executor's branch dispatch awaits it directly.
-       * Either path performs the same state mutations exactly once per runner.
+       * Either path performs the same state mutations exactly once per step.
        */
-      const dispatchRunner = async (runnerId: string): Promise<RunnerResult> => {
-        const runner = race.runners[runnerId];
-        if (runner === undefined) {
-          throw new RaceDefinitionError(`unknown runner id "${runnerId}"`);
+      const dispatchStep = async (stepId: string): Promise<StepResult> => {
+        const step = flow.steps[stepId];
+        if (step === undefined) {
+          throw new FlowDefinitionError(`unknown step id "${stepId}"`);
         }
 
         // inflight lifecycle is fully contained in this try/finally so the slot
         // is released regardless of which step of the dispatch pipeline throws
-        // (startRunner transition, startSave, executor, or completeRunner). Without
+        // (startStep transition, startSave, executor, or completeStep). Without
         // the outer try/finally, a throw before entering an inner try would leak
         // the slot and the walker's queue would hang on a phantom in-flight
         // count. inflight is managed here (not by the walker) so steps
         // dispatched as parallel branches remove themselves on completion; the
         // walker's drain loop only observes the slot count to gate parallelism.
-        inflight.add(runnerId);
+        inflight.add(stepId);
         try {
-          const startResult = raceStateMachine.startRunner(runnerId);
+          const startResult = stateMachine.startStep(stepId);
           if (startResult.isErr()) throw startResult.error;
 
-          const { maxRetries, timeoutMs } = runnerRetryBudget(runner);
+          const { maxRetries, timeoutMs } = stepRetryBudget(step);
 
-          const startSave = await raceStateMachine.save();
+          const startSave = await stateMachine.save();
           if (startSave.isErr()) {
             logger.error(
               { event: 'state.save_failed', error: startSave.error.message },
@@ -1123,28 +1120,25 @@ export class Orchestrator {
 
           try {
             const value = await raceAbort(
-              withRetry((attempt) => runExecutor(runner, attempt), {
+              withRetry((attempt) => runExecutor(step, attempt), {
                 maxRetries,
                 ...(timeoutMs !== undefined ? { timeoutMs } : {}),
                 logger,
-                runnerId,
+                stepId,
               }),
             );
-            const completeResult = raceStateMachine.completeRunner(
-              runnerId,
-              promptRunnerOutput(value),
-            );
+            const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
             if (completeResult.isErr()) throw completeResult.error;
-            raceStateMachine.recordRunnerResult(runnerId, value);
+            stateMachine.recordStepResult(stepId, value);
             return value;
           } catch (caught) {
             if (!isAbortLike(caught)) {
-              const failResult = raceStateMachine.failRunner(runnerId, errorMessageOf(caught));
+              const failResult = stateMachine.failStep(stepId, errorMessageOf(caught));
               if (failResult.isErr()) {
                 logger.error(
                   {
                     event: 'state.transition_failed',
-                    runnerId,
+                    stepId,
                     error: failResult.error.message,
                   },
                   'state transition failed after step failure',
@@ -1157,18 +1151,18 @@ export class Orchestrator {
             throw caught;
           }
         } finally {
-          inflight.delete(runnerId);
+          inflight.delete(stepId);
         }
       };
 
-      const enqueueWalker = (runnerId: string): void => {
-        void dispatchRunner(runnerId)
+      const enqueueWalker = (stepId: string): void => {
+        void dispatchStep(stepId)
           .then(
             (result) => {
-              completions.push({ runnerId, result });
+              completions.push({ stepId, result });
             },
             (error: unknown) => {
-              completions.push({ runnerId, error });
+              completions.push({ stepId, error });
             },
           )
           .finally(() => {
@@ -1179,19 +1173,19 @@ export class Orchestrator {
       };
 
       const enqueueReady = (): void => {
-        const state = raceStateMachine.getState().runners;
-        for (const candidate of race.graph.topoOrder) {
+        const state = stateMachine.getState().steps;
+        for (const candidate of flow.graph.topoOrder) {
           const candState = state[candidate];
           if (candState === undefined || candState.status !== 'pending') continue;
           if (queued.has(candidate) || inflight.has(candidate)) continue;
-          const preds = race.graph.predecessors.get(candidate);
+          const preds = flow.graph.predecessors.get(candidate);
           if (preds === undefined) continue;
           let ready = true;
           for (const p of preds) {
             const predState = state[p];
             const predStatus = predState?.status;
             // `continue` onFail lets dependents run even after a failure.
-            const pred = race.runners[p];
+            const pred = flow.steps[p];
             const predAllowsContinue =
               pred !== undefined &&
               pred.kind !== 'terminal' &&
@@ -1213,9 +1207,9 @@ export class Orchestrator {
         }
       };
 
-      const runnerOnFail = (runner: Runner): 'abort' | 'continue' | string => {
-        if (runner.kind === 'terminal') return 'abort';
-        return runner.onFail ?? 'abort';
+      const stepOnFail = (step: Step): 'abort' | 'continue' | string => {
+        if (step.kind === 'terminal') return 'abort';
+        return step.onFail ?? 'abort';
       };
 
       while (queue.length > 0 || inflight.size > 0) {
@@ -1237,26 +1231,26 @@ export class Orchestrator {
         while (completions.length > 0) {
           const completed = completions.shift();
           if (completed === undefined) break;
-          // dispatchRunner's finally already released the inflight slot before
+          // dispatchStep's finally already released the inflight slot before
           // pushing this completion; nothing left to clean up here.
 
           if (completed.error !== undefined && !isAbortLike(completed.error)) {
-            // A state.json write failure inside dispatchRunner is not a step
+            // A state.json write failure inside dispatchStep is not a step
             // failure — it is an I/O failure the caller needs to observe and
             // react to (retry the run, widen disk quota, etc.). Propagate it
             // verbatim so the CLI's exit-code map surfaces the STATE_WRITE
-            // code instead of swallowing the error as an onFail=abort runner.
-            if (completed.error instanceof RaceStateWriteError) {
+            // code instead of swallowing the error as an onFail=abort step.
+            if (completed.error instanceof StateWriteError) {
               throw completed.error;
             }
             const message = errorMessageOf(completed.error);
-            const runner = race.runners[completed.runnerId];
-            const policy = runner !== undefined ? runnerOnFail(runner) : 'abort';
+            const step = flow.steps[completed.stepId];
+            const policy = step !== undefined ? stepOnFail(step) : 'abort';
             if (policy === 'continue') {
               logger.warn(
                 {
-                  event: 'runner.continue_after_fail',
-                  runnerId: completed.runnerId,
+                  event: 'step.continue_after_fail',
+                  stepId: completed.stepId,
                   error: message,
                 },
                 'step failed; onFail=continue keeps downstream steps going',
@@ -1266,7 +1260,7 @@ export class Orchestrator {
             }
           }
 
-          const saveResult = await raceStateMachine.save();
+          const saveResult = await stateMachine.save();
           if (saveResult.isErr()) {
             logger.error(
               { event: 'state.save_failed', error: saveResult.error.message },

@@ -9,20 +9,21 @@
 import { GITHUB_ISSUES_URL } from '../../constants.js';
 import {
   type PipelineError,
-  ProviderRateLimitError,
   ProviderAuthError,
-  RunnerFailureError,
+  ProviderRateLimitError,
+  StepFailureError,
 } from '../../errors.js';
 
 const RATE_LIMIT_RE = /rate[\s-]?limit|HTTP 429|status 429|429 Too Many/i;
 const TIMEOUT_RE = /timeout|ETIMEDOUT|ESOCKETTIMEDOUT|deadline exceeded/i;
-const AUTH_RE = /authentication|unauthorized|HTTP 401|invalid api key|invalid token|session expired/i;
+const AUTH_RE =
+  /authentication|unauthorized|HTTP 401|invalid api key|invalid token|session expired/i;
 
 export interface ClassifyExitArgs {
   exitCode: number | null;
   stderr: string;
   aborted: boolean;
-  runnerId: string;
+  stepId: string;
   attempt: number;
   providerName: string;
 }
@@ -34,12 +35,12 @@ export interface ClassifyExitArgs {
  *
  * Priority order for stderr matching:
  *   1. Rate limit  → ProviderRateLimitError
- *   2. Timeout     → RunnerFailureError (errorCode: E_CLAUDE_CLI_TIMEOUT)
+ *   2. Timeout     → StepFailureError (errorCode: E_CLAUDE_CLI_TIMEOUT)
  *   3. Auth        → ProviderAuthError
- *   4. Other       → RunnerFailureError
+ *   4. Other       → StepFailureError
  */
 export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
-  const { exitCode, stderr, aborted, runnerId, attempt, providerName } = args;
+  const { exitCode, stderr, aborted, stepId, attempt, providerName } = args;
 
   if (aborted) {
     return null;
@@ -53,38 +54,30 @@ export function classifyExit(args: ClassifyExitArgs): PipelineError | null {
     return new ProviderRateLimitError(
       `claude -p rate limit: ${stderr.slice(0, 400)}`,
       providerName,
-      runnerId,
+      stepId,
       attempt,
       undefined,
     );
   }
 
   if (TIMEOUT_RE.test(stderr)) {
-    return new RunnerFailureError(
-      `claude -p timeout: ${stderr.slice(0, 400)}`,
-      runnerId,
-      attempt,
-      { providerName, errorCode: 'E_CLAUDE_CLI_TIMEOUT' },
-    );
+    return new StepFailureError(`claude -p timeout: ${stderr.slice(0, 400)}`, stepId, attempt, {
+      providerName,
+      errorCode: 'E_CLAUDE_CLI_TIMEOUT',
+    });
   }
 
   if (AUTH_RE.test(stderr)) {
-    return new ProviderAuthError(
-      `claude -p auth error: ${stderr.slice(0, 400)}`,
-      providerName,
-      { runnerId, attempt },
-    );
+    return new ProviderAuthError(`claude -p auth error: ${stderr.slice(0, 400)}`, providerName, {
+      stepId,
+      attempt,
+    });
   }
 
   const code = exitCode === null ? 'null' : String(exitCode);
-  return new RunnerFailureError(
-    `claude -p exit ${code}: ${stderr.slice(0, 400)}`,
-    runnerId,
-    attempt,
-    {
-      errorCode: 'E_CLAUDE_CLI_FAIL',
-      providerName,
-      reportUrl: GITHUB_ISSUES_URL,
-    },
-  );
+  return new StepFailureError(`claude -p exit ${code}: ${stderr.slice(0, 400)}`, stepId, attempt, {
+    errorCode: 'E_CLAUDE_CLI_FAIL',
+    providerName,
+    reportUrl: GITHUB_ISSUES_URL,
+  });
 }

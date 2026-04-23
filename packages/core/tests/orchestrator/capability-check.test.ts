@@ -4,38 +4,38 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ProviderCapabilityError } from '../../src/errors.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { checkCapabilities } from '../../src/orchestrator/capability-check.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
 import { resolveProvider } from '../../src/settings/resolve.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { z } from '../../src/zod.js';
 
-function makeFlow(build: () => Parameters<typeof defineRace>[0]) {
-  return defineRace(build());
+function makeFlow(build: () => Parameters<typeof defineFlow>[0]) {
+  return defineFlow(build());
 }
 
 describe('capability-check', () => {
-  it('[CAP-001] rejects a prompt runner with output.schema on structuredOutput:false provider', () => {
+  it('[CAP-001] rejects a prompt step with output.schema on structuredOutput:false provider', () => {
     const provider = new MockProvider({
       responses: {},
       capabilities: { structuredOutput: false },
     });
 
-    const race = makeFlow(() => ({
+    const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({
+      steps: {
+        a: step.prompt({
           promptFile: 'p.md',
-          output: { baton: 'x', schema: z.object({ y: z.string() }) },
+          output: { handoff: 'x', schema: z.object({ y: z.string() }) },
         }),
       },
     }));
 
-    expect(() => checkCapabilities(race, provider)).toThrow(ProviderCapabilityError);
+    expect(() => checkCapabilities(flow, provider)).toThrow(ProviderCapabilityError);
   });
 
   it('[CAP-002] rejects step requesting a tool the provider does not advertise', () => {
@@ -44,20 +44,20 @@ describe('capability-check', () => {
       capabilities: { tools: true, builtInTools: ['Read', 'Grep'] },
     });
 
-    const race = makeFlow(() => ({
+    const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({
+      steps: {
+        a: step.prompt({
           promptFile: 'p.md',
           tools: ['Read', 'UnknownTool'],
-          output: { baton: 'x' },
+          output: { handoff: 'x' },
         }),
       },
     }));
 
-    expect(() => checkCapabilities(race, provider)).toThrow(/UnknownTool/);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/UnknownTool/);
   });
 
   it('[CAP-003] rejects an unknown model when provider.models is non-empty', () => {
@@ -66,16 +66,16 @@ describe('capability-check', () => {
       capabilities: { models: ['sonnet'] },
     });
 
-    const race = makeFlow(() => ({
+    const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({ promptFile: 'p.md', model: 'opus', output: { baton: 'x' } }),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', model: 'opus', output: { handoff: 'x' } }),
       },
     }));
 
-    expect(() => checkCapabilities(race, provider)).toThrow(/opus/);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/opus/);
   });
 
   it('[CAP-004] rejects maxBudgetUsd on a budgetCap:false provider', () => {
@@ -84,20 +84,20 @@ describe('capability-check', () => {
       capabilities: { budgetCap: false },
     });
 
-    const race = makeFlow(() => ({
+    const flow = makeFlow(() => ({
       name: 'f',
       version: '0.1.0',
       input: z.object({}),
-      runners: {
-        a: runner.prompt({
+      steps: {
+        a: step.prompt({
           promptFile: 'p.md',
           maxBudgetUsd: 1.0,
-          output: { baton: 'x' },
+          output: { handoff: 'x' },
         }),
       },
     }));
 
-    expect(() => checkCapabilities(race, provider)).toThrow(/budget/i);
+    expect(() => checkCapabilities(flow, provider)).toThrow(/budget/i);
   });
 
   it('[CAP-005] resolveProvider uses the flag-supplied provider name', () => {
@@ -109,7 +109,7 @@ describe('capability-check', () => {
 
     const resolved = resolveProvider({
       flagProvider: 'runnerProv',
-      raceSettings: null,
+      flowSettings: null,
       globalSettings: null,
       registry,
     });
@@ -123,7 +123,7 @@ describe('capability-check', () => {
     registry.register(providerA);
 
     const resolved = resolveProvider({
-      raceSettings: null,
+      flowSettings: null,
       globalSettings: { provider: 'custom-provider' },
       registry,
     });

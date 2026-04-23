@@ -1,5 +1,5 @@
 /**
- * Subprocess runner for the `claude -p` binary.
+ * Subprocess step for the `claude -p` binary.
  *
  * Spawns the CLI with piped stdio, writes the prompt to stdin, then reads
  * NDJSON output line by line. Each newline-terminated line is parsed as JSON
@@ -10,7 +10,7 @@
  * and returned as part of the generator's terminal value alongside the exit
  * code and signal.
  *
- * Abort handling: on AbortSignal abort the runner sends SIGTERM, waits 2s,
+ * Abort handling: on AbortSignal abort the step sends SIGTERM, waits 2s,
  * then escalates to SIGKILL. Spawn failures (ENOENT, EACCES) surface as the
  * terminal value `{ exitCode: null, stderr: <error message>, signal: null }`
  * — the generator never throws.

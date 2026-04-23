@@ -41,17 +41,12 @@ vi.mock('../../src/util/atomic-write.js', async (importOriginal) => {
 });
 
 import { err, errAsync, ok } from 'neverthrow';
-import {
-  AtomicWriteError,
-  ERROR_CODES,
-  PipelineError,
-  RaceStateWriteError,
-} from '../../src/errors.js';
+import { AtomicWriteError, ERROR_CODES, PipelineError, StateWriteError } from '../../src/errors.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationContext, InvocationResponse } from '../../src/providers/types.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
 import { createWorktree, isGitRepo, removeWorktree } from '../../src/runner/worktree.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { atomicWriteJson } from '../../src/util/atomic-write.js';
@@ -72,16 +67,16 @@ const CANNED: InvocationResponse = {
 };
 
 function makeGitErr(msg = 'not a git repository'): PipelineError {
-  return new PipelineError(msg, ERROR_CODES.RUNNER_FAILURE, {});
+  return new PipelineError(msg, ERROR_CODES.STEP_FAILURE, {});
 }
 
 function singleStepRace() {
-  return defineRace({
+  return defineFlow({
     name: 'wt-test',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      step: runner.prompt({ promptFile: 'p.md', output: { baton: 'step-out' } }),
+    steps: {
+      step: step.prompt({ promptFile: 'p.md', output: { handoff: 'step-out' } }),
     },
   });
 }
@@ -150,7 +145,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       const result = await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
       );
 
       expect(result.status).toBe('succeeded');
@@ -189,7 +184,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       const result = await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
       );
 
       // The run records 'failed' (step threw) but removeWorktree still ran
@@ -214,7 +209,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       const result = await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
       );
 
       expect(result.status).toBe('succeeded');
@@ -233,7 +228,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       const result = await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
       );
 
       expect(result.status).toBe('succeeded');
@@ -249,9 +244,9 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
 
   describe('invocationContext.cwd propagation', () => {
     it('sets cwd to the worktree path on provider InvocationContext when a worktree is created', async () => {
-      // Use tmp as gitRoot so that relative(gitRoot, raceDir) === '' (raceDir === tmp === gitRoot).
+      // Use tmp as gitRoot so that relative(gitRoot, flowDir) === '' (flowDir === tmp === gitRoot).
       // That makes worktreeCwd = join(fakeWorktreePath, '') = fakeWorktreePath.
-      // raceDir must be tmp so the prompt file (p.md) resolves correctly.
+      // flowDir must be tmp so the prompt file (p.md) resolves correctly.
       const fakeGitRoot = tmp;
       const fakeWorktreePath = join(tmpdir(), 'relay-worktrees', 'cwd-test');
 
@@ -275,12 +270,12 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       registry.register(capturingProvider);
       const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
 
-      // raceDir === fakeGitRoot === tmp
+      // flowDir === fakeGitRoot === tmp
       // => relative(fakeGitRoot, tmp) === '' => worktreeCwd = fakeWorktreePath
       await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
       );
 
       expect(capturedCwds).toHaveLength(1);
@@ -309,7 +304,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
       await orchestrator.run(
         singleStepRace(),
         {},
-        { raceDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+        { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
       );
 
       expect(capturedCwds).toHaveLength(1);
@@ -332,14 +327,14 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
 
       // The Orchestrator calls atomicWriteJson in this order before the step
       // loop starts:
-      //   call 1 — #writeRaceRef   (race-ref.json)
-      //   call 2 — raceStateMachine.init() -> save()  (state.json, seeds runners)
-      //   call 3 — raceStateMachine.save() after setting .input  (state.json)
+      //   call 1 — #writeFlowRef   (flow-ref.json)
+      //   call 2 — stateMachine.init() -> save()  (state.json, seeds steps)
+      //   call 3 — stateMachine.save() after setting .input  (state.json)
       //
-      // The 4th call is the startSave inside dispatchRunner once the step loop
+      // The 4th call is the startSave inside dispatchStep once the step loop
       // starts. Returning an Err there causes save() to produce
-      // err(RaceStateWriteError), dispatchRunner to throw it, the walker's
-      // completion drain to re-throw it (RaceStateWriteError branch), and
+      // err(StateWriteError), dispatchStep to throw it, the walker's
+      // completion drain to re-throw it (StateWriteError branch), and
       // run()'s catch block to re-throw it (not abort-like). The finally block
       // then fires — calling #teardownWorktree -> removeWorktree — proving the
       // guarantee holds even for un-foreseen mid-DAG throws.
@@ -359,20 +354,20 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
 
       const { orchestrator } = buildOrchestrator(tmp);
 
-      // run() re-throws the RaceStateWriteError from the catch block because it
+      // run() re-throws the StateWriteError from the catch block because it
       // is not abort-like. The finally block fires before the throw propagates.
       await expect(
         orchestrator.run(
           singleStepRace(),
           {},
           {
-            raceDir: tmp,
+            flowDir: tmp,
             authTimeoutMs: 1_000,
             flagProvider: 'mock',
             worktree: 'auto',
           },
         ),
-      ).rejects.toThrow(RaceStateWriteError);
+      ).rejects.toThrow(StateWriteError);
 
       // The finally block must have called removeWorktree with the worktree that
       // was set up before the DAG walker started.
@@ -389,7 +384,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
 
   describe('concurrent runs', () => {
     it('each concurrent run receives a distinct runId in its createWorktree call', async () => {
-      // Two separate temp dirs so each orchestrator has its own runDir and raceDir.
+      // Two separate temp dirs so each orchestrator has its own runDir and flowDir.
       // Each has its own p.md so prompt resolution succeeds.
       const tmpA = await mkdtemp(join(tmpdir(), 'relay-wt-con-a-'));
       const tmpB = await mkdtemp(join(tmpdir(), 'relay-wt-con-b-'));
@@ -398,7 +393,7 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
         await writeFile(join(tmpB, 'p.md'), '# test', 'utf8');
 
         // isGitRepo returns each dir's own path as the git root so that
-        // relative(gitRoot, raceDir) === '' and worktreeCwd = worktreePath.
+        // relative(gitRoot, flowDir) === '' and worktreeCwd = worktreePath.
         mockedIsGitRepo.mockImplementation(async (dir) => ok(dir));
 
         // createWorktree captures the runId and returns a unique worktree path
@@ -423,12 +418,12 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
         const runA = orchestratorA.run(
           singleStepRace(),
           {},
-          { raceDir: tmpA, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+          { flowDir: tmpA, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
         );
         const runB = orchestratorB.run(
           singleStepRace(),
           {},
-          { raceDir: tmpB, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
+          { flowDir: tmpB, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: 'auto' },
         );
 
         const [resultA, resultB] = await Promise.all([runA, runB]);

@@ -6,7 +6,7 @@
  * interface itself. Pure TypeScript interfaces and type aliases — no runtime
  * logic, no classes. The only imports are type-only.
  *
- * Consumers: Runner, ClaudeCliProvider, MockProvider, race authors.
+ * Consumers: Step, ClaudeCliProvider, MockProvider, flow authors.
  */
 
 import type { Result } from 'neverthrow';
@@ -19,9 +19,9 @@ import type { Logger } from '../logger.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Static descriptor each Provider publishes to the Runner.
+ * Static descriptor each Provider publishes to the Orchestrator.
  * Describes what an LLM provider can and cannot do.
- * Runner builders check these at race-load time before any tokens are spent.
+ * Step builders check these at flow-load time before any tokens are spent.
  */
 export interface ProviderCapabilities {
   /** True if the provider can stream tokens incrementally. */
@@ -33,7 +33,7 @@ export interface ProviderCapabilities {
   /** True if the provider supports tool/function calling. */
   tools: boolean;
 
-  /** Names of built-in tools advertised to runner.prompt({ tools }). Empty if not applicable. */
+  /** Names of built-in tools advertised to step.prompt({ tools }). Empty if not applicable. */
   builtInTools: readonly string[];
 
   /** True if the provider supports multimodal (image, audio, etc.) input. */
@@ -55,7 +55,7 @@ export interface ProviderCapabilities {
 
 /**
  * Normalized auth/billing state wrapped in the `ok(...)` branch of the Result
- * returned by Provider.authenticate(). The Runner uses this for the pre-run
+ * returned by Provider.authenticate(). The Step uses this for the pre-run
  * banner and the doctor command.
  */
 export interface AuthState {
@@ -113,7 +113,7 @@ export interface NormalizedUsage {
  * Every provider translates this to its own wire format internally.
  */
 export interface InvocationRequest {
-  /** Already-rendered prompt, with baton context blocks interpolated. */
+  /** Already-rendered prompt, with handoff context blocks interpolated. */
   prompt: string;
 
   /** Provider-specific model identifier; provider validates. */
@@ -136,13 +136,13 @@ export interface InvocationRequest {
 // ---------------------------------------------------------------------------
 
 /**
- * Runtime context injected by the Runner into every provider call.
- * Carries race/runner identity, an abort signal, and a scoped logger.
+ * Runtime context injected by the Orchestrator into every provider call.
+ * Carries flow/step identity, an abort signal, and a scoped logger.
  */
 export interface InvocationContext {
-  raceName: string;
+  flowName: string;
   runId: string;
-  runnerId: string;
+  stepId: string;
 
   /** 1-based retry counter. First attempt is 1. */
   attempt: number;
@@ -174,7 +174,7 @@ export interface InvocationResponse {
    * API-equivalent cost estimate in USD.
    * Omit when the provider has no reliable estimate (subscription-billed runs).
    * For subscription-billed providers this reflects a compute-equivalent
-   * estimate, not a charge; the Runner surfaces it as informational only.
+   * estimate, not a charge; the Orchestrator surfaces it as informational only.
    */
   costUsd?: number;
 
@@ -260,20 +260,20 @@ export interface CostEstimate {
 /**
  * Implement this interface to add any LLM backend to Relay.
  *
- * "Provider" is distinct from "Runner": the Runner orchestrates the
- * race; the Provider executes a single LLM invocation.
+ * "Provider" is distinct from "Step": the Orchestrator orchestrates the
+ * flow; the Provider executes a single LLM invocation.
  */
 export interface Provider {
-  /** Stable identifier used in race definitions and the ProviderRegistry. */
+  /** Stable identifier used in flow definitions and the ProviderRegistry. */
   readonly name: string;
 
-  /** Self-described capabilities. The Runner uses these for static checks. */
+  /** Self-described capabilities. The Step uses these for static checks. */
   readonly capabilities: ProviderCapabilities;
 
   /**
    * Pre-flight: verify the provider can be used right now. Called once per
-   * Runner.run(). Returns `ok(AuthState)` on success or `err(PipelineError)`
-   * on any misconfiguration — the Runner never sees a thrown error from this
+   * Orchestrator.run()(). Returns `ok(AuthState)` on success or `err(PipelineError)`
+   * on any misconfiguration — the Orchestrator never sees a thrown error from this
    * method.
    */
   authenticate(): Promise<Result<AuthState, PipelineError>>;
@@ -289,7 +289,7 @@ export interface Provider {
 
   /**
    * Optional: per-token streaming for the live progress display.
-   * If omitted, the Runner falls back to coarser per-step events.
+   * If omitted, the Orchestrator falls back to coarser per-step events.
    */
   stream?(req: InvocationRequest, ctx: InvocationContext): AsyncIterable<InvocationEvent>;
 

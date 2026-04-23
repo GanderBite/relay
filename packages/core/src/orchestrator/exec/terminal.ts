@@ -1,20 +1,20 @@
-import type { TerminalRunnerSpec } from '../../race/types.js';
-import type { RunnerExecutionContext } from '../orchestrator.js';
+import type { TerminalStepSpec } from '../../flow/types.js';
+import type { StepExecutionContext } from '../orchestrator.js';
 
-export interface TerminalRunnerResult {
+export interface TerminalStepResult {
   kind: 'terminal';
   terminal: true;
   exitCode: number;
 }
 
 export async function executeTerminal(
-  runner: TerminalRunnerSpec,
-  ctx: RunnerExecutionContext,
-): Promise<TerminalRunnerResult> {
-  const exitCode = runner.exitCode ?? 0;
+  step: TerminalStepSpec,
+  ctx: StepExecutionContext,
+): Promise<TerminalStepResult> {
+  const exitCode = step.exitCode ?? 0;
   ctx.logger.info(
-    { event: 'terminal', runnerId: runner.id, exitCode },
-    runner.message ?? 'Race terminated',
+    { event: 'terminal', stepId: step.id, exitCode },
+    step.message ?? 'Flow terminated',
   );
   return { kind: 'terminal', terminal: true, exitCode };
 }

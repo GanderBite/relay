@@ -4,7 +4,7 @@ import { err, ok, type Result } from 'neverthrow';
  * Local error class for the `lookup` utility — signals a key that was
  * expected to exist but did not. Kept inside `util/map-utils.ts` because
  * this error never escapes core; it is always unwrapped or wrapped into
- * a domain error (RaceDefinitionError, etc.) at the immediate call site.
+ * a domain error (FlowDefinitionError, etc.) at the immediate call site.
  */
 export class ValueNotFoundError extends Error {
   readonly key: string;

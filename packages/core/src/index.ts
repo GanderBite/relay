@@ -1,6 +1,6 @@
 // @relay/core -- library entry.
 
-// Result types — use these to handle errors returned by defineRace, runner.*, atomicWrite*
+// Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
 export {
   err,
   errAsync,
@@ -12,14 +12,12 @@ export {
   type Result,
   type ResultAsync,
 } from 'neverthrow';
-// Baton persistence
-export { BatonStore } from './batons.js';
 // Constants
 export { GITHUB_ISSUES_URL, GITHUB_URL } from './constants.js';
 export type { AssemblePromptArgs } from './context-inject.js';
 // Context injection
-export { assemblePrompt, loadBatonValues } from './context-inject.js';
-export type { CostSummary, RunnerMetrics } from './cost.js';
+export { assemblePrompt, loadHandoffValues } from './context-inject.js';
+export type { CostSummary, StepMetrics } from './cost.js';
 // Cost tracking
 export { CostTracker } from './cost.js';
 export type { ErrorCode } from './errors.js';
@@ -27,39 +25,64 @@ export type { ErrorCode } from './errors.js';
 export {
   AtomicWriteError,
   AuthTimeoutError,
-  BatonIoError,
-  BatonNotFoundError,
-  BatonSchemaError,
-  BatonWriteError,
   ClaudeAuthError,
   ERROR_CODES,
+  FlowDefinitionError,
+  HandoffIoError,
+  HandoffNotFoundError,
+  HandoffSchemaError,
+  HandoffWriteError,
   MetricsWriteError,
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
   ProviderRateLimitError,
-  RaceDefinitionError,
-  RaceStateCorruptError,
-  RaceStateNotFoundError,
-  RaceStateTransitionError,
-  RaceStateVersionMismatchError,
-  RaceStateWriteError,
-  RunnerFailureError,
+  StateCorruptError,
+  StateNotFoundError,
+  StateTransitionError,
+  StateVersionMismatchError,
+  StateWriteError,
+  StepFailureError,
   TimeoutError,
-  toRaceDefError,
+  toFlowDefError,
 } from './errors.js';
+// Flow compiler
+export { defineFlow } from './flow/define.js';
+// Step factory namespace and step spec types
+export { step } from './flow/step.js';
+// Flow and step core types
+export type {
+  BranchStepSpec,
+  Flow,
+  FlowGraph,
+  FlowSpec,
+  FlowStatus,
+  ParallelStepSpec,
+  PromptStepOutput,
+  PromptStepSpec,
+  RunState,
+  ScriptStepSpec,
+  Step,
+  StepBase,
+  StepKind,
+  StepState,
+  StepStatus,
+  TerminalStepSpec,
+} from './flow/types.js';
+// Handoff persistence
+export { HandoffStore } from './handoffs.js';
 export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
-// Logger — factory that returns a scoped pino instance with raceName/runId bindings.
+// Logger — factory that returns a scoped pino instance with flowName/runId bindings.
 export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 export type {
   OrchestratorOptions,
-  RunnerExecutionContext,
-  RunnerResult,
   RunOptions,
   RunResult,
+  StepExecutionContext,
+  StepResult,
 } from './orchestrator/index.js';
-// Orchestrator — orchestrates race execution
+// Orchestrator — orchestrates flow execution
 export { createOrchestrator, Orchestrator } from './orchestrator/index.js';
 export type { ClaudeCliProviderOptions } from './providers/claude-cli/index.js';
 // ClaudeCliProvider
@@ -80,41 +103,18 @@ export type {
   Provider,
   ProviderCapabilities,
 } from './providers/types.js';
-// Race compiler
-export { defineRace } from './race/define.js';
-// Runner namespace and runner spec types
-export { runner } from './race/runner.js';
-// Race and runner core types
-export type {
-  BranchRunnerSpec,
-  ParallelRunnerSpec,
-  PromptRunnerOutput,
-  PromptRunnerSpec,
-  Race,
-  RaceGraph,
-  RaceSpec,
-  RaceState,
-  RaceStatus,
-  Runner,
-  RunnerBase,
-  RunnerKind,
-  RunnerState,
-  RunnerStatus,
-  ScriptRunnerSpec,
-  TerminalRunnerSpec,
-} from './race/types.js';
 export type { RelaySettingsType, ResolveProviderArgs } from './settings/index.js';
 // Settings — provider selection and path resolution
 export {
+  flowSettingsPath,
   globalSettingsPath,
+  loadFlowSettings,
   loadGlobalSettings,
-  loadRaceSettings,
   RelaySettings,
-  raceSettingsPath,
   resolveProvider,
 } from './settings/index.js';
 // Run state persistence
-export { loadState, RaceStateMachine, verifyCompatibility } from './state.js';
+export { loadState, StateMachine, verifyCompatibility } from './state.js';
 // Atomic write helpers
 export { atomicWriteJson, atomicWriteText } from './util/atomic-write.js';
 // Zod re-export — consumers reach for z.ZodType<T>, z.core.$ZodIssue, z.infer<typeof X> directly

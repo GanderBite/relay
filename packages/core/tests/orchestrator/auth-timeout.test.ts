@@ -1,16 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
 import { ok, type Result } from 'neverthrow';
-
-import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
-import { ProviderRegistry } from '../../src/providers/registry.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuthTimeoutError, ERROR_CODES, type PipelineError } from '../../src/errors.js';
-import { z } from '../../src/zod.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
+import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
+import { ProviderRegistry } from '../../src/providers/registry.js';
 import type {
   AuthState,
   InvocationContext,
@@ -19,6 +16,7 @@ import type {
   Provider,
   ProviderCapabilities,
 } from '../../src/providers/types.js';
+import { z } from '../../src/zod.js';
 
 const DEFAULT_CAPS: ProviderCapabilities = {
   streaming: true,
@@ -35,10 +33,10 @@ const DEFAULT_CAPS: ProviderCapabilities = {
  * Provider whose authenticate() returns a promise that never resolves and
  * never rejects. Models the failure mode the auth-timeout cap exists to
  * defend against — a misconfigured CLI probe or a buggy custom provider that
- * wedges the Runner before any step runs.
+ * wedges the Orchestrator before any step runs.
  *
- * `invokeCalled` flips true if the Runner ever calls invoke(); the test
- * asserts it stays false because the auth race must short-circuit the run.
+ * `invokeCalled` flips true if the Orchestrator ever calls invoke(); the test
+ * asserts it stays false because the auth flow must short-circuit the run.
  */
 class StuckAuthProvider implements Provider {
   readonly name = 'mock';
@@ -68,20 +66,20 @@ class StuckAuthProvider implements Provider {
 }
 
 function singleStepFlow() {
-  return defineRace({
+  return defineFlow({
     name: 'auth-timeout-flow',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      a: runner.prompt({
+    steps: {
+      a: step.prompt({
         promptFile: 'p.md',
-        output: { baton: 'a-out' },
+        output: { handoff: 'a-out' },
       }),
     },
   });
 }
 
-describe('Runner — provider.authenticate() timeout', () => {
+describe('Step — provider.authenticate() timeout', () => {
   let tmp: string;
 
   beforeEach(async () => {

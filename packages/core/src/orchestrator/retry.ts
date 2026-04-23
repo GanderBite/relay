@@ -1,20 +1,19 @@
 import pRetry, { type RetryContext } from 'p-retry';
-
-import type { Logger } from '../logger.js';
 import {
   ClaudeAuthError,
   ERROR_CODES,
-  RaceDefinitionError,
-  BatonSchemaError,
+  FlowDefinitionError,
+  HandoffSchemaError,
   ProviderAuthError,
   TimeoutError,
 } from '../errors.js';
+import type { Logger } from '../logger.js';
 
 export interface WithRetryOptions {
   maxRetries: number;
   timeoutMs?: number;
   logger: Logger;
-  runnerId: string;
+  stepId: string;
 }
 
 /**
@@ -32,8 +31,8 @@ export function shouldRetry(err: unknown): boolean {
   if (err instanceof TimeoutError) return false;
   if (err instanceof ClaudeAuthError) return false;
   if (err instanceof ProviderAuthError) return false;
-  if (err instanceof RaceDefinitionError) return false;
-  if (err instanceof BatonSchemaError) return false;
+  if (err instanceof FlowDefinitionError) return false;
+  if (err instanceof HandoffSchemaError) return false;
   return true;
 }
 
@@ -44,7 +43,7 @@ export function shouldRetry(err: unknown): boolean {
  *
  * Per-attempt timeout races fn's promise; fn itself is not cancelled on timeout
  * because fn's signature carries no AbortSignal. The step-level abortSignal on
- * the Runner context is what actually stops in-flight work.
+ * the Orchestrator context is what actually stops in-flight work.
  *
  * Backoff is delegated entirely to p-retry (exponential with jitter, starting
  * at BASE_DELAY_MS). ProviderRateLimitError is retried like any other transient
@@ -58,7 +57,7 @@ export async function withRetry<T>(
   fn: (attempt: number) => Promise<T>,
   opts: WithRetryOptions,
 ): Promise<T> {
-  const { maxRetries, timeoutMs, logger, runnerId } = opts;
+  const { maxRetries, timeoutMs, logger, stepId } = opts;
 
   const attempt = async (attemptNumber: number): Promise<T> => {
     if (timeoutMs === undefined) {
@@ -69,7 +68,9 @@ export async function withRetry<T>(
     try {
       const timeoutPromise = new Promise<never>((_resolve, reject) => {
         timerId = setTimeout(() => {
-          reject(new TimeoutError(`runner "${runnerId}" timed out after ${timeoutMs}ms`, runnerId, timeoutMs));
+          reject(
+            new TimeoutError(`step "${stepId}" timed out after ${timeoutMs}ms`, stepId, timeoutMs),
+          );
         }, timeoutMs);
       });
       return await Promise.race([fn(attemptNumber), timeoutPromise]);
@@ -87,21 +88,22 @@ export async function withRetry<T>(
       return;
     }
 
-    const code = error instanceof Error && 'code' in error
-      ? (error as { code: unknown }).code
-      : ERROR_CODES.RUNNER_FAILURE;
+    const code =
+      error instanceof Error && 'code' in error
+        ? (error as { code: unknown }).code
+        : ERROR_CODES.STEP_FAILURE;
     const message = error instanceof Error ? error.message : String(error);
 
     logger.warn(
       {
         event: 'retry',
-        runnerId,
+        stepId,
         attempt: attemptNumber,
         nextAttempt: attemptNumber + 1,
         code,
         message,
       },
-      `retrying runner "${runnerId}" (attempt ${attemptNumber} failed)`,
+      `retrying step "${stepId}" (attempt ${attemptNumber} failed)`,
     );
   };
 

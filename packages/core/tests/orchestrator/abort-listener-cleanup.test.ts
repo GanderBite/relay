@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Hoisted knob so the vi.mock factory can reach it. When `target` is the
 // runDir of a test in progress, the next rename against `<target>/state.json`
 // after `failAfter` successful writes throws a synthetic I/O error. That
-// forces the Runner's walker to throw before reaching its normal exit — the
+// forces the Orchestrator's walker to throw before reaching its normal exit — the
 // exact path where an orphaned abort listener is observable.
 const failStateSave = vi.hoisted(() => ({
   target: null as string | null,
@@ -26,11 +26,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ) {
       const dstStr = typeof dst === 'string' ? dst : dst.toString();
       const target = failStateSave.target;
-      if (
-        target !== null &&
-        dstStr === join(target, 'state.json') &&
-        !failStateSave.consumed
-      ) {
+      if (target !== null && dstStr === join(target, 'state.json') && !failStateSave.consumed) {
         if (failStateSave.seen >= failStateSave.failAfter) {
           failStateSave.consumed = true;
           throw Object.assign(new Error('injected state.json rename failure'), {
@@ -44,13 +40,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
+import type { InvocationResponse } from '../../src/providers/types.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { z } from '../../src/zod.js';
-import type { InvocationResponse } from '../../src/providers/types.js';
 
 const canned: InvocationResponse = {
   text: '{"ok":true}',
@@ -63,25 +59,25 @@ const canned: InvocationResponse = {
 };
 
 function twoStepFlow() {
-  return defineRace({
+  return defineFlow({
     name: 'abort-listener-cleanup-flow',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      a: runner.prompt({
+    steps: {
+      a: step.prompt({
         promptFile: 'p.md',
-        output: { baton: 'a-out' },
+        output: { handoff: 'a-out' },
       }),
-      b: runner.prompt({
+      b: step.prompt({
         promptFile: 'p.md',
         dependsOn: ['a'],
-        output: { baton: 'b-out' },
+        output: { handoff: 'b-out' },
       }),
     },
   });
 }
 
-describe('Runner — abort listener cleanup', () => {
+describe('Step — abort listener cleanup', () => {
   let tmp: string;
   let addSpy: ReturnType<typeof vi.spyOn>;
   let removeSpy: ReturnType<typeof vi.spyOn>;
@@ -93,7 +89,7 @@ describe('Runner — abort listener cleanup', () => {
     failStateSave.seen = 0;
     failStateSave.consumed = false;
     // Spying on AbortSignal.prototype catches every abort-event registration
-    // and removal the Runner performs, regardless of which AbortController the
+    // and removal the Orchestrator performs, regardless of which AbortController the
     // run happens to allocate. The test asserts the balance of pairs, which
     // stays zero only when every addEventListener has a matching removal.
     addSpy = vi.spyOn(AbortSignal.prototype, 'addEventListener');
@@ -110,10 +106,10 @@ describe('Runner — abort listener cleanup', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  // Vitest's own test runner registers a nameless `abort` listener on its
+  // Vitest's own test step registers a nameless `abort` listener on its
   // internal AbortSignal for timeout/cancellation, and its prototype spy picks
-  // that up too. Filter by the named handlers the Runner installs so the
-  // assertion targets the Runner's listener hygiene, not vitest's bookkeeping.
+  // that up too. Filter by the named handlers the Orchestrator installs so the
+  // assertion targets the Orchestrator's listener hygiene, not vitest's bookkeeping.
   const RUNNER_HANDLER_NAMES = new Set(['onAbort', 'abortHandler']);
 
   function countRunnerAbortCalls(spy: ReturnType<typeof vi.spyOn>): number {
@@ -139,7 +135,7 @@ describe('Runner — abort listener cleanup', () => {
   }
 
   it('removes the walker abort listener exactly once when the walker throws mid-run', async () => {
-    // RaceStateMachine.init() + the explicit initialSave after input validation
+    // StateMachine.init() + the explicit initialSave after input validation
     // both rename state.json before any step dispatches. The next write is
     // step-a's startSave. failAfter=3 lets those three pre-walker writes
     // through and trips the first save inside the walker — the path that
@@ -156,7 +152,9 @@ describe('Runner — abort listener cleanup', () => {
       runDir: tmp,
     });
 
-    const thrown = await orchestrator.run(twoStepFlow(), {}, { flagProvider: 'mock' }).catch((e: unknown) => e);
+    const thrown = await orchestrator
+      .run(twoStepFlow(), {}, { flagProvider: 'mock' })
+      .catch((e: unknown) => e);
     expect(thrown).toBeInstanceOf(Error);
     expect(failStateSave.consumed).toBe(true);
 
@@ -170,7 +168,7 @@ describe('Runner — abort listener cleanup', () => {
     expect(onAbortAdds).toBe(1);
     expect(onAbortRemoves).toBe(1);
 
-    // Every Runner-owned abort-event registration must be paired with a
+    // Every Step-owned abort-event registration must be paired with a
     // removal. Adds == removes holds for both the walker's listener and the
     // per-call raceAbort listeners.
     const adds = countRunnerAbortCalls(addSpy);
@@ -180,8 +178,8 @@ describe('Runner — abort listener cleanup', () => {
   });
 
   it('removes the walker abort listener exactly once on a clean success', async () => {
-    // The prompt executor resolves promptFile relative to raceDir, so the
-    // run would otherwise fail with ENOENT on step a. Pointing raceDir at tmp
+    // The prompt executor resolves promptFile relative to flowDir, so the
+    // run would otherwise fail with ENOENT on step a. Pointing flowDir at tmp
     // and dropping a minimal template keeps the happy path on the success
     // branch this assertion needs to exercise.
     await writeFile(join(tmp, 'p.md'), 'hello', 'utf8');
@@ -195,7 +193,11 @@ describe('Runner — abort listener cleanup', () => {
       runDir: tmp,
     });
 
-    const result = await orchestrator.run(twoStepFlow(), {}, { raceDir: tmp, flagProvider: 'mock' });
+    const result = await orchestrator.run(
+      twoStepFlow(),
+      {},
+      { flowDir: tmp, flagProvider: 'mock' },
+    );
     expect(result.status).toBe('succeeded');
 
     const onAbortAdds = countOnAbortCalls(addSpy);

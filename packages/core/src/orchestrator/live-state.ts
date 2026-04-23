@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import type { ResultAsync } from 'neverthrow';
 
 import type { AtomicWriteError } from '../errors.js';
-import type { RunnerStatus } from '../race/types.js';
+import type { StepStatus } from '../flow/types.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
 
 export interface LiveStatePartial {
-  status: RunnerStatus;
+  status: StepStatus;
   attempt: number;
   startedAt: string;
   lastUpdateAt: string;
@@ -19,10 +19,10 @@ export interface LiveStatePartial {
 
 export function writeLiveState(
   runDir: string,
-  runnerId: string,
+  stepId: string,
   partial: LiveStatePartial,
 ): ResultAsync<void, AtomicWriteError> {
-  const filePath = join(runDir, 'live', `${runnerId}.json`);
+  const filePath = join(runDir, 'live', `${stepId}.json`);
   return atomicWriteJson(filePath, partial);
 }
 

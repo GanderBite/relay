@@ -2,20 +2,20 @@
  * Sprint 5 task_33 contract tests for executePrompt.
  * References packages/core/src/orchestrator/exec/prompt.ts — not yet implemented.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { executePrompt } from '../../../src/orchestrator/exec/prompt.js';
-import { MockProvider } from '../../../src/testing/mock-provider.js';
-import { BatonStore } from '../../../src/batons.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CostTracker } from '../../../src/cost.js';
-import { BatonSchemaError, RunnerFailureError } from '../../../src/errors.js';
-import { runner } from '../../../src/race/runner.js';
-import { z } from '../../../src/zod.js';
+import { HandoffSchemaError, StepFailureError } from '../../../src/errors.js';
+import { step } from '../../../src/flow/step.js';
+import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
+import { executePrompt } from '../../../src/orchestrator/exec/prompt.js';
 import type { InvocationResponse } from '../../../src/providers/types.js';
+import { MockProvider } from '../../../src/testing/mock-provider.js';
+import { z } from '../../../src/zod.js';
 
 const canned: InvocationResponse = {
   text: '{"name":"alice"}',
@@ -29,13 +29,13 @@ const canned: InvocationResponse = {
 
 describe('executePrompt (sprint 5 task_33)', () => {
   let tmp: string;
-  let raceDir: string;
+  let flowDir: string;
 
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-execp-'));
-    raceDir = join(tmp, 'flow');
-    await mkdir(join(raceDir, 'prompts'), { recursive: true });
-    await writeFile(join(raceDir, 'prompts', 'p.md'), 'Hello {{input.name}}', 'utf8');
+    flowDir = join(tmp, 'flow');
+    await mkdir(join(flowDir, 'prompts'), { recursive: true });
+    await writeFile(join(flowDir, 'prompts', 'p.md'), 'Hello {{input.name}}', 'utf8');
   });
 
   afterEach(async () => {
@@ -43,30 +43,28 @@ describe('executePrompt (sprint 5 task_33)', () => {
   });
 
   function makeCtxBase() {
-    const batonStore = new BatonStore(tmp);
+    const handoffStore = new HandoffStore(tmp);
     const costTracker = new CostTracker(join(tmp, 'metrics.json'));
     return {
       runDir: tmp,
-      raceDir,
-      raceName: 'f',
+      flowDir,
+      flowName: 'f',
       runId: 'r',
-      batonStore,
+      handoffStore,
       costTracker,
-      logger: createLogger({ raceName: 'f', runId: 'r' }),
+      logger: createLogger({ flowName: 'f', runId: 'r' }),
       abortSignal: new AbortController().signal,
     };
   }
 
-  it('[EXEC-PROMPT-001] loads prompt, loads batons, calls assemblePrompt, then provider.invoke', async () => {
-    const batonStore = new BatonStore(tmp);
-    await batonStore.write('prior', { note: 'ok' });
-    const s = runner
-      .prompt({
-        promptFile: 'prompts/p.md',
-        contextFrom: ['prior'],
-        output: { baton: 'greeted' },
-      })
-      ;
+  it('[EXEC-PROMPT-001] loads prompt, loads handoffs, calls assemblePrompt, then provider.invoke', async () => {
+    const handoffStore = new HandoffStore(tmp);
+    await handoffStore.write('prior', { note: 'ok' });
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      contextFrom: ['prior'],
+      output: { handoff: 'greeted' },
+    });
 
     let capturedPrompt = '';
     const provider = new MockProvider({
@@ -78,22 +76,27 @@ describe('executePrompt (sprint 5 task_33)', () => {
       },
     });
 
-    const ctx = { ...makeCtxBase(), batonStore, runnerId: s.id || 'greet', runner: s, provider, attempt: 1 };
+    const ctx = {
+      ...makeCtxBase(),
+      handoffStore,
+      stepId: s.id || 'greet',
+      step: s,
+      provider,
+      attempt: 1,
+    };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(capturedPrompt).toContain('<c name="prior">');
-    // baton written
-    const wrote = await batonStore.read('greeted');
+    // handoff written
+    const wrote = await handoffStore.read('greeted');
     expect(wrote.isOk()).toBe(true);
   });
 
   it('[EXEC-PROMPT-002] converts Zod schema to JSON schema on InvocationRequest.jsonSchema', async () => {
-    const s = runner
-      .prompt({
-        promptFile: 'prompts/p.md',
-        output: { baton: 'x', schema: z.object({ name: z.string() }) },
-      })
-      ;
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: { handoff: 'x', schema: z.object({ name: z.string() }) },
+    });
 
     let capturedJsonSchema: unknown;
     const provider = new MockProvider({
@@ -105,7 +108,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
       },
     });
 
-    const ctx = { ...makeCtxBase(), runnerId: s.id || 'p', runner: s, provider, attempt: 1 };
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(capturedJsonSchema).toBeTypeOf('object');
@@ -114,49 +117,45 @@ describe('executePrompt (sprint 5 task_33)', () => {
     expect(js.properties).toBeDefined();
   });
 
-  it('[EXEC-PROMPT-003] invalid JSON response against schema surfaces BatonSchemaError', async () => {
-    const s = runner
-      .prompt({
-        promptFile: 'prompts/p.md',
-        output: {
-          baton: 'entities',
-          schema: z.object({
-            entities: z.array(z.object({ name: z.string() })),
-          }),
-        },
-      })
-      ;
+  it('[EXEC-PROMPT-003] invalid JSON response against schema surfaces HandoffSchemaError', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: {
+        handoff: 'entities',
+        schema: z.object({
+          entities: z.array(z.object({ name: z.string() })),
+        }),
+      },
+    });
     const provider = new MockProvider({
       responses: {
         [s.id || 'p']: { ...canned, text: '{"entities":[{"name":1}]}' },
       },
     });
-    const ctx = { ...makeCtxBase(), runnerId: s.id || 'p', runner: s, provider, attempt: 1 };
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await expect(
       executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]),
-    ).rejects.toBeInstanceOf(BatonSchemaError);
+    ).rejects.toBeInstanceOf(HandoffSchemaError);
   });
 
   it('[EXEC-PROMPT-004] writes artifact file when output.artifact is set', async () => {
-    const s = runner
-      .prompt({ promptFile: 'prompts/p.md', output: { artifact: 'report.html' } })
-      ;
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { artifact: 'report.html' } });
     const provider = new MockProvider({
       responses: { [s.id || 'p']: { ...canned, text: '<html>...</html>' } },
     });
-    const ctx = { ...makeCtxBase(), runnerId: s.id || 'p', runner: s, provider, attempt: 1 };
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     const bytes = await readFile(join(tmp, 'artifacts', 'report.html'), 'utf8');
     expect(bytes).toContain('<html>');
   });
 
-  it('[EXEC-PROMPT-005] records RunnerMetrics via costTracker', async () => {
-    const s = runner.prompt({ promptFile: 'prompts/p.md', output: { baton: 'x' } });
+  it('[EXEC-PROMPT-005] records StepMetrics via costTracker', async () => {
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const ctxBase = makeCtxBase();
     const recordSpy = vi.spyOn(ctxBase.costTracker, 'record');
     const provider = new MockProvider({ responses: { [s.id || 'p']: canned } });
-    const ctx = { ...ctxBase, runnerId: s.id || 'p', runner: s, provider, attempt: 1 };
+    const ctx = { ...ctxBase, stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     expect(recordSpy).toHaveBeenCalledTimes(1);
     const metric = recordSpy.mock.calls[0]![0];
@@ -165,8 +164,8 @@ describe('executePrompt (sprint 5 task_33)', () => {
     expect(metric.costUsd).toBe(0.01);
   });
 
-  it('[EXEC-PROMPT-006] wraps provider errors in RunnerFailureError with runnerId + attempt', async () => {
-    const s = runner.prompt({ promptFile: 'prompts/p.md', output: { baton: 'x' } });
+  it('[EXEC-PROMPT-006] wraps provider errors in StepFailureError with stepId + attempt', async () => {
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const provider = new MockProvider({
       responses: {
         [s.id || 'p']: () => {
@@ -174,24 +173,24 @@ describe('executePrompt (sprint 5 task_33)', () => {
         },
       },
     });
-    const ctx = { ...makeCtxBase(), runnerId: s.id || 'p', runner: s, provider, attempt: 2 };
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 2 };
     await expect(
       executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]),
     ).rejects.toMatchObject({
-      name: 'RunnerFailureError',
+      name: 'StepFailureError',
       attempt: 2,
     });
     // Also verify class
     try {
       await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     } catch (e) {
-      expect(e).toBeInstanceOf(RunnerFailureError);
+      expect(e).toBeInstanceOf(StepFailureError);
     }
   });
 
   it('[EXEC-PROMPT-007] passes ctx.abortSignal into InvocationContext', async () => {
     const ctrl = new AbortController();
-    const s = runner.prompt({ promptFile: 'prompts/p.md', output: { baton: 'x' } });
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     let capturedSignal: AbortSignal | undefined;
     const provider = new MockProvider({
       responses: {
@@ -203,8 +202,8 @@ describe('executePrompt (sprint 5 task_33)', () => {
     });
     const ctx = {
       ...makeCtxBase(),
-      runnerId: s.id || 'p',
-      runner: s,
+      stepId: s.id || 'p',
+      step: s,
       provider,
       attempt: 1,
       abortSignal: ctrl.signal,
@@ -216,15 +215,28 @@ describe('executePrompt (sprint 5 task_33)', () => {
   it('[EXEC-PROMPT-008] emits logger events prompt.start / prompt.done on success, prompt.failed on error', async () => {
     const events: string[] = [];
     const stubLogger = {
-      info: (obj: { event?: string }) => { if (obj?.event) events.push(obj.event); },
+      info: (obj: { event?: string }) => {
+        if (obj?.event) events.push(obj.event);
+      },
       warn: () => undefined,
-      error: (obj: { event?: string }) => { if (obj?.event) events.push(obj.event); },
+      error: (obj: { event?: string }) => {
+        if (obj?.event) events.push(obj.event);
+      },
       debug: () => undefined,
-      child: function () { return this; },
+      child: function () {
+        return this;
+      },
     };
-    const s = runner.prompt({ promptFile: 'prompts/p.md', output: { baton: 'x' } });
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const provider = new MockProvider({ responses: { [s.id || 'p']: canned } });
-    const ctx = { ...makeCtxBase(), runnerId: s.id || 'p', runner: s, provider, attempt: 1, logger: stubLogger };
+    const ctx = {
+      ...makeCtxBase(),
+      stepId: s.id || 'p',
+      step: s,
+      provider,
+      attempt: 1,
+      logger: stubLogger,
+    };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     expect(events).toContain('prompt.start');
     expect(events).toContain('prompt.done');

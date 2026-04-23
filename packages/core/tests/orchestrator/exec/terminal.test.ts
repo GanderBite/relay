@@ -2,10 +2,9 @@
  * Sprint 5 task_37 contract tests for executeTerminal.
  * References packages/core/src/orchestrator/exec/terminal.ts — not yet implemented.
  */
-import { describe, it, expect, vi } from 'vitest';
-
+import { describe, expect, it, vi } from 'vitest';
+import { step } from '../../../src/flow/step.js';
 import { executeTerminal } from '../../../src/orchestrator/exec/terminal.js';
-import { runner } from '../../../src/race/runner.js';
 
 function stubLogger() {
   const calls: { level: string; payload: unknown }[] = [];
@@ -14,7 +13,9 @@ function stubLogger() {
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-    child: function () { return this; },
+    child: function () {
+      return this;
+    },
   };
   return { logger, calls };
 }
@@ -22,10 +23,10 @@ function stubLogger() {
 describe('executeTerminal (sprint 5 task_37)', () => {
   it('[EXEC-TERMINAL-001] marks run succeeded and returns a terminal sentinel', async () => {
     const { logger, calls } = stubLogger();
-    const s = runner.terminal({ message: 'done' });
+    const s = step.terminal({ message: 'done' });
     const ctx = {
-      runnerId: s.id || 's',
-      runner: s,
+      stepId: s.id || 's',
+      step: s,
       attempt: 1,
       abortSignal: new AbortController().signal,
       logger,
@@ -39,10 +40,10 @@ describe('executeTerminal (sprint 5 task_37)', () => {
 
   it('[EXEC-TERMINAL-002] propagates non-zero exitCode through the sentinel', async () => {
     const { logger } = stubLogger();
-    const s = runner.terminal({ exitCode: 2 });
+    const s = step.terminal({ exitCode: 2 });
     const ctx = {
-      runnerId: s.id || 's',
-      runner: s,
+      stepId: s.id || 's',
+      step: s,
       attempt: 1,
       abortSignal: new AbortController().signal,
       logger,

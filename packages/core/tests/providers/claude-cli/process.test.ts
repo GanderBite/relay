@@ -51,7 +51,7 @@ function makeChild(): MockChildHandles {
 
 function makeLogger(): Logger {
   const noop = vi.fn();
-  // Minimal pino-shaped logger used inside the runner. Only debug() is invoked
+  // Minimal pino-shaped logger used inside the step. Only debug() is invoked
   // from the production code path; the others are present so a future code
   // change cannot silently start swallowing logs.
   const logger = {
@@ -174,7 +174,7 @@ describe('runClaudeProcess', () => {
     });
     const collector = collect(gen);
 
-    // Allow a microtask so the runner attaches its handlers and writes stdin.
+    // Allow a microtask so the step attaches its handlers and writes stdin.
     await Promise.resolve();
     expect(child.stdin.write).toHaveBeenCalledWith('the prompt body', 'utf8', expect.any(Function));
     expect(child.stdin.end).toHaveBeenCalledTimes(1);
@@ -207,7 +207,7 @@ describe('runClaudeProcess', () => {
     const { values, result } = await collector;
     expect(values).toEqual([{ type: 'system' }, { type: 'result' }]);
     expect(result).toEqual({ exitCode: 0, stderr: '', signal: null });
-    // At least one debug call per malformed line. The runner emits a debug log
+    // At least one debug call per malformed line. The step emits a debug log
     // per skipped line; assert the event name is present.
     const debugCalls = (logger.debug as ReturnType<typeof vi.fn>).mock.calls;
     const malformedCalls = debugCalls.filter((c) => {
@@ -298,7 +298,7 @@ describe('runClaudeProcess', () => {
     });
     const collector = collect(gen);
 
-    // Allow the runner to attach its abort listener.
+    // Allow the step to attach its abort listener.
     await Promise.resolve();
 
     controller.abort();

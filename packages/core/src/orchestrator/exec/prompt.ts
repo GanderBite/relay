@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
-import type { BatonStore } from '../../batons.js';
-import { assemblePrompt, loadBatonValues } from '../../context-inject.js';
-import type { CostTracker, RunnerMetrics } from '../../cost.js';
-import { BatonSchemaError, PipelineError, RunnerFailureError } from '../../errors.js';
+import { assemblePrompt, loadHandoffValues } from '../../context-inject.js';
+import type { CostTracker, StepMetrics } from '../../cost.js';
+import { HandoffSchemaError, PipelineError, StepFailureError } from '../../errors.js';
+import type { PromptStepSpec } from '../../flow/types.js';
+import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
 import type {
   InvocationContext,
@@ -12,33 +13,32 @@ import type {
   NormalizedUsage,
   Provider,
 } from '../../providers/types.js';
-import type { PromptRunnerSpec } from '../../race/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { safeParse } from '../../util/json.js';
 import { z } from '../../zod.js';
 import { writeLiveState } from '../live-state.js';
 
 /**
- * Context bag threaded into executePrompt. The Runner constructs this from its
- * RunnerExecutionContext; tests pass a flat object with the same shape. The
- * executor does not reach back into the RaceStateMachine or ProviderRegistry —
+ * Context bag threaded into executePrompt. The Step constructs this from its
+ * StepExecutionContext; tests pass a flat object with the same shape. The
+ * executor does not reach back into the StateMachine or ProviderRegistry —
  * the provider is resolved upstream and handed in as a ready-to-invoke
  * instance so unit tests can swap in MockProvider without wiring a registry.
  */
-export interface PromptRunnerExecContext {
+export interface PromptStepExecContext {
   runDir: string;
-  raceDir: string;
-  raceName: string;
+  flowDir: string;
+  flowName: string;
   runId: string;
-  runnerId: string;
+  stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
-  batonStore: BatonStore;
+  handoffStore: HandoffStore;
   costTracker: CostTracker;
   logger: Logger;
   provider: Provider;
   inputVars?: Record<string, unknown>;
-  runnerVars?: Record<string, unknown>;
+  stepVars?: Record<string, unknown>;
   /**
    * Working directory handed to the provider subprocess — typically the
    * per-run git worktree path when isolation is active. Undefined when the
@@ -48,11 +48,11 @@ export interface PromptRunnerExecContext {
   cwd?: string;
 }
 
-export interface PromptRunnerResult {
+export interface PromptStepResult {
   kind: 'prompt';
-  runnerId: string;
+  stepId: string;
   text: string;
-  batons: string[];
+  handoffs: string[];
   artifacts: string[];
   tokensIn: number;
   tokensOut: number;
@@ -75,20 +75,20 @@ function codeOf(cause: unknown): string | undefined {
 }
 
 /**
- * Resolves the prompt template path relative to the race directory, refusing
- * absolute paths and any traversal that escapes the race root. Returning the
+ * Resolves the prompt template path relative to the flow directory, refusing
+ * absolute paths and any traversal that escapes the flow root. Returning the
  * error as a value (vs. throwing) keeps the caller's single catch-site as the
- * only place that wraps into RunnerFailureError.
+ * only place that wraps into StepFailureError.
  */
-function resolvePromptPath(raceDir: string, promptFile: string): string {
+function resolvePromptPath(flowDir: string, promptFile: string): string {
   if (isAbsolute(promptFile)) {
-    throw new Error(`promptFile must be relative to the race directory: ${promptFile}`);
+    throw new Error(`promptFile must be relative to the flow directory: ${promptFile}`);
   }
-  const root = resolve(raceDir);
-  const full = resolve(raceDir, promptFile);
+  const root = resolve(flowDir);
+  const full = resolve(flowDir, promptFile);
   const prefix = root.endsWith(sep) ? root : root + sep;
   if (full !== root && !full.startsWith(prefix)) {
-    throw new Error(`promptFile escapes race directory: ${promptFile}`);
+    throw new Error(`promptFile escapes flow directory: ${promptFile}`);
   }
   return full;
 }
@@ -114,7 +114,7 @@ function mergeUsage(base: NormalizedUsage, patch: Partial<NormalizedUsage>): Nor
  * text deltas, usage, and turn counts into a single InvocationResponse so the
  * rest of the executor can treat stream and non-stream providers identically.
  * On every usage event (and once on the first text delta as a liveness ping)
- * the per-step live file at <runDir>/live/<runnerId>.json is rewritten — that
+ * the per-step live file at <runDir>/live/<stepId>.json is rewritten — that
  * file is the lowest-cadence signal the CLI progress display watches.
  * Providers without stream() fall back to invoke(); the live-state write
  * still lands once after the response is aggregated so the file shape stays
@@ -125,12 +125,12 @@ async function runProviderInvocation(args: {
   request: InvocationRequest;
   invocationCtx: InvocationContext;
   runDir: string;
-  runnerId: string;
+  stepId: string;
   attempt: number;
   startedIso: string;
   logger: Logger;
 }): Promise<InvocationResponse> {
-  const { provider, request, invocationCtx, runDir, runnerId, attempt, startedIso, logger } = args;
+  const { provider, request, invocationCtx, runDir, stepId, attempt, startedIso, logger } = args;
 
   const emitLive = async (usage: NormalizedUsage, turns: number, model: string): Promise<void> => {
     const tokensSoFar = usage.inputTokens + usage.outputTokens;
@@ -143,10 +143,10 @@ async function runProviderInvocation(args: {
       turnsSoFar: turns,
       ...(model !== '' ? { model } : {}),
     };
-    const write = await writeLiveState(runDir, runnerId, partial);
+    const write = await writeLiveState(runDir, stepId, partial);
     if (write.isErr()) {
       logger.warn(
-        { event: 'live-state.write_failed', runnerId, error: write.error.message },
+        { event: 'live-state.write_failed', stepId, error: write.error.message },
         'live state write failed; continuing',
       );
     }
@@ -221,84 +221,84 @@ async function runProviderInvocation(args: {
 
 /**
  * Schema-validation failures keep their class so the Orchestrator (and tests) can
- * discriminate a baton-shape bug from a provider/network failure. Every
- * other non-RunnerFailureError cause is wrapped so the retry loop only has one
+ * discriminate a handoff-shape bug from a provider/network failure. Every
+ * other non-StepFailureError cause is wrapped so the retry loop only has one
  * error type to dispatch on.
  */
-function wrapFailure(cause: unknown, runnerId: string, attempt: number): PipelineError {
-  if (cause instanceof RunnerFailureError) return cause;
-  if (cause instanceof BatonSchemaError) return cause;
+function wrapFailure(cause: unknown, stepId: string, attempt: number): PipelineError {
+  if (cause instanceof StepFailureError) return cause;
+  if (cause instanceof HandoffSchemaError) return cause;
   const message = messageOf(cause);
-  return new RunnerFailureError(`runner "${runnerId}" failed: ${message}`, runnerId, attempt, {
+  return new StepFailureError(`step "${stepId}" failed: ${message}`, stepId, attempt, {
     cause: message,
     code: codeOf(cause),
   });
 }
 
 /**
- * Executes one prompt runner. Loads the template, injects declared batons,
- * invokes the provider, then routes the response to a baton (validated via
+ * Executes one prompt step. Loads the template, injects declared handoffs,
+ * invokes the provider, then routes the response to a handoff (validated via
  * Zod when a schema is configured) and/or an artifact file. Cost metrics are
- * recorded on success; any upstream failure is wrapped in RunnerFailureError so
+ * recorded on success; any upstream failure is wrapped in StepFailureError so
  * the Orchestrator's retry loop sees a single error class.
  */
 export async function executePrompt(
-  runner: PromptRunnerSpec,
-  ctx: PromptRunnerExecContext,
-): Promise<PromptRunnerResult> {
-  const runnerId = ctx.runnerId;
+  step: PromptStepSpec,
+  ctx: PromptStepExecContext,
+): Promise<PromptStepResult> {
+  const stepId = ctx.stepId;
   const attempt = ctx.attempt ?? 1;
   const started = Date.now();
 
   ctx.logger.info(
     {
       event: 'prompt.start',
-      runnerId,
-      model: runner.model,
+      stepId,
+      model: step.model,
       provider: ctx.provider.name,
     },
-    'prompt runner started',
+    'prompt step started',
   );
 
   const startedIso = new Date(started).toISOString();
 
   try {
-    // 1. Load the prompt template file from the race directory.
-    const promptPath = resolvePromptPath(ctx.raceDir, runner.promptFile);
+    // 1. Load the prompt template file from the flow directory.
+    const promptPath = resolvePromptPath(ctx.flowDir, step.promptFile);
     const promptBody = await readFile(promptPath, 'utf8');
 
-    // 2. Load declared baton values in declaration order.
-    const contextFrom = runner.contextFrom ?? [];
-    const batonsResult = await loadBatonValues(ctx.batonStore, contextFrom);
-    if (batonsResult.isErr()) throw batonsResult.error;
+    // 2. Load declared handoff values in declaration order.
+    const contextFrom = step.contextFrom ?? [];
+    const handoffsResult = await loadHandoffValues(ctx.handoffStore, contextFrom);
+    if (handoffsResult.isErr()) throw handoffsResult.error;
 
     // 3. Assemble the final prompt with <context> blocks + rendered template.
     const assembled = assemblePrompt({
       promptBody,
-      batons: batonsResult.value,
+      handoffs: handoffsResult.value,
       inputVars: ctx.inputVars ?? {},
-      runnerVars: ctx.runnerVars,
+      stepVars: ctx.stepVars,
     });
     if (assembled.isErr()) throw assembled.error;
 
     // 4. Convert the optional output schema to JSON schema for the provider.
-    const schema = 'schema' in runner.output ? runner.output.schema : undefined;
+    const schema = 'schema' in step.output ? step.output.schema : undefined;
     const jsonSchema = toJsonSchema(schema);
 
-    // Pre-flight finished — only now is the runner actually invoking the
-    // provider. Writing 'running' before baton load / prompt assembly would
+    // Pre-flight finished — only now is the step actually invoking the
+    // provider. Writing 'running' before handoff load / prompt assembly would
     // leave a zombie running file in live/ when those pre-flight steps fail
     // and the catch block rethrows without a terminal write-back.
-    const liveStartResult = await writeLiveState(ctx.runDir, runnerId, {
+    const liveStartResult = await writeLiveState(ctx.runDir, stepId, {
       status: 'running',
       attempt,
       startedAt: startedIso,
       lastUpdateAt: startedIso,
-      ...(runner.model !== undefined ? { model: runner.model } : {}),
+      ...(step.model !== undefined ? { model: step.model } : {}),
     });
     if (liveStartResult.isErr()) {
       ctx.logger.warn(
-        { event: 'live-state.write_failed', runnerId, error: liveStartResult.error.message },
+        { event: 'live-state.write_failed', stepId, error: liveStartResult.error.message },
         'live state write failed; continuing',
       );
     }
@@ -306,18 +306,18 @@ export async function executePrompt(
     // 5. Build the invocation request + context.
     const request: InvocationRequest = {
       prompt: assembled.value,
-      ...(runner.model !== undefined ? { model: runner.model } : {}),
-      ...(runner.systemPrompt !== undefined ? { systemPrompt: runner.systemPrompt } : {}),
-      ...(runner.tools !== undefined ? { tools: runner.tools } : {}),
+      ...(step.model !== undefined ? { model: step.model } : {}),
+      ...(step.systemPrompt !== undefined ? { systemPrompt: step.systemPrompt } : {}),
+      ...(step.tools !== undefined ? { tools: step.tools } : {}),
       ...(jsonSchema !== undefined ? { jsonSchema } : {}),
-      ...(runner.maxBudgetUsd !== undefined ? { maxBudgetUsd: runner.maxBudgetUsd } : {}),
-      ...(runner.timeoutMs !== undefined ? { timeoutMs: runner.timeoutMs } : {}),
+      ...(step.maxBudgetUsd !== undefined ? { maxBudgetUsd: step.maxBudgetUsd } : {}),
+      ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}),
     };
 
     const invocationCtx: InvocationContext = {
-      raceName: ctx.raceName,
+      flowName: ctx.flowName,
       runId: ctx.runId,
-      runnerId,
+      stepId,
       attempt,
       abortSignal: ctx.abortSignal,
       logger: ctx.logger,
@@ -326,9 +326,9 @@ export async function executePrompt(
 
     // 6. Stream the provider invocation and aggregate events inline. Using
     // stream() (falling back to invoke() when the provider does not expose
-    // one) lets the executor update <runDir>/live/<runnerId>.json on every
+    // one) lets the executor update <runDir>/live/<stepId>.json on every
     // token-usage event, which is what the CLI progress display watches to
-    // animate counters within a long-running runner. The outer try/catch covers
+    // animate counters within a long-running step. The outer try/catch covers
     // both the stream iterator's thrown errors and invoke()'s Result.err
     // branch so every upstream surface funnels into wrapFailure identically.
     const response = await runProviderInvocation({
@@ -336,37 +336,37 @@ export async function executePrompt(
       request,
       invocationCtx,
       runDir: ctx.runDir,
-      runnerId,
+      stepId,
       attempt,
       startedIso,
       logger: ctx.logger,
     });
 
     // Record usage as soon as the provider returns so CostTracker captures
-    // tokens even if downstream baton/artifact writes fail.
+    // tokens even if downstream handoff/artifact writes fail.
     ctx.logger.info(
       {
         event: 'prompt.usage',
-        runnerId,
+        stepId,
         tokensIn: response.usage.inputTokens,
         tokensOut: response.usage.outputTokens,
       },
       'prompt usage recorded',
     );
 
-    // Baton routing: parse JSON, validate against schema if configured,
-    // then write via the BatonStore. Validate before persist so a
+    // Handoff routing: parse JSON, validate against schema if configured,
+    // then write via the HandoffStore. Validate before persist so a
     // schema-mismatched response never lands on disk.
-    const batons: string[] = [];
+    const handoffs: string[] = [];
     const artifacts: string[] = [];
 
-    if ('baton' in runner.output) {
-      const batonKey = runner.output.baton;
+    if ('handoff' in step.output) {
+      const handoffKey = step.output.handoff;
       const parsedJson = safeParse(response.text);
       if (parsedJson.isErr()) {
-        throw new BatonSchemaError(
-          `baton "${batonKey}" response is not valid JSON: ${parsedJson.error.message}`,
-          batonKey,
+        throw new HandoffSchemaError(
+          `handoff "${handoffKey}" response is not valid JSON: ${parsedJson.error.message}`,
+          handoffKey,
           [],
         );
       }
@@ -374,33 +374,33 @@ export async function executePrompt(
       if (schema !== undefined) {
         const check = schema.safeParse(parsedJson.value);
         if (!check.success) {
-          throw new BatonSchemaError(
-            `baton "${batonKey}" failed schema validation`,
-            batonKey,
+          throw new HandoffSchemaError(
+            `handoff "${handoffKey}" failed schema validation`,
+            handoffKey,
             check.error.issues,
           );
         }
       }
 
-      const writeResult = await ctx.batonStore.write(batonKey, parsedJson.value, schema);
+      const writeResult = await ctx.handoffStore.write(handoffKey, parsedJson.value, schema);
       if (writeResult.isErr()) throw writeResult.error;
-      batons.push(batonKey);
+      handoffs.push(handoffKey);
     }
 
     // Artifact routing: write the response text verbatim to
     // <runDir>/artifacts/<name>. atomicWriteText creates parent directories.
-    if ('artifact' in runner.output) {
-      const artifactName = runner.output.artifact;
+    if ('artifact' in step.output) {
+      const artifactName = step.output.artifact;
       const artifactPath = join(ctx.runDir, 'artifacts', artifactName);
       const writeResult = await atomicWriteText(artifactPath, response.text);
       if (writeResult.isErr()) throw writeResult.error;
       artifacts.push(artifactPath);
     }
 
-    // Record RunnerMetrics for CostTracker's summary + metrics.json.
-    const metrics: RunnerMetrics = {
-      runnerId,
-      raceName: ctx.raceName,
+    // Record StepMetrics for CostTracker's summary + metrics.json.
+    const metrics: StepMetrics = {
+      stepId,
+      flowName: ctx.flowName,
       runId: ctx.runId,
       timestamp: new Date().toISOString(),
       model: response.model,
@@ -420,21 +420,21 @@ export async function executePrompt(
     ctx.logger.info(
       {
         event: 'prompt.done',
-        runnerId,
+        stepId,
         tokensIn: response.usage.inputTokens,
         tokensOut: response.usage.outputTokens,
         costUsd: response.costUsd,
         turns: response.numTurns,
         durationMs: Date.now() - started,
       },
-      'prompt runner completed',
+      'prompt step completed',
     );
 
     return {
       kind: 'prompt',
-      runnerId,
+      stepId,
       text: response.text,
-      batons,
+      handoffs,
       artifacts,
       tokensIn: response.usage.inputTokens,
       tokensOut: response.usage.outputTokens,
@@ -444,16 +444,16 @@ export async function executePrompt(
       model: response.model,
     };
   } catch (caught) {
-    const wrapped = wrapFailure(caught, runnerId, attempt);
+    const wrapped = wrapFailure(caught, stepId, attempt);
     ctx.logger.error(
       {
         event: 'prompt.failed',
-        runnerId,
+        stepId,
         code: codeOf(caught),
         message: messageOf(caught),
         attempt,
       },
-      'prompt runner failed',
+      'prompt step failed',
     );
     throw wrapped;
   }

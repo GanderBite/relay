@@ -92,9 +92,9 @@ function makeLogger(): Logger {
 
 function makeCtx(overrides: Partial<InvocationContext> = {}): InvocationContext {
   return {
-    raceName: 'test-flow',
+    flowName: 'test-flow',
     runId: 'run-1',
-    runnerId: 'step-1',
+    stepId: 'step-1',
     attempt: 1,
     abortSignal: new AbortController().signal,
     logger: makeLogger(),
@@ -394,7 +394,7 @@ describe('ClaudeCliProvider', () => {
       expect(err.code).toBe('relay_PROVIDER_RATE_LIMIT');
     });
 
-    it('[CLI-INV-005] general non-zero exit returns err with RunnerFailureError code', async () => {
+    it('[CLI-INV-005] general non-zero exit returns err with StepFailureError code', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
@@ -406,7 +406,7 @@ describe('ClaudeCliProvider', () => {
 
       const result = await invokePromise;
       expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr().code).toBe('relay_RUNNER_FAILURE');
+      expect(result._unsafeUnwrapErr().code).toBe('relay_STEP_FAILURE');
     });
   });
 
@@ -527,7 +527,7 @@ describe('ClaudeCliProvider', () => {
 
       // Simulate child exiting after SIGKILL.
       child.emit('close', null, 'SIGKILL');
-      // invoke() returns ok (aborted is handled by the runner, not the provider error path).
+      // invoke() returns ok (aborted is handled by the step, not the provider error path).
       await invokePromise;
     });
   });
@@ -552,7 +552,7 @@ describe('ClaudeCliProvider', () => {
       expect(result._unsafeUnwrapErr().code).toBe('relay_PROVIDER_AUTH');
     });
 
-    it('[CLI-ERR-002] timeout error in stderr maps to RunnerFailureError with E_CLAUDE_CLI_TIMEOUT', async () => {
+    it('[CLI-ERR-002] timeout error in stderr maps to StepFailureError with E_CLAUDE_CLI_TIMEOUT', async () => {
       const { child } = makeChild();
       spawnMock.mockReturnValue(child);
 
@@ -565,7 +565,7 @@ describe('ClaudeCliProvider', () => {
       const result = await invokePromise;
       expect(result.isErr()).toBe(true);
       const pipelineErr = result._unsafeUnwrapErr();
-      expect(pipelineErr.code).toBe('relay_RUNNER_FAILURE');
+      expect(pipelineErr.code).toBe('relay_STEP_FAILURE');
       expect(pipelineErr.details?.errorCode).toBe('E_CLAUDE_CLI_TIMEOUT');
     });
   });

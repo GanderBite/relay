@@ -215,7 +215,7 @@ describe('createWorktree', () => {
 
   it('attempts best-effort cleanup via git worktree remove after a failed add', async () => {
     // First call (worktree add) fails; second call (worktree remove --force)
-    // is the best-effort cleanup the Runner relies on so a partial checkout
+    // is the best-effort cleanup the Orchestrator relies on so a partial checkout
     // cannot leak under $TMPDIR/relay-worktrees across thousands of runs.
     mockExecFile.mockImplementationOnce(
       (

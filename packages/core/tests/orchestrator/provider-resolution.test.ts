@@ -1,5 +1,5 @@
 /**
- * Runner end-to-end provider resolution tests.
+ * Step end-to-end provider resolution tests.
  *
  * Verifies that the three-tier resolution chain (flag → flow settings →
  * global settings → NoProviderConfiguredError) works correctly. The settings
@@ -13,27 +13,27 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The runner.ts imports loadGlobalSettings and loadRaceSettings.
+// The step.ts imports loadGlobalSettings and loadFlowSettings.
 // We mock both so tests never touch ~/.relay/settings.json.
 // vi.hoisted ensures the references are stable across the hoisting boundary.
 const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
 const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
 
-// Path is relative to THIS test file: tests/runner/ → ../../ → packages/core/
+// Path is relative to THIS test file: tests/step/ → ../../ → packages/core/
 vi.mock('../../src/settings/load.js', () => ({
   loadGlobalSettings: mockLoadGlobalSettings,
-  loadRaceSettings: mockLoadFlowSettings,
+  loadFlowSettings: mockLoadFlowSettings,
 }));
 
 import { ok } from 'neverthrow';
-import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
-import { defineRace } from '../../src/race/define.js';
-import { runner } from '../../src/race/runner.js';
-import { ProviderRegistry } from '../../src/providers/registry.js';
-import { MockProvider } from '../../src/testing/mock-provider.js';
 import { NoProviderConfiguredError } from '../../src/errors.js';
-import { z } from '../../src/zod.js';
+import { defineFlow } from '../../src/flow/define.js';
+import { step } from '../../src/flow/step.js';
+import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
+import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
+import { MockProvider } from '../../src/testing/mock-provider.js';
+import { z } from '../../src/zod.js';
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -50,14 +50,14 @@ const canned: InvocationResponse = {
 };
 
 function singleStepFlow() {
-  return defineRace({
+  return defineFlow({
     name: 'resolution-test',
     version: '0.1.0',
     input: z.object({}),
-    runners: {
-      only: runner.prompt({
+    steps: {
+      only: step.prompt({
         promptFile: 'p.md',
-        output: { baton: 'result' },
+        output: { handoff: 'result' },
       }),
     },
   });
@@ -74,7 +74,7 @@ function makeMockRegistry(): ProviderRegistry {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Runner — provider resolution', () => {
+describe('Step — provider resolution', () => {
   let tmp: string;
 
   beforeEach(async () => {
@@ -100,14 +100,14 @@ describe('Runner — provider resolution', () => {
     const result = await orchestrator.run(
       singleStepFlow(),
       {},
-      { flagProvider: 'mock', raceDir: tmp, authTimeoutMs: 1000 },
+      { flagProvider: 'mock', flowDir: tmp, authTimeoutMs: 1000 },
     );
 
     expect(result.status).toBe('succeeded');
   });
 
   it('[PROV-RES-002] flow settings win over global settings when no flag', async () => {
-    // Race settings say 'mock'; global says something that doesn't exist.
+    // Flow settings say 'mock'; global says something that doesn't exist.
     mockLoadGlobalSettings.mockResolvedValue(ok({ provider: 'nonexistent-global' }));
     mockLoadFlowSettings.mockResolvedValue(ok({ provider: 'mock' }));
 
@@ -117,14 +117,14 @@ describe('Runner — provider resolution', () => {
     const result = await orchestrator.run(
       singleStepFlow(),
       {},
-      { raceDir: tmp, authTimeoutMs: 1000 },
+      { flowDir: tmp, authTimeoutMs: 1000 },
     );
 
     expect(result.status).toBe('succeeded');
   });
 
   it('[PROV-RES-003] global settings used when no flag and no flow settings provider', async () => {
-    // Race settings has no provider; global has 'mock'.
+    // Flow settings has no provider; global has 'mock'.
     mockLoadGlobalSettings.mockResolvedValue(ok({ provider: 'mock' }));
     mockLoadFlowSettings.mockResolvedValue(ok(null));
 
@@ -134,7 +134,7 @@ describe('Runner — provider resolution', () => {
     const result = await orchestrator.run(
       singleStepFlow(),
       {},
-      { raceDir: tmp, authTimeoutMs: 1000 },
+      { flowDir: tmp, authTimeoutMs: 1000 },
     );
 
     expect(result.status).toBe('succeeded');
@@ -149,7 +149,7 @@ describe('Runner — provider resolution', () => {
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
 
     await expect(
-      orchestrator.run(singleStepFlow(), {}, { raceDir: tmp, authTimeoutMs: 1000 }),
+      orchestrator.run(singleStepFlow(), {}, { flowDir: tmp, authTimeoutMs: 1000 }),
     ).rejects.toBeInstanceOf(NoProviderConfiguredError);
   });
 });

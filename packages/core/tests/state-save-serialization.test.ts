@@ -1,16 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { RunState } from '../src/flow/types.js';
+import { StateMachine } from '../src/state.js';
 
-import { RaceStateMachine } from '../src/state.js';
-import type { RaceState } from '../src/race/types.js';
-
-const RACE_NAME = 'serialize-race';
+const RACE_NAME = 'serialize-flow';
 const RACE_VERSION = '0.1.0';
 const RUN_ID = 'run-serialize';
 
-describe('RaceStateMachine — save() serialization', () => {
+describe('StateMachine — save() serialization', () => {
   let tmp: string;
 
   beforeEach(async () => {
@@ -22,15 +21,15 @@ describe('RaceStateMachine — save() serialization', () => {
   });
 
   it('[STATE-SERIALIZE-001] 20 concurrent save() calls all resolve ok and the final on-disk snapshot equals final in-memory state', async () => {
-    const runnerIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
-    const sm = new RaceStateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
-    const initR = await sm.init(runnerIds);
+    const stepIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(stepIds);
     expect(initR.isOk()).toBe(true);
 
     const saves: Promise<unknown>[] = [];
-    for (const id of runnerIds) {
-      sm.startRunner(id);
-      sm.completeRunner(id);
+    for (const id of stepIds) {
+      sm.startStep(id);
+      sm.completeStep(id);
       saves.push(sm.save());
     }
 
@@ -41,18 +40,18 @@ describe('RaceStateMachine — save() serialization', () => {
     }
 
     const raw = await readFile(join(tmp, 'state.json'), 'utf8');
-    const onDisk = JSON.parse(raw) as RaceState;
+    const onDisk = JSON.parse(raw) as RunState;
     const inMemory = sm.getState();
     expect(onDisk).toEqual(inMemory);
-    for (const id of runnerIds) {
-      expect(onDisk.runners[id]?.status).toBe('succeeded');
+    for (const id of stepIds) {
+      expect(onDisk.steps[id]?.status).toBe('succeeded');
     }
   });
 
   it('[STATE-SERIALIZE-002] every intermediate snapshot read between concurrent saves is a monotonic prefix of in-memory history (succeeded count never goes backwards)', async () => {
-    const runnerIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
-    const sm = new RaceStateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
-    const initR = await sm.init(runnerIds);
+    const stepIds = Array.from({ length: 20 }, (_, i) => `s${i}`);
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(stepIds);
     expect(initR.isOk()).toBe(true);
 
     const stateFile = join(tmp, 'state.json');
@@ -61,9 +60,9 @@ describe('RaceStateMachine — save() serialization', () => {
     // a later save could land before an earlier one and the on-disk file
     // would shrink (succeededCount would go down between adjacent reads).
     const saves: Promise<unknown>[] = [];
-    for (const id of runnerIds) {
-      sm.startRunner(id);
-      sm.completeRunner(id);
+    for (const id of stepIds) {
+      sm.startStep(id);
+      sm.completeStep(id);
       saves.push(sm.save());
     }
 
@@ -73,42 +72,38 @@ describe('RaceStateMachine — save() serialization', () => {
     for (let i = 0; i < saves.length; i += 1) {
       await saves[i];
       const raw = await readFile(stateFile, 'utf8');
-      const snap = JSON.parse(raw) as RaceState;
-      const succeeded = Object.values(snap.runners).filter(
-        (s) => s.status === 'succeeded',
-      ).length;
+      const snap = JSON.parse(raw) as RunState;
+      const succeeded = Object.values(snap.steps).filter((s) => s.status === 'succeeded').length;
       observedSucceededCounts.push(succeeded);
     }
 
-    expect(observedSucceededCounts.length).toBe(runnerIds.length);
+    expect(observedSucceededCounts.length).toBe(stepIds.length);
 
     // Monotonic non-decreasing across all observations.
     for (let i = 1; i < observedSucceededCounts.length; i += 1) {
-      expect(observedSucceededCounts[i]!).toBeGreaterThanOrEqual(
-        observedSucceededCounts[i - 1]!,
-      );
+      expect(observedSucceededCounts[i]!).toBeGreaterThanOrEqual(observedSucceededCounts[i - 1]!);
     }
 
     // Each observed value is in the valid range [1, 20] — every save was
     // submitted after at least one completion, and the final write must
-    // include every succeeded runner.
+    // include every succeeded step.
     for (const count of observedSucceededCounts) {
       expect(count).toBeGreaterThanOrEqual(1);
-      expect(count).toBeLessThanOrEqual(runnerIds.length);
+      expect(count).toBeLessThanOrEqual(stepIds.length);
     }
-    expect(observedSucceededCounts.at(-1)).toBe(runnerIds.length);
+    expect(observedSucceededCounts.at(-1)).toBe(stepIds.length);
 
     // Final on-disk snapshot equals the final in-memory state.
     const finalRaw = await readFile(stateFile, 'utf8');
-    const finalOnDisk = JSON.parse(finalRaw) as RaceState;
+    const finalOnDisk = JSON.parse(finalRaw) as RunState;
     expect(finalOnDisk).toEqual(sm.getState());
   });
 
   it('[STATE-SERIALIZE-003] a failing save does not break the chain — a subsequent save still runs', async () => {
-    // Construct a RaceStateMachine pointed at an invalid path so every save
+    // Construct a StateMachine pointed at an invalid path so every save
     // fails. The point is to verify the queue keeps draining after a
     // failure rather than hanging forever on the rejected tail.
-    const sm = new RaceStateMachine(
+    const sm = new StateMachine(
       join(tmp, 'definitely-not-a-dir.txt', 'nested'),
       RACE_NAME,
       RACE_VERSION,
@@ -119,13 +114,13 @@ describe('RaceStateMachine — save() serialization', () => {
     // to assert here.
     sm.hydrate({
       runId: RUN_ID,
-      raceName: RACE_NAME,
-      raceVersion: RACE_VERSION,
+      flowName: RACE_NAME,
+      flowVersion: RACE_VERSION,
       status: 'running',
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       input: undefined,
-      runners: {},
+      steps: {},
     });
 
     // Make the first path invalid by writing a file at the parent path

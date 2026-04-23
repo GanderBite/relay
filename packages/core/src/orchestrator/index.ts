@@ -1,10 +1,10 @@
-export { createOrchestrator, Orchestrator } from './orchestrator.js';
 export type {
   OrchestratorOptions,
   RunOptions,
   RunResult,
-  RunnerExecutionContext,
+  StepExecutionContext,
 } from './orchestrator.js';
-export type { RunnerResult } from './types.js';
-export { importRace, loadRaceRef, seedReadyQueueForResume } from './resume.js';
-export type { RaceRef } from './resume.js';
+export { createOrchestrator, Orchestrator } from './orchestrator.js';
+export type { FlowRef } from './resume.js';
+export { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
+export type { StepResult } from './types.js';

@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import { RaceDefinitionError } from '../errors.js';
+import { FlowDefinitionError } from '../errors.js';
 import { z } from '../zod.js';
 
 /**
@@ -12,15 +12,15 @@ import { z } from '../zod.js';
  * Returns a Result so callers handle failure explicitly rather than catching
  * thrown exceptions.
  */
-export function zodToJsonSchema(schema: z.ZodType): Result<object, RaceDefinitionError> {
+export function zodToJsonSchema(schema: z.ZodType): Result<object, FlowDefinitionError> {
   try {
     const jsonSchema = z.toJSONSchema(schema, { target: 'draft-07', reused: 'inline' });
     if (typeof jsonSchema !== 'object' || jsonSchema === null) {
-      return err(new RaceDefinitionError('zod toJSONSchema returned a non-object value'));
+      return err(new FlowDefinitionError('zod toJSONSchema returned a non-object value'));
     }
     return ok(jsonSchema);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    return err(new RaceDefinitionError('failed to convert Zod schema to JSON Schema: ' + message));
+    return err(new FlowDefinitionError('failed to convert Zod schema to JSON Schema: ' + message));
   }
 }

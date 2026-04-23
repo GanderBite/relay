@@ -1,6 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 
-import { type PipelineError, RunnerFailureError } from '../errors.js';
+import { type PipelineError, StepFailureError } from '../errors.js';
 import type {
   AuthState,
   InvocationContext,
@@ -53,12 +53,12 @@ export class MockProvider implements Provider {
     req: InvocationRequest,
     ctx: InvocationContext,
   ): Result<InvocationResponse | Promise<InvocationResponse>, PipelineError> {
-    const value = this.responses[ctx.runnerId];
+    const value = this.responses[ctx.stepId];
     if (value === undefined) {
       return err(
-        new RunnerFailureError(
-          `MockProvider: no response configured for runnerId "${ctx.runnerId}"`,
-          ctx.runnerId,
+        new StepFailureError(
+          `MockProvider: no response configured for stepId "${ctx.stepId}"`,
+          ctx.stepId,
           ctx.attempt,
         ),
       );
@@ -69,7 +69,7 @@ export class MockProvider implements Provider {
   /**
    * Invokes the mock for a given step and returns a Result.
    *
-   * Failures return `err(RunnerFailureError)`. The paired `stream()` method
+   * Failures return `err(StepFailureError)`. The paired `stream()` method
    * signals the same failure by throwing inside the generator (iterator
    * termination).
    */
@@ -84,9 +84,9 @@ export class MockProvider implements Provider {
   }
 
   /**
-   * Streams invocation events for a given runner.
+   * Streams invocation events for a given step.
    *
-   * Missing runnerId configuration causes `stream()` to throw `RunnerFailureError`
+   * Missing stepId configuration causes `stream()` to throw `StepFailureError`
    * (via iterator termination) — the same error class `invoke()` would have
    * returned on its `err` branch. Consumers that call both must handle the two
    * surfaces consistently.
@@ -97,9 +97,8 @@ export class MockProvider implements Provider {
       throw called.error;
     }
     const responseOrPromise = called.value;
-    const response = responseOrPromise instanceof Promise
-      ? await responseOrPromise
-      : responseOrPromise;
+    const response =
+      responseOrPromise instanceof Promise ? await responseOrPromise : responseOrPromise;
     yield { type: 'turn.start', turn: 1 };
     yield { type: 'text.delta', delta: response.text };
     yield {
