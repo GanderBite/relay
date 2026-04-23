@@ -62,13 +62,12 @@ async function readVersion(flowDir: string): Promise<string | null> {
  * Returns null when the directory does not exist.
  */
 async function discoverFlows(flowsDir: string): Promise<string[] | null> {
-  let entries: Awaited<ReturnType<typeof readdir>>;
   try {
-    entries = await readdir(flowsDir, { withFileTypes: true });
+    const entries = await readdir(flowsDir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     return null;
   }
-  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
 }
 
 // ---------------------------------------------------------------------------

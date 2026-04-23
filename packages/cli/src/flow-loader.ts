@@ -18,6 +18,7 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Flow, Result } from '@relay/core';
 import { err, ok } from '@relay/core';
+import { looksLikePath } from './util/path.js';
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -98,19 +99,6 @@ function isFlow(value: unknown): value is Flow<unknown> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Returns true when the argument looks like a filesystem path rather than a
- * plain flow name.
- */
-function looksLikePath(nameOrPath: string): boolean {
-  return (
-    nameOrPath.startsWith('./') ||
-    nameOrPath.startsWith('../') ||
-    nameOrPath.startsWith('/') ||
-    nameOrPath.includes('/')
-  );
-}
 
 /**
  * Read and JSON-parse a package.json file at the given directory.

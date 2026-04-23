@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { looksLikePath } from './util/path.js';
 import { setColorDisabled } from './visual.js';
 
 // All v1 command names — used for shorthand routing (first-positional bypass).
@@ -19,14 +20,6 @@ const KNOWN_COMMANDS = new Set([
   'config',
   'help',
 ]);
-
-/**
- * Determine whether an argument looks like a local path.
- * Positives: starts with '.', '/', or contains '/'.
- */
-function looksLikePath(arg: string): boolean {
-  return arg.startsWith('./') || arg.startsWith('../') || arg.startsWith('/') || arg.includes('/');
-}
 
 /**
  * Determine whether an argument could be a flow name or path shorthand.
