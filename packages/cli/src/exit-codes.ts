@@ -19,15 +19,17 @@
  */
 
 import {
-  AuthTimeoutError,
-  ClaudeAuthError,
-  FlowDefinitionError,
-  HandoffSchemaError,
+  type AuthTimeoutError,
+  type ClaudeAuthError,
+  ERROR_CODES,
+  type FlowDefinitionError,
+  type HandoffSchemaError,
   NoProviderConfiguredError,
   PipelineError,
-  ProviderAuthError,
-  StepFailureError,
-  TimeoutError,
+  type ProviderAuthError,
+  type ProviderCapabilityError,
+  type StepFailureError,
+  type TimeoutError,
 } from '@relay/core';
 import { CommanderError } from 'commander';
 import { gray, red } from './color.js';
@@ -50,28 +52,6 @@ export const EXIT_CODES = {
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
 
 // ---------------------------------------------------------------------------
-// Exit code mapper
-// ---------------------------------------------------------------------------
-
-/**
- * Map any thrown value to a CLI exit code.
- */
-export function exitCodeFor(err: unknown): number {
-  if (err instanceof NoProviderConfiguredError) return EXIT_CODES.no_provider;
-  if (err instanceof StepFailureError) return EXIT_CODES.runner_failure;
-  if (err instanceof FlowDefinitionError) return EXIT_CODES.definition_error;
-  if (err instanceof ClaudeAuthError) return EXIT_CODES.auth_error;
-  if (err instanceof AuthTimeoutError) return EXIT_CODES.timeout;
-  if (err instanceof TimeoutError) return EXIT_CODES.timeout;
-  if (err instanceof HandoffSchemaError) return EXIT_CODES.baton_error;
-  if (err instanceof ProviderAuthError) return EXIT_CODES.auth_error;
-  if (err instanceof PipelineError) return EXIT_CODES.runner_failure;
-  if (err instanceof CommanderError) return err.exitCode;
-  if (err instanceof Error) return EXIT_CODES.runner_failure;
-  return EXIT_CODES.runner_failure;
-}
-
-// ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
@@ -87,6 +67,267 @@ const BLANK = '';
  */
 function remediation(command: string): string {
   return `${INDENT}→ ${command}`;
+}
+
+// ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Associates a PipelineError subtype (identified by its stable `code` string)
+ * with an exit code and a format function.
+ */
+type ErrorHandler = {
+  exitCode: number;
+  format: (e: PipelineError) => string;
+};
+
+const errorRegistry = new Map<string, ErrorHandler>([
+  // StepFailureError — step exited non-zero
+  [
+    ERROR_CODES.STEP_FAILURE,
+    {
+      exitCode: EXIT_CODES.runner_failure,
+      format(e: PipelineError): string {
+        const err = e as StepFailureError;
+        // StepFailureDetails does not define `runId`; use guarded string-index access.
+        const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
+        return [
+          red(`✕ Step '${err.stepId}' failed on attempt ${err.attempt}`),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation(`relay logs ${runId} --step ${err.stepId}        see what went wrong`),
+          remediation(`relay resume ${runId}                          retry the step`),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // FlowDefinitionError — with special handling for cycle detection
+  [
+    ERROR_CODES.FLOW_DEFINITION,
+    {
+      exitCode: EXIT_CODES.definition_error,
+      format(e: PipelineError): string {
+        const err = e as FlowDefinitionError;
+        const cyclePath = extractCyclePath(err);
+        if (cyclePath !== null) {
+          return [
+            red('✕ Flow has a dependency cycle'),
+            BLANK,
+            `${INDENT}Steps form a cycle: ${cyclePath}`,
+            BLANK,
+            remediation(`edit flow.ts to remove the back-edge from ${lastEdge(cyclePath)}`),
+          ].join('\n');
+        }
+        return [
+          red(`✕ Flow definition error`),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation('edit flow.ts to fix the definition error'),
+          remediation('relay doctor'),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // ProviderCapabilityError — subclass of FlowDefinitionError, same exit code + format
+  [
+    ERROR_CODES.PROVIDER_CAPABILITY,
+    {
+      exitCode: EXIT_CODES.definition_error,
+      format(e: PipelineError): string {
+        const err = e as ProviderCapabilityError;
+        return [
+          red(`✕ Flow definition error`),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation('edit flow.ts to fix the definition error'),
+          remediation('relay doctor'),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // ClaudeAuthError — two distinct shapes
+  [
+    ERROR_CODES.CLAUDE_AUTH,
+    {
+      exitCode: EXIT_CODES.auth_error,
+      format(e: PipelineError): string {
+        const err = e as ClaudeAuthError;
+        const msg = err.message.toLowerCase();
+
+        // Shape: binary missing
+        if (
+          msg.includes('binary missing') ||
+          msg.includes('not found') ||
+          msg.includes('not installed')
+        ) {
+          return [
+            red("✕ 'claude' command not found"),
+            BLANK,
+            `${INDENT}Relay invokes the Claude CLI. It's not installed on this machine.`,
+            BLANK,
+            remediation('install: https://claude.com/code/install'),
+            remediation('then run: relay doctor'),
+          ].join('\n');
+        }
+
+        // Shape: ANTHROPIC_API_KEY conflict — the subscription-billing safety guard
+        return [
+          red('✕ Refusing to run: ANTHROPIC_API_KEY would override your subscription'),
+          BLANK,
+          `${INDENT}Relay detected ANTHROPIC_API_KEY in your environment. Running now would`,
+          `${INDENT}bill your API account instead of your Max subscription — a surprise we`,
+          `${INDENT}prevent by default.`,
+          BLANK,
+          remediation('unset ANTHROPIC_API_KEY    use subscription (recommended)'),
+          remediation('relay doctor              full environment check'),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // AuthTimeoutError — must be registered before TimeoutError (same exit code, different format)
+  [
+    ERROR_CODES.AUTH_TIMEOUT,
+    {
+      exitCode: EXIT_CODES.timeout,
+      format(e: PipelineError): string {
+        const err = e as AuthTimeoutError;
+        const humanTime = fmtDuration(err.timeoutMs);
+        return [
+          red(`✕ Authentication for provider '${err.providerName}' timed out after ${humanTime}`),
+          BLANK,
+          `${INDENT}The provider's authentication did not complete within the configured timeout.`,
+          `${INDENT}This usually means a misconfigured CLI probe or a network connectivity issue.`,
+          BLANK,
+          remediation('relay doctor'),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // TimeoutError — runner exceeded its timeoutMs budget
+  [
+    ERROR_CODES.TIMEOUT,
+    {
+      exitCode: EXIT_CODES.timeout,
+      format(e: PipelineError): string {
+        const err = e as TimeoutError;
+        const stepId = err.stepId;
+        const timeoutMs = err.timeoutMs;
+        const humanTime = fmtDuration(timeoutMs);
+
+        // TimeoutDetails defines `runId` and `artifactPath` — use typed dot access.
+        const runId = err.details?.runId ?? '<runId>';
+        const artifactPath =
+          err.details?.artifactPath ?? `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
+
+        return [
+          red(`✕ Step '${stepId}' timed out after ${humanTime}`),
+          BLANK,
+          `${INDENT}The prompt ran longer than its configured timeout. This usually means`,
+          `${INDENT}the prompt is asking for too much in a single turn, or a tool call is`,
+          `${INDENT}hanging.`,
+          BLANK,
+          remediation(`check the partial output: ${artifactPath}`),
+          remediation(`raise the timeout in flow.ts: step.prompt({ timeoutMs: ${timeoutMs * 2} })`),
+          remediation(`relay resume ${runId}                      retry with the new config`),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // HandoffSchemaError
+  [
+    ERROR_CODES.HANDOFF_SCHEMA,
+    {
+      exitCode: EXIT_CODES.baton_error,
+      format(e: PipelineError): string {
+        const err = e as HandoffSchemaError;
+        const handoffId = err.handoffId;
+        const issueLines = err.issues.map((issue) => {
+          const pathStr = issue.path.length > 0 ? issue.path.map(String).join('.') : handoffId;
+          return `${INDENT}  ${handoffId}${pathStr !== handoffId ? `[${pathStr}]` : ''} ${issue.message}`;
+        });
+
+        // HandoffSchemaDetails defines `runId`, `stepName`, `promptFile` — use typed dot access.
+        const runId = err.details?.runId ?? '<runId>';
+        const stepName = err.details?.stepName ?? handoffId;
+        const promptFile = err.details?.promptFile ?? `prompts/${stepName}.md`;
+
+        return [
+          red(`✕ Handoff '${handoffId}' failed schema validation`),
+          BLANK,
+          `${INDENT}Step '${stepName}' produced JSON that doesn't match its declared schema:`,
+          ...issueLines,
+          BLANK,
+          remediation(`relay logs ${runId} --step ${stepName}        see what Claude produced`),
+          remediation(`edit ${promptFile}              tighten the prompt`),
+          remediation(`relay resume ${runId}                      retry after fixing`),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // NoProviderConfiguredError
+  [
+    ERROR_CODES.NO_PROVIDER,
+    {
+      exitCode: EXIT_CODES.no_provider,
+      format(_e: PipelineError): string {
+        return [
+          red('✕ no provider configured'),
+          BLANK,
+          `${INDENT}Relay does not know which backend to run your flow on.`,
+          BLANK,
+          remediation('relay init                            pick a provider interactively'),
+          remediation(
+            'relay run <flow> --provider claude-cli   use the subscription-safe provider',
+          ),
+        ].join('\n');
+      },
+    },
+  ],
+
+  // ProviderAuthError — generic provider auth misconfiguration
+  [
+    ERROR_CODES.PROVIDER_AUTH,
+    {
+      exitCode: EXIT_CODES.auth_error,
+      format(e: PipelineError): string {
+        const err = e as ProviderAuthError;
+        return [
+          red(`✕ Authentication failed for provider '${err.providerName}'`),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation('relay doctor'),
+        ].join('\n');
+      },
+    },
+  ],
+]);
+
+// ---------------------------------------------------------------------------
+// Exit code mapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Map any thrown value to a CLI exit code.
+ */
+export function exitCodeFor(err: unknown): number {
+  if (err instanceof CommanderError) return err.exitCode;
+  if (err instanceof PipelineError) {
+    return errorRegistry.get(err.code)?.exitCode ?? EXIT_CODES.runner_failure;
+  }
+  if (err instanceof Error) return EXIT_CODES.runner_failure;
+  return EXIT_CODES.runner_failure;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,186 +359,13 @@ export function formatError(err: unknown): string {
   }
 
   // ----------------------------------------------------------------
-  // ClaudeAuthError — two distinct shapes
-  // ----------------------------------------------------------------
-  if (err instanceof ClaudeAuthError) {
-    const msg = err.message.toLowerCase();
-
-    // Shape: binary missing
-    if (
-      msg.includes('binary missing') ||
-      msg.includes('not found') ||
-      msg.includes('not installed')
-    ) {
-      return [
-        red("✕ 'claude' command not found"),
-        BLANK,
-        `${INDENT}Relay invokes the Claude CLI. It's not installed on this machine.`,
-        BLANK,
-        remediation('install: https://claude.com/code/install'),
-        remediation('then run: relay doctor'),
-      ].join('\n');
-    }
-
-    // Shape: ANTHROPIC_API_KEY conflict — the subscription-billing safety guard
-    return [
-      red('✕ Refusing to run: ANTHROPIC_API_KEY would override your subscription'),
-      BLANK,
-      `${INDENT}Relay detected ANTHROPIC_API_KEY in your environment. Running now would`,
-      `${INDENT}bill your API account instead of your Max subscription — a surprise we`,
-      `${INDENT}prevent by default.`,
-      BLANK,
-      remediation('unset ANTHROPIC_API_KEY    use subscription (recommended)'),
-      remediation('relay doctor              full environment check'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // AuthTimeoutError — must come before TimeoutError (subclass)
-  // ----------------------------------------------------------------
-  if (err instanceof AuthTimeoutError) {
-    const humanTime = fmtDuration(err.timeoutMs);
-    return [
-      red(`✕ Authentication for provider '${err.providerName}' timed out after ${humanTime}`),
-      BLANK,
-      `${INDENT}The provider's authentication did not complete within the configured timeout.`,
-      `${INDENT}This usually means a misconfigured CLI probe or a network connectivity issue.`,
-      BLANK,
-      remediation('relay doctor'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // TimeoutError — runner exceeded its timeoutMs budget
-  // ----------------------------------------------------------------
-  if (err instanceof TimeoutError) {
-    const stepId = err.stepId;
-    const timeoutMs = err.timeoutMs;
-    const humanTime = fmtDuration(timeoutMs);
-
-    const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-    const artifactPath =
-      typeof err.details?.['artifactPath'] === 'string'
-        ? err.details['artifactPath']
-        : `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
-
-    return [
-      red(`✕ Step '${stepId}' timed out after ${humanTime}`),
-      BLANK,
-      `${INDENT}The prompt ran longer than its configured timeout. This usually means`,
-      `${INDENT}the prompt is asking for too much in a single turn, or a tool call is`,
-      `${INDENT}hanging.`,
-      BLANK,
-      remediation(`check the partial output: ${artifactPath}`),
-      remediation(`raise the timeout in flow.ts: step.prompt({ timeoutMs: ${timeoutMs * 2} })`),
-      remediation(`relay resume ${runId}                      retry with the new config`),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // ProviderAuthError — generic provider auth misconfiguration (exit 6)
-  // ----------------------------------------------------------------
-  if (err instanceof ProviderAuthError) {
-    return [
-      red(`✕ Authentication failed for provider '${err.providerName}'`),
-      BLANK,
-      `${INDENT}${err.message}`,
-      BLANK,
-      remediation('relay doctor'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // FlowDefinitionError — with special handling for cycle detection
-  // ----------------------------------------------------------------
-  if (err instanceof FlowDefinitionError) {
-    const msg = err.message;
-
-    const cyclePath = extractCyclePath(err);
-    if (cyclePath !== null) {
-      return [
-        red('✕ Flow has a dependency cycle'),
-        BLANK,
-        `${INDENT}Steps form a cycle: ${cyclePath}`,
-        BLANK,
-        remediation(`edit flow.ts to remove the back-edge from ${lastEdge(cyclePath)}`),
-      ].join('\n');
-    }
-
-    return [
-      red(`✕ Flow definition error`),
-      BLANK,
-      `${INDENT}${msg}`,
-      BLANK,
-      remediation('edit flow.ts to fix the definition error'),
-      remediation('relay doctor'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // HandoffSchemaError
-  // ----------------------------------------------------------------
-  if (err instanceof HandoffSchemaError) {
-    const handoffId = err.handoffId;
-    const issueLines = err.issues.map((issue) => {
-      const pathStr = issue.path.length > 0 ? issue.path.map(String).join('.') : handoffId;
-      return `${INDENT}  ${handoffId}${pathStr !== handoffId ? `[${pathStr}]` : ''} ${issue.message}`;
-    });
-
-    const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-    const stepName =
-      typeof err.details?.['stepName'] === 'string' ? err.details['stepName'] : handoffId;
-    const promptFile =
-      typeof err.details?.['promptFile'] === 'string'
-        ? err.details['promptFile']
-        : `prompts/${stepName}.md`;
-
-    return [
-      red(`✕ Handoff '${handoffId}' failed schema validation`),
-      BLANK,
-      `${INDENT}Step '${stepName}' produced JSON that doesn't match its declared schema:`,
-      ...issueLines,
-      BLANK,
-      remediation(`relay logs ${runId} --step ${stepName}        see what Claude produced`),
-      remediation(`edit ${promptFile}              tighten the prompt`),
-      remediation(`relay resume ${runId}                      retry after fixing`),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // StepFailureError — step exited non-zero
-  // ----------------------------------------------------------------
-  if (err instanceof StepFailureError) {
-    const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
-
-    return [
-      red(`✕ Step '${err.stepId}' failed on attempt ${err.attempt}`),
-      BLANK,
-      `${INDENT}${err.message}`,
-      BLANK,
-      remediation(`relay logs ${runId} --step ${err.stepId}        see what went wrong`),
-      remediation(`relay resume ${runId}                          retry the step`),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // NoProviderConfiguredError — must come before generic PipelineError
-  // ----------------------------------------------------------------
-  if (err instanceof NoProviderConfiguredError) {
-    return [
-      red('✕ no provider configured'),
-      BLANK,
-      `${INDENT}Relay does not know which backend to run your flow on.`,
-      BLANK,
-      remediation('relay init                            pick a provider interactively'),
-      remediation('relay run <flow> --provider claude-cli   use the subscription-safe provider'),
-    ].join('\n');
-  }
-
-  // ----------------------------------------------------------------
-  // Generic PipelineError
+  // PipelineError — look up the registry by error code
   // ----------------------------------------------------------------
   if (err instanceof PipelineError) {
+    const handler = errorRegistry.get(err.code);
+    if (handler !== undefined) return handler.format(err);
+
+    // Generic PipelineError fallback for unknown codes
     return [
       red(`✕ ${err.name}: ${err.message}`),
       BLANK,
