@@ -1,18 +1,18 @@
 // catalog/app.js
 // Vanilla browser JS. No bundler, no framework. ES module.
-// Fetches registry.json and renders a race card per entry.
+// Fetches registry.json and renders a flow card per entry.
 
 /**
  * Active tag filter. Empty string means "show all".
  * @type {string}
  */
-let activeTag = '';
+let _activeTag = '';
 
 /**
- * All races loaded from registry.json.
+ * All flows loaded from registry.json.
  * @type {Array<Object>}
  */
-let allRaces = [];
+let allFlows = [];
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -27,9 +27,9 @@ async function main() {
     return;
   }
 
-  allRaces = res.races;
-  buildTagFilter(allRaces);
-  renderRaces(allRaces);
+  allFlows = res.flows;
+  buildTagFilter(allFlows);
+  renderFlows(allFlows);
 }
 
 // ---------------------------------------------------------------------------
@@ -37,12 +37,12 @@ async function main() {
 // ---------------------------------------------------------------------------
 
 async function fetchRegistry() {
-  const loadingEl = document.getElementById('races-loading');
+  const loadingEl = document.getElementById('flows-loading');
 
   let response;
   try {
     response = await fetch('./registry.json');
-  } catch (networkErr) {
+  } catch (_networkErr) {
     return { ok: false, error: 'Could not reach registry.json. Check network or local server.' };
   }
 
@@ -57,28 +57,28 @@ async function fetchRegistry() {
     return { ok: false, error: 'registry.json is not valid JSON.' };
   }
 
-  if (!Array.isArray(doc.races)) {
-    return { ok: false, error: 'registry.json missing "races" array.' };
+  if (!Array.isArray(doc.flows)) {
+    return { ok: false, error: 'registry.json missing "flows" array.' };
   }
 
   if (loadingEl) loadingEl.hidden = true;
 
-  return { ok: true, races: doc.races };
+  return { ok: true, flows: doc.flows };
 }
 
 // ---------------------------------------------------------------------------
 // Tag filter UI
 // ---------------------------------------------------------------------------
 
-function buildTagFilter(races) {
+function buildTagFilter(flows) {
   const bar = document.getElementById('filter-bar');
   if (!bar) return;
 
-  // Collect unique tags across all races, preserving insertion order.
+  // Collect unique tags across all flows, preserving insertion order.
   const seen = new Set();
-  for (const race of races) {
-    if (Array.isArray(race.tags)) {
-      for (const tag of race.tags) {
+  for (const flow of flows) {
+    if (Array.isArray(flow.tags)) {
+      for (const tag of flow.tags) {
         seen.add(tag);
       }
     }
@@ -88,22 +88,20 @@ function buildTagFilter(races) {
 
   // "All" button
   const allBtn = makeTagButton('all', true);
-  allBtn.addEventListener('click', function () {
-    activeTag = '';
+  allBtn.addEventListener('click', () => {
+    _activeTag = '';
     updateTagButtons(bar, '');
-    renderRaces(allRaces);
+    renderFlows(allFlows);
   });
   bar.appendChild(allBtn);
 
   // One button per tag
   for (const tag of seen) {
     const btn = makeTagButton(tag, false);
-    btn.addEventListener('click', function () {
-      activeTag = tag;
+    btn.addEventListener('click', () => {
+      _activeTag = tag;
       updateTagButtons(bar, tag);
-      renderRaces(allRaces.filter(function (r) {
-        return Array.isArray(r.tags) && r.tags.includes(tag);
-      }));
+      renderFlows(allFlows.filter((f) => Array.isArray(f.tags) && f.tags.includes(tag)));
     });
     bar.appendChild(btn);
   }
@@ -127,30 +125,30 @@ function updateTagButtons(bar, activeTagValue) {
 }
 
 // ---------------------------------------------------------------------------
-// Race rendering
+// Flow rendering
 // ---------------------------------------------------------------------------
 
-function renderRaces(races) {
-  const container = document.getElementById('races');
+function renderFlows(flows) {
+  const container = document.getElementById('flows');
   if (!container) return;
   while (container.firstChild) {
     container.removeChild(container.firstChild);
   }
 
-  if (races.length === 0) {
+  if (flows.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'flows-loading';
-    empty.textContent = 'No races match this filter.';
+    empty.textContent = 'No flows match this filter.';
     container.appendChild(empty);
     return;
   }
 
-  for (const race of races) {
-    container.appendChild(renderRaceCard(race));
+  for (const flow of flows) {
+    container.appendChild(renderFlowCard(flow));
   }
 }
 
-function renderRaceCard(race) {
+function renderFlowCard(flow) {
   const card = document.createElement('article');
   card.className = 'flow-card';
 
@@ -160,21 +158,21 @@ function renderRaceCard(race) {
 
   const displayName = document.createElement('span');
   displayName.className = 'flow-display-name';
-  displayName.textContent = race.displayName || race.name;
+  displayName.textContent = flow.displayName || flow.name;
   header.appendChild(displayName);
 
   const version = document.createElement('span');
   version.className = 'flow-version';
-  version.textContent = 'v' + (race.version || '0.0.0');
+  version.textContent = 'v' + (flow.version || '0.0.0');
   header.appendChild(version);
 
   card.appendChild(header);
 
   // ── tags ─────────────────────────────────────────────────────────────────
-  if (Array.isArray(race.tags) && race.tags.length > 0) {
+  if (Array.isArray(flow.tags) && flow.tags.length > 0) {
     const tagsEl = document.createElement('div');
     tagsEl.className = 'flow-tags';
-    for (const tag of race.tags) {
+    for (const tag of flow.tags) {
       const t = document.createElement('span');
       t.className = 'flow-tag';
       t.textContent = tag;
@@ -187,23 +185,22 @@ function renderRaceCard(race) {
   const meta = document.createElement('div');
   meta.className = 'flow-meta';
 
-  meta.appendChild(makeMetaRow('cost', formatCostRange(race.estimatedCostUsd)));
-  meta.appendChild(makeMetaRow('duration', formatDurationRange(race.estimatedDurationMin)));
+  meta.appendChild(makeMetaRow('cost', formatCostRange(flow.estimatedCostUsd)));
+  meta.appendChild(makeMetaRow('duration', formatDurationRange(flow.estimatedDurationMin)));
 
-  if (Array.isArray(race.audience) && race.audience.length > 0) {
-    meta.appendChild(makeMetaRow('audience', race.audience.join(', ')));
+  if (Array.isArray(flow.audience) && flow.audience.length > 0) {
+    meta.appendChild(makeMetaRow('audience', flow.audience.join(', ')));
   }
 
   card.appendChild(meta);
 
   // ── readme excerpt ────────────────────────────────────────────────────────
-  if (race.readmeExcerpt) {
+  if (flow.readmeExcerpt) {
     const excerpt = document.createElement('p');
     excerpt.className = 'flow-excerpt';
     // Truncate to 200 chars for the card view
-    const text = race.readmeExcerpt.length > 200
-      ? race.readmeExcerpt.slice(0, 200) + '…'
-      : race.readmeExcerpt;
+    const text =
+      flow.readmeExcerpt.length > 200 ? flow.readmeExcerpt.slice(0, 200) + '…' : flow.readmeExcerpt;
     excerpt.textContent = text;
     card.appendChild(excerpt);
   }
@@ -211,7 +208,7 @@ function renderRaceCard(race) {
   // ── install command ───────────────────────────────────────────────────────
   const install = document.createElement('div');
   install.className = 'flow-install';
-  const npmPkg = race.npmPackage || race.name;
+  const npmPkg = flow.npmPackage || flow.name;
   install.textContent = 'relay install ' + npmPkg;
   card.appendChild(install);
 
@@ -219,10 +216,10 @@ function renderRaceCard(race) {
   const footer = document.createElement('div');
   footer.className = 'flow-card-footer';
 
-  if (race.repoUrl) {
+  if (flow.repoUrl) {
     const link = document.createElement('a');
     link.className = 'flow-readme-link';
-    link.href = race.repoUrl;
+    link.href = flow.repoUrl;
     link.rel = 'noopener noreferrer';
     link.target = '_blank';
     link.textContent = 'source →';
@@ -273,8 +270,8 @@ function formatDurationRange(range) {
 }
 
 function showError(message) {
-  const loadingEl = document.getElementById('races-loading');
-  const errorEl = document.getElementById('races-error');
+  const loadingEl = document.getElementById('flows-loading');
+  const errorEl = document.getElementById('flows-error');
 
   if (loadingEl) loadingEl.hidden = true;
   if (errorEl) {

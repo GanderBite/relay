@@ -6,7 +6,7 @@
 # Required secrets / environment variables
 # ─────────────────────────────────────────
 # No Anthropic API credentials are needed for this workflow — it only
-# reads local race package metadata; it does not execute any races.
+# reads local flow package metadata; it does not execute any flows.
 #
 # For the GitHub Pages deploy step the workflow uses the standard
 # GITHUB_TOKEN (injected automatically by Actions). The token must have
@@ -16,7 +16,7 @@
 #   REGISTRY_EXTRA_PACKAGES  — space-separated list of additional npm
 #                              package names to include in the registry
 #                              beyond what catalog/flow-list.json lists.
-#                              Example: "@relay/races-api-audit"
+#                              Example: "@relay/flows-api-audit"
 #
 # Deploy target
 # ─────────────
@@ -84,8 +84,8 @@ jobs:
       #
       # generate-registry.js reads catalog/flow-list.json, resolves each
       # entry (local path or npm package name), and writes catalog/registry.json.
-      # flow-list.json lists @relay/races-* packages and local paths under
-      # packages/races/. To include additional packages, set
+      # flow-list.json lists @relay/flows-* packages and local paths under
+      # packages/flows/. To include additional packages, set
       # REGISTRY_EXTRA_PACKAGES as an Actions secret (space-separated names).
       - name: Generate registry.json
         run: |

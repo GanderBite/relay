@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node bin/generate-registry.js --input packages.json --output catalog/registry.json
- *   node bin/generate-registry.js @relay/flows-codebase-discovery ./my-local-race
+ *   node bin/generate-registry.js @relay/flows-codebase-discovery ./my-local-flow
  *
  * --input <file>    JSON file containing an array of package names / local paths.
  *                   Merged with any positional arguments.
@@ -121,9 +121,9 @@ async function main() {
     process.exit(1);
   }
 
-  const count = doc.races.length;
+  const count = doc.flows.length;
   process.stdout.write(
-    `generate-registry: wrote ${count} race${count !== 1 ? 's' : ''} to ${absOutput}\n`,
+    `generate-registry: wrote ${count} flow${count !== 1 ? 's' : ''} to ${absOutput}\n`,
   );
 }
 

@@ -1,7 +1,7 @@
 /* ============================================================
-   race-template.css
-   Styles for the per-race landing page.
-   Scoped to .race-page and .race-page-main to avoid bleeding
+   flow-template.css
+   Styles for the per-flow landing page.
+   Scoped to .flow-page and .flow-page-main to avoid bleeding
    into catalog/index.html when both are loaded together.
    Design tokens are inherited from styles.css (:root vars).
    No external fonts or frameworks.
@@ -9,26 +9,26 @@
 
 /* --- page wrapper ------------------------------------------ */
 
-.race-page-main {
+.flow-page-main {
   padding: 3rem 0 5rem;
   min-height: calc(100vh - 120px);
 }
 
-.race-page {
+.flow-page {
   max-width: 800px;
   margin: 0 auto;
 }
 
 /* --- mark + h1 header -------------------------------------- */
 
-.race-header {
+.flow-header {
   display: flex;
   align-items: baseline;
   gap: 1rem;
   margin-bottom: 1.25rem;
 }
 
-.race-mark {
+.flow-mark {
   font-family: var(--font-mono);
   font-size: 1.05rem;
   color: var(--mark);
@@ -37,7 +37,7 @@
   flex-shrink: 0;
 }
 
-.race-name {
+.flow-name {
   font-family: var(--font-mono);
   font-size: clamp(1.25rem, 3vw, 1.625rem);
   font-weight: 700;
@@ -48,7 +48,7 @@
 
 /* --- description paragraph --------------------------------- */
 
-.race-description {
+.flow-description {
   font-size: 0.9375rem;
   color: var(--text-muted);
   line-height: 1.7;
@@ -58,7 +58,7 @@
 
 /* --- 4-row metadata definition list ------------------------ */
 
-.race-meta-dl {
+.flow-meta-dl {
   display: table;
   border-collapse: collapse;
   margin-bottom: 1.75rem;
@@ -66,19 +66,19 @@
   font-size: 0.8125rem;
 }
 
-.race-meta-dl-row {
+.flow-meta-dl-row {
   display: table-row;
 }
 
-.race-meta-dl-row dt,
-.race-meta-dl-row dd {
+.flow-meta-dl-row dt,
+.flow-meta-dl-row dd {
   display: table-cell;
   padding: 0.2rem 0;
   line-height: 1.8;
   vertical-align: top;
 }
 
-.race-meta-dl-row dt {
+.flow-meta-dl-row dt {
   width: 120px;
   min-width: 120px;
   color: var(--text-muted);
@@ -89,7 +89,7 @@
   letter-spacing: 0.03em;
 }
 
-.race-meta-dl-row dd {
+.flow-meta-dl-row dd {
   color: var(--text);
   padding-left: 0;
   margin-left: 0;
@@ -97,28 +97,28 @@
 
 /* tier row: label changes color by value */
 
-.race-meta-dl-row--tier dt {
+.flow-meta-dl-row--tier dt {
   opacity: 1;
 }
 
 /* VERIFIED label: green text */
-.race-tier-label[data-tier="verified"] {
+.flow-tier-label[data-tier="verified"] {
   color: var(--green);
 }
 
 /* COMMUNITY label: muted/gray text (default, no extra rule needed) */
-.race-tier-label[data-tier="community"] {
+.flow-tier-label[data-tier="community"] {
   color: var(--text-muted);
 }
 
 /* fallback when data-tier not set — JS sets it at render time */
-.race-tier-label {
+.flow-tier-label {
   color: var(--text-muted);
 }
 
 /* --- horizontal rule --------------------------------------- */
 
-.race-rule {
+.flow-rule {
   border: none;
   border-top: 1px solid var(--border);
   margin: 1.75rem 0;
@@ -126,7 +126,7 @@
 
 /* --- run command block ------------------------------------- */
 
-.race-run-command {
+.flow-run-command {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -138,7 +138,7 @@
   white-space: pre;
 }
 
-.race-run-command code {
+.flow-run-command code {
   font-family: inherit;
   font-size: inherit;
   background: none;
@@ -147,14 +147,14 @@
   color: inherit;
 }
 
-.race-run-prompt {
+.flow-run-prompt {
   color: var(--text-muted);
   user-select: none;
 }
 
 /* --- tab bar ----------------------------------------------- */
 
-.race-tabs {
+.flow-tabs {
   margin-top: 0;
 }
 
@@ -201,7 +201,7 @@
 
 /* --- sample output tab contents ---------------------------- */
 
-.race-sample-iframe {
+.flow-sample-iframe {
   width: 100%;
   min-height: 480px;
   border: 1px solid var(--border);
@@ -209,7 +209,7 @@
   background: #fff;
 }
 
-.race-sample-img {
+.flow-sample-img {
   width: 100%;
   height: auto;
   border: 1px solid var(--border);
@@ -217,7 +217,7 @@
   display: block;
 }
 
-.race-sample-placeholder {
+.flow-sample-placeholder {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-muted);
@@ -227,7 +227,7 @@
 
 /* --- how it works tab contents ----------------------------- */
 
-.race-runners {
+.flow-steps {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -236,13 +236,13 @@
   gap: 1rem;
 }
 
-.race-runner {
+.flow-step {
   display: flex;
   gap: 1rem;
   align-items: flex-start;
 }
 
-.race-runner-number {
+.flow-step-number {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -252,11 +252,11 @@
   flex-shrink: 0;
 }
 
-.race-runner-body {
+.flow-step-body {
   flex: 1;
 }
 
-.race-runner-name {
+.flow-step-name {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   font-weight: 600;
@@ -264,7 +264,7 @@
   margin-bottom: 0.2rem;
 }
 
-.race-runner-desc {
+.flow-step-desc {
   font-size: 0.875rem;
   color: var(--text-muted);
   line-height: 1.65;
@@ -272,14 +272,14 @@
 
 /* --- customize tab contents -------------------------------- */
 
-.race-customize-intro {
+.flow-customize-intro {
   font-size: 0.9375rem;
   color: var(--text-muted);
   line-height: 1.7;
   margin-bottom: 1.25rem;
 }
 
-.race-fork-command {
+.flow-fork-command {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -292,7 +292,7 @@
   margin-bottom: 1rem;
 }
 
-.race-fork-command code {
+.flow-fork-command code {
   font-family: inherit;
   font-size: inherit;
   background: none;
@@ -301,7 +301,7 @@
   color: inherit;
 }
 
-.race-customize-note {
+.flow-customize-note {
   font-size: 0.8125rem;
   color: var(--text-muted);
   line-height: 1.65;
@@ -310,21 +310,21 @@
 /* --- responsive -------------------------------------------- */
 
 @media (max-width: 600px) {
-  .race-page-main {
+  .flow-page-main {
     padding: 2rem 0 3rem;
   }
 
-  .race-header {
+  .flow-header {
     flex-direction: column;
     gap: 0.375rem;
     align-items: flex-start;
   }
 
-  .race-meta-dl {
+  .flow-meta-dl {
     width: 100%;
   }
 
-  .race-meta-dl-row dt {
+  .flow-meta-dl-row dt {
     width: 90px;
     min-width: 90px;
   }

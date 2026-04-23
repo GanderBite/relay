@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Relay — Claude races you can run twice</title>
+  <title>Relay — Claude flows you can run twice</title>
   <meta name="description" content="Deterministic orchestration. Crash-proof state. Transparent cost. Runs on your Pro/Max subscription." />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -17,7 +17,7 @@
       <div class="header-mark">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</div>
       <span class="header-name">Relay</span>
       <nav class="header-nav">
-        <a href="#races">races</a>
+        <a href="#flows">flows</a>
         <a href="#comparison">compare</a>
         <a href="#why">why Relay</a>
         <a href="https://github.com/ganderbite/relay">GitHub</a>
@@ -32,7 +32,7 @@
     <div class="container hero-inner">
       <div class="hero-mark" aria-hidden="true">&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;&#x2500;&#x25B6;&#9679;</div>
 
-      <h1 class="hero-headline">Claude races you can run twice.</h1>
+      <h1 class="hero-headline">Claude flows you can run twice.</h1>
 
       <p class="hero-sub">
         Deterministic orchestration. Crash-proof state.<br />
@@ -47,7 +47,7 @@
 
       <div class="hero-actions">
         <a class="btn btn-primary" href="https://github.com/ganderbite/relay#installation">install</a>
-        <a class="btn btn-secondary" href="#races">browse catalog</a>
+        <a class="btn btn-secondary" href="#flows">browse catalog</a>
       </div>
     </div>
   </section>
@@ -60,13 +60,13 @@
 
       <div class="feature-block">
         <h3>Run twice, get the same result.</h3>
-        <p>Every race is a typed DAG in a file. Same input, same runners, same
+        <p>Every flow is a typed DAG in a file. Same input, same steps, same
         artifact — reproducible by design.</p>
       </div>
 
       <div class="feature-block">
         <h3>Survive crashes.</h3>
-        <p>State is saved after every runner. A failed run resumes with
+        <p>State is saved after every step. A failed run resumes with
         <code>relay resume &lt;runId&gt;</code>. Successful work never gets redone.</p>
       </div>
 
@@ -77,8 +77,8 @@
       </div>
 
       <div class="feature-block">
-        <h3>Hire a pre-built race.</h3>
-        <p>The public catalog ships verified races for codebase discovery, API
+        <h3>Use a pre-built flow.</h3>
+        <p>The public catalog ships verified flows for codebase discovery, API
         audits, and migration planning. Installable in one command.</p>
       </div>
 
@@ -86,24 +86,24 @@
   </section>
 
   <!-- =========================================================
-       CATALOG RACE LIST
+       CATALOG FLOW LIST
   ========================================================= -->
-  <section class="catalog-section" id="races">
+  <section class="catalog-section" id="flows">
     <div class="container">
       <h2 class="section-heading">Catalog</h2>
-      <p class="section-sub">Verified races, installable in one command.</p>
+      <p class="section-sub">Verified flows, installable in one command.</p>
 
-      <div class="filter-bar" id="filter-bar" aria-label="Filter races by tag">
+      <div class="filter-bar" id="filter-bar" aria-label="Filter flows by tag">
         <!-- tag buttons rendered by app.js -->
       </div>
 
-      <div id="races-loading" class="flows-loading" aria-live="polite">
+      <div id="flows-loading" class="flows-loading" aria-live="polite">
         Loading catalog&#x2026;
       </div>
 
-      <div id="races-error" class="flows-error" hidden aria-live="assertive"></div>
+      <div id="flows-error" class="flows-error" hidden aria-live="assertive"></div>
 
-      <div id="races" class="flows-grid" aria-label="Race catalog"></div>
+      <div id="flows" class="flows-grid" aria-label="Flow catalog"></div>
     </div>
   </section>
 
@@ -122,7 +122,7 @@
               <th scope="col"></th>
               <th scope="col">stateful resume</th>
               <th scope="col">subscription-safe by default</th>
-              <th scope="col">pre-built races</th>
+              <th scope="col">pre-built flows</th>
               <th scope="col">Claude-native</th>
             </tr>
           </thead>

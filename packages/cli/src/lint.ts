@@ -1,11 +1,11 @@
 /**
- * Race package linter.
+ * Flow package linter.
  *
- * Checks a race package directory against the §7 contract:
+ * Checks a flow package directory against the §7 contract:
  *   (1) package.json fields and relay metadata block
- *   (2) race.ts or dist/race.js presence and default-export syntax
+ *   (2) flow.ts or dist/flow.js presence and default-export syntax
  *   (3) README.md §7.4 ordered sections
- *   (4) prompts/ directory when any runner references promptFile
+ *   (4) prompts/ directory when any step references promptFile
  *   (5) schemas/ files presence (compile check deferred to tsc)
  *
  * All fallible operations return Result<T, E> via neverthrow. No throws.
@@ -56,11 +56,11 @@ export class LintError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Backward-compat aliases — callers that imported the old flow-centric names
+// Backward-compat aliases — callers that imported the old LintIssue name
 // continue to work without changes.
 // ---------------------------------------------------------------------------
 
-/** @deprecated Use {@link LintReport} — renamed as part of race/runner/baton vocabulary. */
+/** @deprecated Use {@link LintReport} — renamed for clarity. */
 export type LintIssue = LintFinding;
 
 // ---------------------------------------------------------------------------
@@ -525,7 +525,7 @@ async function checkSchemas(dir: string): Promise<LintFinding[]> {
  *
  * @param dir  Absolute path to the flow package root.
  */
-export async function lintRacePackage(dir: string): Promise<Result<LintReport, LintError>> {
+export async function lintFlowPackage(dir: string): Promise<Result<LintReport, LintError>> {
   // Guard: the directory must be accessible before we start any checks.
   if (!(await pathExists(dir))) {
     return err(new LintError(`flow package directory not found: ${dir}`));
@@ -566,5 +566,5 @@ export async function lintRacePackage(dir: string): Promise<Result<LintReport, L
   return ok(report);
 }
 
-/** @deprecated Use {@link lintRacePackage} — renamed as part of race/runner/baton vocabulary. */
-export const lintFlowPackage = lintRacePackage;
+/** @deprecated Use {@link lintFlowPackage} — kept for backward compatibility. */
+export const lintRacePackage = lintFlowPackage;
