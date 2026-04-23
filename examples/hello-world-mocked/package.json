@@ -24,7 +24,6 @@
   },
   "devDependencies": {
     "@relay/core": "workspace:*",
-    "@types/node": "25.6.0",
     "typescript": "6.0.3"
   },
   "relay": {
