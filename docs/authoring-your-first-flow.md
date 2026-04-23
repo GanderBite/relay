@@ -90,7 +90,7 @@ flow     my-flow v0.1.0
 input    the water cycle
 run      a1b2c3  ·  2026-04-23 09:14Z
 bill     subscription (max)  ·  no api charges
-est      ~$0.00  ·  1 step  ·  ~1 min
+est      $0.00  ·  1 steps  ·  ~1 min
 
 press ctrl-c any time — state is saved after every step.
 ───────────────────────────────────────────────────────
@@ -111,6 +111,11 @@ all 1 steps succeeded in 3.2s
 
 cost     $0.000  (estimated api equivalent; billed to subscription)
 output   .relay/runs/a1b2c3/handoffs/result.json
+
+next:
+    open the report        open .relay/runs/a1b2c3/handoffs/result.json
+    run again fresh        relay run my-flow . --fresh
+    share with team        relay share a1b2c3   (coming v1.1)
 ```
 
 The handoff `result` is written to `.relay/runs/a1b2c3/handoffs/result.json`. You can inspect it directly:
@@ -338,7 +343,7 @@ flow     my-flow v0.1.0
 input    the carbon cycle
 run      c3d4e5  ·  2026-04-23 09:31Z
 bill     subscription (max)  ·  no api charges
-est      ~$0.00  ·  2 steps  ·  ~2 min
+est      $0.00  ·  2 steps  ·  ~2 min
 
 press ctrl-c any time — state is saved after every step.
 ───────────────────────────────────────────────────────
@@ -359,6 +364,11 @@ all 2 steps succeeded in 8.5s
 
 cost     $0.000  (estimated api equivalent; billed to subscription)
 output   .relay/runs/c3d4e5/report.md
+
+next:
+    open the report        open .relay/runs/c3d4e5/report.md
+    run again fresh        relay run my-flow . --fresh
+    share with team        relay share c3d4e5   (coming v1.1)
 ```
 
 The `output` line points at the artifact `second` produced. Open it:
