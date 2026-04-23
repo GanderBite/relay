@@ -1,13 +1,15 @@
 /**
  * Color helpers for the Relay CLI.
  *
- * Chalk is initialized lazily via initColor() — the module-level chalk variable
+ * Chalk is initialized lazily via initColor() — the module-level state variable
  * is NOT set at load time. Call initColor() once in the CLI entry point before
  * any output is produced.
  *
- * If a color helper is called before initColor() (e.g. in tests or during
- * --help/--version short-circuits), chalk is auto-initialized with color-enabled
- * defaults so output is never silently suppressed.
+ * If a color helper is called before initColor() (e.g. in tests), the
+ * requireChalk() fallback auto-initializes with chalk's default env detection
+ * (NO_COLOR / FORCE_COLOR honored; ~/.relay/settings.json is NOT consulted on
+ * this path). This is a test-only escape hatch — production code always goes
+ * through initColor().
  *
  * Color rules (product spec §4.3):
  *   - Green  — completed steps, successful auth, subscription billing confirmed.
@@ -30,24 +32,28 @@ import { join } from 'node:path';
 import { Chalk, type ChalkInstance } from 'chalk';
 
 // ---------------------------------------------------------------------------
-// Deferred chalk instance
+// Deferred state
 //
-// _chalk is undefined until initColor() is called. This prevents the settings
+// _state is undefined until initColor() is called. This prevents the settings
 // file from being read at module load time, allowing tests to control the env
 // before initialization.
+//
+// Collapsing the chalk instance and the color mode into a single struct ensures
+// that the mode is always set in the same assignment that sets the level — one
+// write site, one read site, no drift between the two.
 // ---------------------------------------------------------------------------
 
-let _chalk: ChalkInstance | undefined;
-let _colorForced = false;
+let _state: { chalk: ChalkInstance; mode: 'always' | 'never' | 'auto' } | undefined;
 
 function requireChalk(): ChalkInstance {
-  if (_chalk === undefined) {
-    // Auto-initialize with color-enabled defaults when initColor() has not been
-    // called yet. This guards test setups and development paths where Commander's
-    // preAction hook hasn't run (e.g. direct command imports in tests).
-    _chalk = new Chalk();
+  if (_state === undefined) {
+    // Auto-initialize with chalk's default env detection when initColor() has
+    // not been called yet. This is a test-only escape hatch: chalk's own
+    // NO_COLOR / FORCE_COLOR env variables are honored, but ~/.relay/settings.json
+    // is NOT consulted on this path. Do not rely on this in production code.
+    _state = { chalk: new Chalk(), mode: 'auto' };
   }
-  return _chalk;
+  return _state.chalk;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,40 +97,38 @@ export interface InitColorOptions {
  *   color='always' in settings forces chalk on regardless of TTY.
  */
 export function initColor(opts: InitColorOptions): void {
-  _colorForced = false;
-
-  // Precedence 1: --no-color flag always wins.
-  if (opts.noColor || process.argv.includes('--no-color')) {
-    _chalk = new Chalk({ level: 0 });
+  // Precedence 1: --no-color flag always wins. Commander normalizes --no-color
+  // into opts.noColor before this function is called; no argv scan is needed.
+  if (opts.noColor) {
+    _state = { chalk: new Chalk({ level: 0 }), mode: 'never' };
     return;
   }
 
   // Precedence 2: NO_COLOR env variable wins over settings.
   if (process.env['NO_COLOR'] !== undefined && process.env['NO_COLOR'] !== '') {
-    _chalk = new Chalk({ level: 0 });
+    _state = { chalk: new Chalk({ level: 0 }), mode: 'never' };
     return;
   }
 
   // Precedence 3: explicit setting in ~/.relay/settings.json.
   const settingsColor = readSettingsColor();
   if (settingsColor === 'never') {
-    _chalk = new Chalk({ level: 0 });
+    _state = { chalk: new Chalk({ level: 0 }), mode: 'never' };
     return;
   }
   if (settingsColor === 'always') {
-    _colorForced = true;
-    _chalk = new Chalk({ level: 3 });
+    _state = { chalk: new Chalk({ level: 3 }), mode: 'always' };
     return;
   }
 
   // Precedence 4: TTY auto-detect (settingsColor === 'auto' or null).
   if (!process.stdout.isTTY) {
-    _chalk = new Chalk({ level: 0 });
+    _state = { chalk: new Chalk({ level: 0 }), mode: 'never' };
     return;
   }
 
   // TTY detected — use chalk's default level (auto-detected from terminal caps).
-  _chalk = new Chalk();
+  _state = { chalk: new Chalk(), mode: 'auto' };
 }
 
 /**
@@ -132,7 +136,7 @@ export function initColor(opts: InitColorOptions): void {
  * Returns false when initColor() has not been called yet.
  */
 export function colorEnabled(): boolean {
-  return _chalk !== undefined && _chalk.level > 0;
+  return _state !== undefined && _state.chalk.level > 0;
 }
 
 /**
@@ -143,9 +147,7 @@ export function colorEnabled(): boolean {
  * Requires initColor() to have been called first.
  */
 export function colorMode(): 'always' | 'never' | 'auto' {
-  const c = requireChalk();
-  if (c.level === 0) return 'never';
-  return _colorForced ? 'always' : 'auto';
+  return _state?.mode ?? 'auto';
 }
 
 /**
@@ -154,8 +156,7 @@ export function colorMode(): 'always' | 'never' | 'auto' {
  * subsequent output since chalk.level is checked per-call.
  */
 export function setColorDisabled(): void {
-  _colorForced = false;
-  _chalk = new Chalk({ level: 0 });
+  _state = { chalk: new Chalk({ level: 0 }), mode: 'never' };
 }
 
 // ---------------------------------------------------------------------------
