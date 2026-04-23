@@ -14,8 +14,8 @@
  *   fmtCostApprox(0.004)→ "~$0.004"
  *
  *   fmtK(999)           → "999"
- *   fmtK(1000)          → "1.0k"
- *   fmtK(12300)         → "12.3k"
+ *   fmtK(1000)          → "1.0K"
+ *   fmtK(12300)         → "12.3K"
  */
 
 // ---------------------------------------------------------------------------
@@ -83,17 +83,17 @@ export function fmtCostApprox(usd: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Formats a number with a compact "k" suffix for thousands.
+ * Formats a number with a compact "K" suffix for thousands.
  *
  * Rules:
  *   n < 1000   → plain integer string, e.g. "999"
- *   n >= 1000  → one decimal place with lowercase k, e.g. "1.0k", "12.3k"
+ *   n >= 1000  → one decimal place with uppercase K, e.g. "1.0K", "12.3K"
  *
- * Lowercase k matches the product spec examples. One decimal place is kept
- * for all k-range values (rather than switching to integer above 10k) so
- * the format is uniform and "12.3k" remains readable.
+ * Uppercase K matches the product spec examples (§11.3). One decimal place
+ * is kept for all K-range values (rather than switching to integer above 10K)
+ * so the format is uniform and "12.3K" remains readable.
  */
 export function fmtK(n: number): string {
   if (n < 1000) return String(n);
-  return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1000).toFixed(1)}K`;
 }
