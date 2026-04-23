@@ -227,9 +227,9 @@ export function buildProgram(): Command {
     .description('print all settings')
     .action(async () => {
       const { listAction } = (await import('./commands/config.js')) as {
-        listAction: () => Promise<void>;
+        listAction: (opts: Record<string, unknown>) => Promise<void>;
       };
-      await listAction();
+      await listAction({ ...program.opts() });
     });
 
   configCmd
@@ -237,9 +237,9 @@ export function buildProgram(): Command {
     .description('print the value of one setting')
     .action(async (key: string) => {
       const { getAction } = (await import('./commands/config.js')) as {
-        getAction: (key: string) => Promise<void>;
+        getAction: (key: string, opts: Record<string, unknown>) => Promise<void>;
       };
-      await getAction(key);
+      await getAction(key, { ...program.opts() });
     });
 
   configCmd
@@ -247,9 +247,9 @@ export function buildProgram(): Command {
     .description('write one setting atomically')
     .action(async (key: string, value: string) => {
       const { setAction } = (await import('./commands/config.js')) as {
-        setAction: (key: string, value: string) => Promise<void>;
+        setAction: (key: string, value: string, opts: Record<string, unknown>) => Promise<void>;
       };
-      await setAction(key, value);
+      await setAction(key, value, { ...program.opts() });
     });
 
   // ----------------------------------------------------------------- help --

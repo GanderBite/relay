@@ -141,7 +141,7 @@ function mergeSettingValue(
 // Subcommand action functions (exported for use by dispatcher)
 // ---------------------------------------------------------------------------
 
-export async function listAction(): Promise<void> {
+export async function listAction(_opts: Record<string, unknown> = {}): Promise<void> {
   process.stdout.write(`${MARK}  relay config\n`);
   process.stdout.write('\n');
 
@@ -179,7 +179,7 @@ export async function listAction(): Promise<void> {
   }
 }
 
-export async function getAction(key: string): Promise<void> {
+export async function getAction(key: string, _opts: Record<string, unknown> = {}): Promise<void> {
   if (!isValidKey(key)) {
     printUnknownKey(key);
     process.exit(1);
@@ -208,7 +208,11 @@ export async function getAction(key: string): Promise<void> {
   process.stdout.write(`${String(val)}\n`);
 }
 
-export async function setAction(key: string, rawValue: string): Promise<void> {
+export async function setAction(
+  key: string,
+  rawValue: string,
+  _opts: Record<string, unknown> = {},
+): Promise<void> {
   if (!isValidKey(key)) {
     printUnknownKey(key);
     process.exit(1);
@@ -266,5 +270,5 @@ function printUnknownKey(key: string): void {
  * Default export for bare `relay config` with no subcommand — runs list.
  */
 export default async function configCommand(): Promise<void> {
-  await listAction();
+  await listAction({});
 }
