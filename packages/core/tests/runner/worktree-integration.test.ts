@@ -27,8 +27,26 @@ vi.mock('../../src/runner/worktree.js', () => ({
   removeWorktree: vi.fn(),
 }));
 
-import { err, ok } from 'neverthrow';
-import { ERROR_CODES, PipelineError } from '../../src/errors.js';
+// ---------------------------------------------------------------------------
+// Mock atomicWriteJson so selected tests can make a state.json save throw
+// inside the step loop, causing the throw to escape #walkDag and enter the
+// try/catch in run() — then verify the finally block still calls removeWorktree.
+// ---------------------------------------------------------------------------
+vi.mock('../../src/util/atomic-write.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/util/atomic-write.js')>();
+  return {
+    ...real,
+    atomicWriteJson: vi.fn(real.atomicWriteJson),
+  };
+});
+
+import { err, errAsync, ok } from 'neverthrow';
+import {
+  AtomicWriteError,
+  ERROR_CODES,
+  PipelineError,
+  RaceStateWriteError,
+} from '../../src/errors.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationContext, InvocationResponse } from '../../src/providers/types.js';
@@ -36,6 +54,7 @@ import { defineRace } from '../../src/race/define.js';
 import { runner } from '../../src/race/runner.js';
 import { createWorktree, isGitRepo, removeWorktree } from '../../src/runner/worktree.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
+import { atomicWriteJson } from '../../src/util/atomic-write.js';
 import { z } from '../../src/zod.js';
 
 // ---------------------------------------------------------------------------
@@ -79,6 +98,15 @@ function buildOrchestrator(tmp: string) {
 const mockedIsGitRepo = vi.mocked(isGitRepo);
 const mockedCreateWorktree = vi.mocked(createWorktree);
 const mockedRemoveWorktree = vi.mocked(removeWorktree);
+const mockedAtomicWriteJson = vi.mocked(atomicWriteJson);
+
+// Capture the real atomicWriteJson implementation at module-evaluation time,
+// before any test installs a custom mockImplementation. The vi.mock factory
+// wraps it with vi.fn(real.atomicWriteJson), so getMockImplementation() at this
+// point returns the original function. Tests that need the real behavior
+// delegate through this reference; beforeEach reinstates it so injected
+// failures do not bleed across tests.
+const realAtomicWriteJsonImpl = mockedAtomicWriteJson.getMockImplementation()!;
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -95,6 +123,10 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
     mockedIsGitRepo.mockReset();
     mockedCreateWorktree.mockReset();
     mockedRemoveWorktree.mockReset();
+    // Reset the atomicWriteJson mock and restore the real implementation so
+    // any failure-injection from a previous test does not bleed forward.
+    mockedAtomicWriteJson.mockReset();
+    mockedAtomicWriteJson.mockImplementation(realAtomicWriteJsonImpl);
   });
 
   afterEach(async () => {
@@ -282,6 +314,72 @@ describe('Orchestrator — worktree lifecycle (integration)', () => {
 
       expect(capturedCwds).toHaveLength(1);
       expect(capturedCwds[0]).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // (f) Mid-run throw that escapes #walkDag — finally block still cleans up
+  // -------------------------------------------------------------------------
+
+  describe('calls removeWorktree in the finally block when a mid-run throw escapes the DAG walker', () => {
+    it('removes the worktree when a state.json save fails inside the step loop', async () => {
+      const fakeGitRoot = '/fake/git-root';
+      const fakeWorktreePath = join(tmpdir(), 'relay-worktrees', 'throw-escape-test');
+
+      mockedIsGitRepo.mockResolvedValue(ok(fakeGitRoot));
+      mockedCreateWorktree.mockResolvedValue(ok(fakeWorktreePath));
+      mockedRemoveWorktree.mockResolvedValue(ok(undefined));
+
+      // The Orchestrator calls atomicWriteJson in this order before the step
+      // loop starts:
+      //   call 1 — #writeRaceRef   (race-ref.json)
+      //   call 2 — raceStateMachine.init() -> save()  (state.json, seeds runners)
+      //   call 3 — raceStateMachine.save() after setting .input  (state.json)
+      //
+      // The 4th call is the startSave inside dispatchRunner once the step loop
+      // starts. Returning an Err there causes save() to produce
+      // err(RaceStateWriteError), dispatchRunner to throw it, the walker's
+      // completion drain to re-throw it (RaceStateWriteError branch), and
+      // run()'s catch block to re-throw it (not abort-like). The finally block
+      // then fires — calling #teardownWorktree -> removeWorktree — proving the
+      // guarantee holds even for un-foreseen mid-DAG throws.
+      //
+      // The Orchestrator makes exactly 3 atomicWriteJson calls before the step
+      // loop begins. mockImplementationOnce chains those 3 through the real
+      // implementation (captured at module-evaluation time before any test
+      // overrides it), then the permanent mockImplementation takes over for
+      // call 4+ and returns the injected failure.
+      mockedAtomicWriteJson
+        .mockImplementationOnce((path, value) => realAtomicWriteJsonImpl(path, value))
+        .mockImplementationOnce((path, value) => realAtomicWriteJsonImpl(path, value))
+        .mockImplementationOnce((path, value) => realAtomicWriteJsonImpl(path, value))
+        .mockImplementation((path, _value) =>
+          errAsync(new AtomicWriteError('injected write failure', path, undefined)),
+        );
+
+      const { orchestrator } = buildOrchestrator(tmp);
+
+      // run() re-throws the RaceStateWriteError from the catch block because it
+      // is not abort-like. The finally block fires before the throw propagates.
+      await expect(
+        orchestrator.run(
+          singleStepRace(),
+          {},
+          {
+            raceDir: tmp,
+            authTimeoutMs: 1_000,
+            flagProvider: 'mock',
+            worktree: 'auto',
+          },
+        ),
+      ).rejects.toThrow(RaceStateWriteError);
+
+      // The finally block must have called removeWorktree with the worktree that
+      // was set up before the DAG walker started.
+      expect(mockedRemoveWorktree).toHaveBeenCalledTimes(1);
+      const removeArgs = mockedRemoveWorktree.mock.calls[0]?.[0];
+      expect(removeArgs?.worktreePath).toBe(fakeWorktreePath);
+      expect(removeArgs?.gitRoot).toBe(fakeGitRoot);
     });
   });
 
