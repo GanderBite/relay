@@ -53,6 +53,12 @@ export interface OrchestratorOptions {
   runDir?: string;
 }
 
+/**
+ * Options passed to `Orchestrator.run()` and `Orchestrator.resume()`.
+ *
+ * @remarks RunOptions is defined here rather than in a separate runner/types.ts
+ * — it intentionally co-locates with the Orchestrator class that consumes it.
+ */
 export interface RunOptions {
   resumeFrom?: string;
   parallelism?: number;
@@ -97,6 +103,9 @@ export interface RunOptions {
    * - `true`: require a worktree. If git is missing or the raceDir is not in
    *   a repo, the run fails before any step executes.
    * - `false`: disable the feature. Subprocesses inherit the parent cwd.
+   *
+   * When the race has no prompt runners the worktree is created and
+   * immediately torn down; use `worktree: false` for script-only races.
    */
   worktree?: boolean | 'auto';
 }
@@ -701,7 +710,9 @@ export class Orchestrator {
   /**
    * Remove the per-run worktree. Called from the run's finally block, so any
    * failure is logged at warn and swallowed — letting a cleanup error escape
-   * would mask the real failure that triggered the finally.
+   * would mask the real failure that triggered the finally. Cleanup is bounded
+   * by the 30 s GIT_WORKTREE_REMOVE_TIMEOUT_MS inside worktree.ts; on timeout
+   * the error is logged at warn and the run completes normally.
    */
   async #teardownWorktree(
     worktreePath: string | undefined,
