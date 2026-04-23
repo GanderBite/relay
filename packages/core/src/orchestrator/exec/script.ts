@@ -9,6 +9,7 @@ import { splitShell } from './shlex.js';
 
 export interface ScriptExecContext {
   runDir: string;
+  runId: string;
   stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
@@ -26,12 +27,14 @@ export async function executeScript(
   step: ScriptStepSpec,
   ctx: ScriptExecContext,
 ): Promise<ScriptStepResult> {
-  const { runDir, stepId, attempt, abortSignal, logger } = ctx;
+  const { runDir, runId, stepId, attempt, abortSignal, logger } = ctx;
 
   const rawArgs = Array.isArray(step.run) ? step.run : splitShell(step.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt);
+    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt, {
+      runId,
+    });
   }
 
   const cwd = step.cwd ?? runDir;
@@ -91,7 +94,7 @@ export async function executeScript(
       `step "${stepId}" exited with code ${result.exitCode}`,
       stepId,
       attempt,
-      { exitCode: result.exitCode, stderr: result.stderr ?? '' },
+      { exitCode: result.exitCode, stderr: result.stderr ?? '', runId },
     );
   }
 

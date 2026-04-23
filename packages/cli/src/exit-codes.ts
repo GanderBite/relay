@@ -19,17 +19,16 @@
  */
 
 import {
-  type AuthTimeoutError,
-  type ClaudeAuthError,
+  AuthTimeoutError,
+  ClaudeAuthError,
   ERROR_CODES,
-  type FlowDefinitionError,
-  type HandoffSchemaError,
-  NoProviderConfiguredError,
+  FlowDefinitionError,
+  HandoffSchemaError,
   PipelineError,
-  type ProviderAuthError,
-  type ProviderCapabilityError,
-  type StepFailureError,
-  type TimeoutError,
+  ProviderAuthError,
+  ProviderCapabilityError,
+  StepFailureError,
+  TimeoutError,
 } from '@relay/core';
 import { CommanderError } from 'commander';
 import { gray, red } from './color.js';
@@ -74,24 +73,61 @@ function remediation(command: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Associates a PipelineError subtype (identified by its stable `code` string)
- * with an exit code and a format function.
+ * Public handler shape — generic over the specific PipelineError subclass it
+ * formats. Each entry in the registry is built via `makeHandler`, which takes
+ * an `instanceof` guard so the `format` callback receives a narrowed type
+ * without any `as` cast. When the registry's code-string key and the thrown
+ * error's class disagree (a class inheritance refactor gone wrong, or a
+ * future provider that mints a new subclass under an existing code), the
+ * guard fails and a safe generic fallback is emitted instead of silently
+ * reading undefined fields.
  */
-type ErrorHandler = {
+export type ErrorHandler<T extends PipelineError> = {
+  exitCode: number;
+  format: (e: T) => string;
+};
+
+/**
+ * Internal storage shape — the generic parameter is erased so heterogeneous
+ * handlers can share one Map. The stored `format` is the wrapper produced by
+ * `makeHandler`, which runs the guard before invoking the typed callback.
+ */
+type RegistryEntry = {
   exitCode: number;
   format: (e: PipelineError) => string;
 };
 
-const errorRegistry = new Map<string, ErrorHandler>([
+/**
+ * Build a registry entry from an `ErrorHandler<T>`. The returned entry's
+ * `format` accepts any `PipelineError`, runs the `instanceof` guard, and
+ * forwards to the typed callback on match or emits a minimal fallback on
+ * mismatch. The fallback should not be observed at runtime — if it is, the
+ * registry key and the error's class have drifted and the real fix is at the
+ * throw site or the registry entry.
+ */
+function makeHandler<T extends PipelineError>(
+  exitCode: number,
+  guard: (e: PipelineError) => e is T,
+  format: (e: T) => string,
+): RegistryEntry {
+  return {
+    exitCode,
+    format: (e) => {
+      if (!guard(e)) return `${e.name}: ${e.message}`;
+      return format(e);
+    },
+  };
+}
+
+const errorRegistry = new Map<string, RegistryEntry>([
   // StepFailureError — step exited non-zero
   [
     ERROR_CODES.STEP_FAILURE,
-    {
-      exitCode: EXIT_CODES.runner_failure,
-      format(e: PipelineError): string {
-        const err = e as StepFailureError;
-        // StepFailureDetails does not define `runId`; use guarded string-index access.
-        const runId = typeof err.details?.['runId'] === 'string' ? err.details['runId'] : '<runId>';
+    makeHandler(
+      EXIT_CODES.runner_failure,
+      (e): e is StepFailureError => e instanceof StepFailureError,
+      (err) => {
+        const runId = err.details?.runId ?? '<runId>';
         return [
           red(`✕ Step '${err.stepId}' failed on attempt ${err.attempt}`),
           BLANK,
@@ -101,16 +137,16 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation(`relay resume ${runId}                          retry the step`),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // FlowDefinitionError — with special handling for cycle detection
   [
     ERROR_CODES.FLOW_DEFINITION,
-    {
-      exitCode: EXIT_CODES.definition_error,
-      format(e: PipelineError): string {
-        const err = e as FlowDefinitionError;
+    makeHandler(
+      EXIT_CODES.definition_error,
+      (e): e is FlowDefinitionError => e instanceof FlowDefinitionError,
+      (err) => {
         const cyclePath = extractCyclePath(err);
         if (cyclePath !== null) {
           return [
@@ -130,16 +166,16 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation('relay doctor'),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // ProviderCapabilityError — subclass of FlowDefinitionError, same exit code + format
   [
     ERROR_CODES.PROVIDER_CAPABILITY,
-    {
-      exitCode: EXIT_CODES.definition_error,
-      format(e: PipelineError): string {
-        const err = e as ProviderCapabilityError;
+    makeHandler(
+      EXIT_CODES.definition_error,
+      (e): e is ProviderCapabilityError => e instanceof ProviderCapabilityError,
+      (err) => {
         return [
           red(`✕ Flow definition error`),
           BLANK,
@@ -149,16 +185,16 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation('relay doctor'),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // ClaudeAuthError — two distinct shapes
   [
     ERROR_CODES.CLAUDE_AUTH,
-    {
-      exitCode: EXIT_CODES.auth_error,
-      format(e: PipelineError): string {
-        const err = e as ClaudeAuthError;
+    makeHandler(
+      EXIT_CODES.auth_error,
+      (e): e is ClaudeAuthError => e instanceof ClaudeAuthError,
+      (err) => {
         const msg = err.message.toLowerCase();
 
         // Shape: binary missing
@@ -189,16 +225,16 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation('relay doctor              full environment check'),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // AuthTimeoutError — must be registered before TimeoutError (same exit code, different format)
   [
     ERROR_CODES.AUTH_TIMEOUT,
-    {
-      exitCode: EXIT_CODES.timeout,
-      format(e: PipelineError): string {
-        const err = e as AuthTimeoutError;
+    makeHandler(
+      EXIT_CODES.timeout,
+      (e): e is AuthTimeoutError => e instanceof AuthTimeoutError,
+      (err) => {
         const humanTime = fmtDuration(err.timeoutMs);
         return [
           red(`✕ Authentication for provider '${err.providerName}' timed out after ${humanTime}`),
@@ -209,21 +245,20 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation('relay doctor'),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // TimeoutError — runner exceeded its timeoutMs budget
   [
     ERROR_CODES.TIMEOUT,
-    {
-      exitCode: EXIT_CODES.timeout,
-      format(e: PipelineError): string {
-        const err = e as TimeoutError;
+    makeHandler(
+      EXIT_CODES.timeout,
+      (e): e is TimeoutError => e instanceof TimeoutError,
+      (err) => {
         const stepId = err.stepId;
         const timeoutMs = err.timeoutMs;
         const humanTime = fmtDuration(timeoutMs);
 
-        // TimeoutDetails defines `runId` and `artifactPath` — use typed dot access.
         const runId = err.details?.runId ?? '<runId>';
         const artifactPath =
           err.details?.artifactPath ?? `./.relay/runs/${runId}/artifacts/${stepId}.partial`;
@@ -240,23 +275,22 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation(`relay resume ${runId}                      retry with the new config`),
         ].join('\n');
       },
-    },
+    ),
   ],
 
   // HandoffSchemaError
   [
     ERROR_CODES.HANDOFF_SCHEMA,
-    {
-      exitCode: EXIT_CODES.baton_error,
-      format(e: PipelineError): string {
-        const err = e as HandoffSchemaError;
+    makeHandler(
+      EXIT_CODES.baton_error,
+      (e): e is HandoffSchemaError => e instanceof HandoffSchemaError,
+      (err) => {
         const handoffId = err.handoffId;
         const issueLines = err.issues.map((issue) => {
           const pathStr = issue.path.length > 0 ? issue.path.map(String).join('.') : handoffId;
           return `${INDENT}  ${handoffId}${pathStr !== handoffId ? `[${pathStr}]` : ''} ${issue.message}`;
         });
 
-        // HandoffSchemaDetails defines `runId`, `stepName`, `promptFile` — use typed dot access.
         const runId = err.details?.runId ?? '<runId>';
         const stepName = err.details?.stepName ?? handoffId;
         const promptFile = err.details?.promptFile ?? `prompts/${stepName}.md`;
@@ -272,16 +306,18 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation(`relay resume ${runId}                      retry after fixing`),
         ].join('\n');
       },
-    },
+    ),
   ],
 
-  // NoProviderConfiguredError
+  // NoProviderConfiguredError — the format function does not access any typed
+  // fields, so this entry skips the generic `makeHandler` wrapper and uses the
+  // plain RegistryEntry shape directly.
   [
     ERROR_CODES.NO_PROVIDER,
     {
       exitCode: EXIT_CODES.no_provider,
-      format(_e: PipelineError): string {
-        return [
+      format: () =>
+        [
           red('✕ no provider configured'),
           BLANK,
           `${INDENT}Relay does not know which backend to run your flow on.`,
@@ -290,18 +326,17 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation(
             'relay run <flow> --provider claude-cli   use the subscription-safe provider',
           ),
-        ].join('\n');
-      },
+        ].join('\n'),
     },
   ],
 
   // ProviderAuthError — generic provider auth misconfiguration
   [
     ERROR_CODES.PROVIDER_AUTH,
-    {
-      exitCode: EXIT_CODES.auth_error,
-      format(e: PipelineError): string {
-        const err = e as ProviderAuthError;
+    makeHandler(
+      EXIT_CODES.auth_error,
+      (e): e is ProviderAuthError => e instanceof ProviderAuthError,
+      (err) => {
         return [
           red(`✕ Authentication failed for provider '${err.providerName}'`),
           BLANK,
@@ -310,7 +345,7 @@ const errorRegistry = new Map<string, ErrorHandler>([
           remediation('relay doctor'),
         ].join('\n');
       },
-    },
+    ),
   ],
 ]);
 

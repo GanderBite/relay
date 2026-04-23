@@ -124,6 +124,12 @@ export interface StepFailureDetails extends Record<string, unknown> {
   reportUrl?: string;
   /** Per-branch failure summary for parallel steps. */
   branchFailures?: Array<{ branch: string; message: string }>;
+  /**
+   * Run id of the enclosing run, attached by the orchestrator so CLI
+   * remediation hints (`relay logs <runId>`, `relay resume <runId>`) can
+   * reference the concrete run instead of a `<runId>` placeholder.
+   */
+  runId?: string;
 }
 
 /**

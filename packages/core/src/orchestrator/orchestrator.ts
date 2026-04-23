@@ -997,6 +997,7 @@ export class Orchestrator {
           case 'script':
             return executeScript(step, {
               runDir,
+              runId,
               stepId: step.id,
               attempt,
               abortSignal: abortController.signal,
@@ -1005,6 +1006,7 @@ export class Orchestrator {
           case 'branch':
             return executeBranch(step, {
               runDir,
+              runId,
               stepId: step.id,
               attempt,
               abortSignal: abortController.signal,
@@ -1013,6 +1015,7 @@ export class Orchestrator {
           case 'parallel':
             return executeParallel(step, {
               stepId: step.id,
+              runId,
               step,
               attempt,
               abortSignal: abortController.signal,

@@ -6,6 +6,7 @@ import { splitShell } from './shlex.js';
 
 export interface BranchExecContext {
   runDir: string;
+  runId: string;
   stepId: string;
   attempt: number;
   abortSignal: AbortSignal;
@@ -21,12 +22,14 @@ export async function executeBranch(
   step: BranchStepSpec,
   ctx: BranchExecContext,
 ): Promise<BranchStepResult> {
-  const { runDir, stepId, attempt, abortSignal, logger } = ctx;
+  const { runDir, runId, stepId, attempt, abortSignal, logger } = ctx;
 
   const rawArgs = Array.isArray(step.run) ? step.run : splitShell(step.run);
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
-    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt);
+    throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt, {
+      runId,
+    });
   }
 
   const cwd = step.cwd ?? runDir;
@@ -64,7 +67,7 @@ export async function executeBranch(
       `step "${stepId}" exited with code ${result.exitCode}`,
       stepId,
       attempt,
-      { exitCode: result.exitCode },
+      { exitCode: result.exitCode, runId },
     );
   }
 

@@ -2,7 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { assemblePrompt, loadHandoffValues } from '../../context-inject.js';
 import type { CostTracker, StepMetrics } from '../../cost.js';
-import { HandoffSchemaError, PipelineError, StepFailureError } from '../../errors.js';
+import {
+  HandoffSchemaError,
+  PipelineError,
+  type StepFailureDetails,
+  StepFailureError,
+} from '../../errors.js';
 import type { PromptStepSpec } from '../../flow/types.js';
 import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
@@ -224,14 +229,33 @@ async function runProviderInvocation(args: {
  * discriminate a handoff-shape bug from a provider/network failure. Every
  * other non-StepFailureError cause is wrapped so the retry loop only has one
  * error type to dispatch on.
+ *
+ * `runId` is threaded through so the wrapped error carries the concrete run
+ * identifier in `details.runId`, which the CLI's error formatter reads to
+ * render `relay logs <runId>` / `relay resume <runId>` remediation lines.
+ * When a pre-existing `StepFailureError` is re-thrown (e.g. from the
+ * claude-cli classifier) the run id is spliced onto its details so every
+ * StepFailureError leaving this executor carries one.
  */
-function wrapFailure(cause: unknown, stepId: string, attempt: number): PipelineError {
-  if (cause instanceof StepFailureError) return cause;
+function wrapFailure(
+  cause: unknown,
+  stepId: string,
+  attempt: number,
+  runId: string,
+): PipelineError {
+  if (cause instanceof StepFailureError) {
+    if (cause.details?.runId === undefined) {
+      const merged: StepFailureDetails = { ...(cause.details ?? {}), runId };
+      return new StepFailureError(cause.message, cause.stepId, cause.attempt, merged);
+    }
+    return cause;
+  }
   if (cause instanceof HandoffSchemaError) return cause;
   const message = messageOf(cause);
   return new StepFailureError(`step "${stepId}" failed: ${message}`, stepId, attempt, {
     cause: message,
     code: codeOf(cause),
+    runId,
   });
 }
 
@@ -444,7 +468,7 @@ export async function executePrompt(
       model: response.model,
     };
   } catch (caught) {
-    const wrapped = wrapFailure(caught, stepId, attempt);
+    const wrapped = wrapFailure(caught, stepId, attempt, ctx.runId);
     ctx.logger.error(
       {
         event: 'prompt.failed',

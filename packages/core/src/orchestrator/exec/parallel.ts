@@ -30,6 +30,7 @@ export type BranchStatusSnapshot =
  */
 export interface ParallelExecutorContext {
   stepId: string;
+  runId: string;
   step: ParallelStepSpec;
   attempt: number;
   abortSignal: AbortSignal;
@@ -108,6 +109,7 @@ export async function executeParallel(
           branch,
           message,
         })),
+        runId: ctx.runId,
       },
     );
   }
