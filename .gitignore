@@ -12,6 +12,9 @@ dist/
 # Coverage reports
 coverage/
 
+# Generated API reference (typedoc output)
+docs/api/
+
 # Environment files
 .env
 .env.local

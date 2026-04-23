@@ -13,11 +13,13 @@
     "test": "pnpm -r --parallel test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "docs:api": "typedoc"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
     "@types/node": "^20.10.0",
-    "lefthook": "^2.1.6"
+    "lefthook": "^2.1.6",
+    "typedoc": "0.28.19"
   }
 }

@@ -1,0 +1,7 @@
+{
+  "entryPoints": ["packages/core/src/index.ts"],
+  "out": "docs/api",
+  "tsconfig": "packages/core/tsconfig.json",
+  "includeVersion": true,
+  "readme": "none"
+}
