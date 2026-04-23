@@ -46,7 +46,7 @@ export const promptOutputSchema: z.ZodType<PromptStepOutput> = z.union([
 
 // Bounds the worst-case billing for a runaway prompt. Every prompt step
 // gets this default unless the author overrides it. The Step also applies
-// the same fallback at dispatch time so races that bypass this schema
+// the same fallback at dispatch time so flows that bypass this schema
 // (e.g. spec literals) still inherit the bound, but persisting it on the
 // parsed PromptStepSpec keeps the value visible to downstream tooling
 // (catalog linter, doctor command) that reads steps without re-running them.

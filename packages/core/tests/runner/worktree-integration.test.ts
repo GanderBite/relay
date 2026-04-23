@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock the worktree module. vi.mock is hoisted before any import, so the
 // Orchestrator will load our fakes instead of the real execFile-backed funcs.
 // ---------------------------------------------------------------------------
-vi.mock('../../src/runner/worktree.js', () => ({
+vi.mock('../../src/util/worktree.js', () => ({
   isGitRepo: vi.fn(),
   createWorktree: vi.fn(),
   removeWorktree: vi.fn(),
@@ -47,9 +47,9 @@ import { step } from '../../src/flow/step.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationContext, InvocationResponse } from '../../src/providers/types.js';
-import { createWorktree, isGitRepo, removeWorktree } from '../../src/runner/worktree.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { atomicWriteJson } from '../../src/util/atomic-write.js';
+import { createWorktree, isGitRepo, removeWorktree } from '../../src/util/worktree.js';
 import { z } from '../../src/zod.js';
 
 // ---------------------------------------------------------------------------

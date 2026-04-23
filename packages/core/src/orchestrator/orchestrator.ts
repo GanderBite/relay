@@ -15,11 +15,11 @@ import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
 import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js';
 import type { Provider } from '../providers/types.js';
-import { createWorktree, isGitRepo, removeWorktree } from '../runner/worktree.js';
 import { loadFlowSettings, loadGlobalSettings } from '../settings/load.js';
 import { resolveProvider } from '../settings/resolve.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
+import { createWorktree, isGitRepo, removeWorktree } from '../util/worktree.js';
 
 import { checkCapabilities } from './capability-check.js';
 import { executeBranch } from './exec/branch.js';
@@ -105,7 +105,7 @@ export interface RunOptions {
    * - `false`: disable the feature. Subprocesses inherit the parent cwd.
    *
    * When the flow has no prompt steps the worktree is created and
-   * immediately torn down; use `worktree: false` for script-only races.
+   * immediately torn down; use `worktree: false` for script-only flows.
    */
   worktree?: boolean | 'auto';
 }

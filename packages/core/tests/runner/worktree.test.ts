@@ -37,7 +37,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 import { PipelineError } from '../../src/errors.js';
 import type { Logger } from '../../src/logger.js';
-import { createWorktree, isGitRepo, removeWorktree } from '../../src/runner/worktree.js';
+import { createWorktree, isGitRepo, removeWorktree } from '../../src/util/worktree.js';
 
 interface LoggerStub {
   logger: Logger;

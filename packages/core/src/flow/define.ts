@@ -53,7 +53,7 @@ function synthesizeStep(raw: StepBuilderOutput, id: string): Step {
 /**
  * Compile a flow definition. Throws `FlowDefinitionError` synchronously when
  * the spec fails schema validation, contains a cycle, or references unknown
- * step ids. This is load-time programmer-error validation — races that fail
+ * step ids. This is load-time programmer-error validation — flows that fail
  * to compile should abort module loading, not produce a runtime Result.
  */
 export function defineFlow<TInput>(spec: FlowInput<TInput>): Flow<TInput> {
