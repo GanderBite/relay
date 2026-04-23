@@ -12,7 +12,7 @@ Every mutation to a run's checkpoint is written via an atomic rename. The sequen
 2. Call `fsync` on the file descriptor, flushing bytes to stable storage before the handle closes.
 3. Rename the temp file onto the final path in a single syscall.
 
-Because rename is atomic at the filesystem level, readers see either the previous complete file or the new complete file — never a partial write. If the process dies between step 2 and step 3, the temp file is left behind and cleaned up on the next save attempt. The final path is never torn.
+Because rename is atomic at the filesystem level, readers see either the previous complete file or the new complete file — never a partial write. If the process dies between step 2 and step 3, the temp file is left behind on disk. Relay does not sweep orphaned temp files on the next save — they accumulate in the run directory until the run directory is removed or the OS reclaims them. The final path is never torn.
 
 Files written this way:
 
