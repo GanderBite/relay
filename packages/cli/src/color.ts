@@ -28,13 +28,15 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { RelaySettings, z } from '@relay/core';
+import { z } from '@relay/core';
 import { Chalk, type ChalkInstance } from 'chalk';
 
-// Extend the base settings schema with the color field this module reads.
-const ColorSettingsSchema = RelaySettings.extend({
-  color: z.enum(['auto', 'always', 'never']).optional(),
-});
+// Validates only the `color` field; ignores all other settings fields.
+const ColorSettingsSchema = z
+  .object({
+    color: z.enum(['auto', 'always', 'never']).optional(),
+  })
+  .passthrough();
 
 // ---------------------------------------------------------------------------
 // Deferred state
