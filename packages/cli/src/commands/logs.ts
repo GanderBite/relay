@@ -23,7 +23,8 @@ import { createReadStream, watch } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { gray, green, MARK, red, SYMBOLS, yellow } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red, yellow } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Level ordering

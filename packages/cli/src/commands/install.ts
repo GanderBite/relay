@@ -18,7 +18,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 
-import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red } from '../color.js';
 
 const execFileAsync = promisify(execFile);
 

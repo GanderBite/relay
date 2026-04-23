@@ -1,6 +1,6 @@
 import { Command } from 'commander';
+import { initColor } from './color.js';
 import { looksLikePath } from './util/path.js';
-import { setColorDisabled } from './visual.js';
 
 // All v1 command names — used for shorthand routing (first-positional bypass).
 const KNOWN_COMMANDS = new Set([
@@ -62,14 +62,16 @@ export function buildProgram(): Command {
   // can format unknown-command errors consistently.
   program.exitOverride();
 
-  // Apply --no-color early, before any command action runs.
-  // Calls setColorDisabled() directly rather than mutating process.env — chalk.level
-  // is set once at module load and env mutations after that point have no effect.
+  // Initialize color once, after Commander has parsed global flags, before any
+  // command action runs. initColor() applies all precedence rules (--no-color
+  // flag, NO_COLOR env, settings.json color key, TTY auto-detect).
+  //
+  // Commander's --no-color option is negated-boolean: opts.color is false when
+  // --no-color was passed, true otherwise. We pass noColor: !opts.color so that
+  // initColor() receives the correct boolean regardless of env or settings.
   program.hook('preAction', (_thisCommand, actionCommand) => {
     const opts = program.opts<{ color: boolean; verbose?: boolean; runDir?: string }>();
-    if (!opts.color || process.env['NO_COLOR'] !== undefined) {
-      setColorDisabled();
-    }
+    initColor({ noColor: !opts.color });
     // actionCommand is provided by commander's hook signature and intentionally unused here.
     void actionCommand;
   });

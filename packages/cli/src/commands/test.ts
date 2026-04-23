@@ -31,11 +31,12 @@ import type {
 } from '@relay/core';
 import { Orchestrator, ProviderRegistry, z } from '@relay/core';
 import { MockProvider } from '@relay/core/testing';
-
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red } from '../color.js';
 import { EXIT_CODES, formatError } from '../exit-codes.js';
 import type { LoadedFlow } from '../flow-loader.js';
 import { loadFlow } from '../flow-loader.js';
-import { gray, green, MARK, red, STEP_NAME_WIDTH, SYMBOLS } from '../visual.js';
+import { STEP_NAME_WIDTH } from '../layout.js';
 
 // ---------------------------------------------------------------------------
 // Fixture schema (Zod v4)

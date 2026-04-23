@@ -12,7 +12,7 @@
  * This matches the spec byte-for-byte.
  */
 
-import { MARK } from './visual.js';
+import { MARK } from './brand.js';
 
 // ---------------------------------------------------------------------------
 // Layout helpers

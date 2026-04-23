@@ -30,8 +30,8 @@ import {
   TimeoutError,
 } from '@relay/core';
 import { CommanderError } from 'commander';
+import { gray, red } from './color.js';
 import { fmtDuration } from './format.js';
-import { gray, red } from './visual.js';
 
 // ---------------------------------------------------------------------------
 // Exit code constants

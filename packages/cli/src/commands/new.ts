@@ -4,9 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { type ScaffoldReport, scaffoldFlow, type TemplateId } from '@relay/generator/scaffold';
-
+import { MARK, SYMBOLS } from '../brand.js';
+import { green, red } from '../color.js';
 import { EXIT_CODES } from '../exit-codes.js';
-import { green, MARK, red, SYMBOLS } from '../visual.js';
 
 export interface NewCommandOptions {
   template?: string;

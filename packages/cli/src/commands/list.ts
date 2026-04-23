@@ -18,7 +18,8 @@
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { gray, MARK } from '../visual.js';
+import { MARK } from '../brand.js';
+import { gray } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Column widths — derived from the longest entry in the spec example

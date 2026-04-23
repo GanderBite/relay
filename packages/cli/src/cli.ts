@@ -1,10 +1,10 @@
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CommanderError } from 'commander';
+import { MARK } from './brand.js';
 import { buildProgram } from './dispatcher.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
 import { renderSplash } from './help.js';
-import { MARK } from './visual.js';
 
 export type { RegistryDoc, RegistryEntry, RegistryError } from './registry.js';
 // Public API re-exports — consumed by bin shims and catalog tooling.

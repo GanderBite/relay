@@ -2,24 +2,14 @@
  * Pre-run, success, and failure banners for the Relay CLI.
  *
  * All brand constants (MARK, WORDMARK, SYMBOLS) and color helpers are
- * imported from visual.ts — never defined here.
+ * imported from brand.ts, color.ts, and layout.ts — never defined here.
  */
 
 import type { AuthState, CostEstimate } from '@relay/core';
+import { flowHeader, SYMBOLS, WORDMARK } from './brand.js';
+import { gray, green, red } from './color.js';
 import { fmtCost, fmtDuration } from './format.js';
-import {
-  DURATION_WIDTH,
-  flowHeader,
-  gray,
-  green,
-  kvLine,
-  MODEL_WIDTH,
-  red,
-  rule,
-  STEP_NAME_WIDTH,
-  SYMBOLS,
-  WORDMARK,
-} from './visual.js';
+import { DURATION_WIDTH, kvLine, MODEL_WIDTH, rule, STEP_NAME_WIDTH } from './layout.js';
 
 /**
  * Formats an ISO date-time string to "YYYY-MM-DD HH:mmZ" in UTC.

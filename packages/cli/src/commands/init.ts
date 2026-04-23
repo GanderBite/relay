@@ -22,7 +22,8 @@ import {
   loadGlobalSettings,
 } from '@relay/core';
 
-import { gray, green, MARK, SYMBOLS } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Constants

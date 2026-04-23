@@ -15,19 +15,10 @@ import type { Flow } from '@relay/core';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
-
+import { flowHeader, SYMBOLS } from './brand.js';
+import { gray, green, red, yellow } from './color.js';
 import { fmtCostApprox, fmtK } from './format.js';
-import {
-  DURATION_WIDTH,
-  flowHeader,
-  gray,
-  green,
-  MODEL_WIDTH,
-  red,
-  STEP_NAME_WIDTH,
-  SYMBOLS,
-  yellow,
-} from './visual.js';
+import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
 
 // ---------------------------------------------------------------------------
 // Live state shape — mirrors LiveStatePartial from @relay/core/runner/live-state.

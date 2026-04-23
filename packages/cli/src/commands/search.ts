@@ -21,7 +21,8 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { gray, MARK, SYMBOLS, yellow } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, yellow } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Column widths — derived from the spec §6.8 example

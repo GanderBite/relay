@@ -30,7 +30,8 @@ import {
   registerDefaultProviders,
   resolveProvider,
 } from '@relay/core';
-import { green, MARK, red, SYMBOLS, yellow } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { green, red, yellow } from '../color.js';
 
 const execFileAsync = promisify(execFile);
 

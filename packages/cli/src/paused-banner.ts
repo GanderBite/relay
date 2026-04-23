@@ -26,18 +26,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { StepState } from '@relay/core';
-
+import { MARK, SYMBOLS } from './brand.js';
+import { gray, green, red } from './color.js';
 import { fmtCost, fmtDuration } from './format.js';
-import {
-  DURATION_WIDTH,
-  gray,
-  green,
-  MARK,
-  MODEL_WIDTH,
-  red,
-  STEP_NAME_WIDTH,
-  SYMBOLS,
-} from './visual.js';
+import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
 
 // ---------------------------------------------------------------------------
 // Types

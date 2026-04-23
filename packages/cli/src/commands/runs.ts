@@ -20,7 +20,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FlowStatus, RunState } from '@relay/core';
-import { gray, green, MARK, red, SYMBOLS, yellow } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red, yellow } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Column widths for the table

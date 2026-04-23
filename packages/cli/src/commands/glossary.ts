@@ -12,7 +12,7 @@
  *   checkpoint  the saved state of a run after each step completes
  */
 
-import { MARK } from '../visual.js';
+import { MARK } from '../brand.js';
 
 // ---------------------------------------------------------------------------
 // Glossary entries (product spec §13 — verbatim)

@@ -19,11 +19,12 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red, yellow } from '../color.js';
 import type { LintFinding } from '../lint.js';
 import { lintRacePackage } from '../lint.js';
 import type { RegistryEntry } from '../registry.js';
 import { generateRegistryJson } from '../registry.js';
-import { gray, green, MARK, red, SYMBOLS, yellow } from '../visual.js';
 
 const execFileAsync = promisify(execFile);
 

@@ -27,7 +27,8 @@ import { join } from 'node:path';
 
 import semver from 'semver';
 
-import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red } from '../color.js';
 import installCommand from './install.js';
 
 // ---------------------------------------------------------------------------

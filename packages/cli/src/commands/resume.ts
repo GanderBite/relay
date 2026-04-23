@@ -39,11 +39,13 @@ import {
   renderSuccessBanner,
   type SuccessStepRow,
 } from '../banner.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red, yellow } from '../color.js';
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
+import { kvLine, STEP_NAME_WIDTH } from '../layout.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
-import { gray, green, kvLine, MARK, red, STEP_NAME_WIDTH, SYMBOLS, yellow } from '../visual.js';
 
 // ---------------------------------------------------------------------------
 // FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef

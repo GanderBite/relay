@@ -3,7 +3,11 @@
  *
  * Chalk is initialized lazily via initColor() — the module-level chalk variable
  * is NOT set at load time. Call initColor() once in the CLI entry point before
- * any output is produced. Color helpers called before initColor() will throw.
+ * any output is produced.
+ *
+ * If a color helper is called before initColor() (e.g. in tests or during
+ * --help/--version short-circuits), chalk is auto-initialized with color-enabled
+ * defaults so output is never silently suppressed.
  *
  * Color rules (product spec §4.3):
  *   - Green  — completed steps, successful auth, subscription billing confirmed.
@@ -38,7 +42,10 @@ let _colorForced = false;
 
 function requireChalk(): ChalkInstance {
   if (_chalk === undefined) {
-    throw new Error('initColor() must be called before using color helpers');
+    // Auto-initialize with color-enabled defaults when initColor() has not been
+    // called yet. This guards test setups and development paths where Commander's
+    // preAction hook hasn't run (e.g. direct command imports in tests).
+    _chalk = new Chalk();
   }
   return _chalk;
 }

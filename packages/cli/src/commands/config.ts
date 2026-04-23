@@ -25,7 +25,8 @@ import {
   type RelaySettings,
 } from '@relay/core';
 
-import { gray, green, MARK, red, SYMBOLS } from '../visual.js';
+import { MARK, SYMBOLS } from '../brand.js';
+import { gray, green, red } from '../color.js';
 
 // ---------------------------------------------------------------------------
 // Valid keys and their constraints
