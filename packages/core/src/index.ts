@@ -34,10 +34,30 @@ export type { CostSummary, StepMetrics } from './cost.js';
  * via `summary()` after the run completes.
  */
 export { CostTracker } from './cost.js';
-
 /** Union of all stable error code strings emitted by `PipelineError` subclasses. */
-export type { ErrorCode } from './errors.js';
-
+/** Typed details interfaces for `PipelineError` subclasses. Pattern-match on `error.details` with these types. */
+export type {
+  AtomicWriteDetails,
+  ClaudeAuthDetails,
+  ErrorCode,
+  FlowDefinitionDetails,
+  HandoffIoDetails,
+  HandoffNotFoundDetails,
+  HandoffSchemaDetails,
+  HandoffWriteDetails,
+  MetricsWriteDetails,
+  NoProviderConfiguredDetails,
+  ProviderAuthDetails,
+  ProviderCapabilityDetails,
+  ProviderRateLimitDetails,
+  StateCorruptDetails,
+  StateNotFoundDetails,
+  StateTransitionDetails,
+  StateVersionMismatchDetails,
+  StateWriteDetails,
+  StepFailureDetails,
+  TimeoutDetails,
+} from './errors.js';
 /**
  * Error classes and helpers for the Relay runtime error hierarchy.
  *
@@ -112,7 +132,7 @@ export { defineFlow } from './flow/define.js';
  * - `step.prompt(config)` — runs a prompt file via a provider.
  *   Key config options: `promptFile` (required), `model`, `contextFrom`,
  *   `output` (required — `{ handoff }`, `{ artifact }`, or both),
- *   `maxRetries` (default 0), `timeoutMs` (default 600000), `maxBudgetUsd`,
+ *   `maxRetries` (optional; omitting means no retry), `timeoutMs` (default 600000), `maxBudgetUsd`,
  *   `dependsOn`.
  *
  * - `step.script(config)` — runs a shell command or script.
@@ -132,6 +152,19 @@ export { defineFlow } from './flow/define.js';
  *   Key config options: `message`, `exitCode`, `dependsOn`.
  */
 export { step } from './flow/step.js';
+
+/** Builder input and output shapes for each step kind. Useful for typing custom step wrappers. */
+export type { BranchStepBuilderInput, BranchStepBuilderOutput } from './flow/steps/branch.js';
+export type {
+  ParallelStepBuilderInput,
+  ParallelStepBuilderOutput,
+} from './flow/steps/parallel.js';
+export type { PromptStepBuilderInput, PromptStepBuilderOutput } from './flow/steps/prompt.js';
+export type { ScriptStepBuilderInput, ScriptStepBuilderOutput } from './flow/steps/script.js';
+export type {
+  TerminalStepBuilderInput,
+  TerminalStepBuilderOutput,
+} from './flow/steps/terminal.js';
 
 /**
  * Core flow and step type exports.
@@ -186,9 +219,11 @@ export { HandoffStore } from './handoffs.js';
 export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
 
 /**
- * Logger factory that returns a scoped pino instance bound to `flowName` and
- * `runId`. `CONSOLE_COLOR_DISABLED` is the env var key that disables ANSI
- * color output. `stripAnsi` removes ANSI escape sequences from a string.
+ * Logger factory that returns a scoped pino instance bound to `flowName`
+ * and `runId`. `CONSOLE_COLOR_DISABLED` is a boolean constant resolved at
+ * module load from `NO_COLOR` / TTY / settings-file color preference. Read
+ * it to decide whether to emit ANSI escapes in adjacent consumer code.
+ * `stripAnsi` removes ANSI escape sequences from a string.
  */
 export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 
