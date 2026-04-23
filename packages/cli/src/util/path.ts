@@ -6,6 +6,7 @@
  * ('/' or '\').
  */
 export function looksLikePath(s: string): boolean {
+  if (s === '.' || s === '..') return true;
   return (
     s.startsWith('./') ||
     s.startsWith('../') ||
