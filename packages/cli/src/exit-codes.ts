@@ -339,26 +339,19 @@ export function formatError(err: unknown): string {
 /**
  * Try to extract a cycle path string from a FlowDefinitionError.
  *
- * Checks details.cycle (expected shape: string[] of runner IDs).
- * Falls back to a message heuristic for errors that already carry a
- * formatted cycle description containing '→'.
- *
- * Returns a formatted string like "inventory → entities → services → inventory"
- * or null if this error does not describe a cycle.
+ * Reads the structured `details.cyclePath` field (string[] of step ids)
+ * populated by the DAG cycle detector. Returns a formatted string like
+ * "inventory → entities → services → inventory", or null if this error does
+ * not describe a cycle.
  */
 function extractCyclePath(err: FlowDefinitionError): string | null {
+  const cyclePath = err.details?.cyclePath;
   if (
-    err.details?.['cycle'] !== undefined &&
-    Array.isArray(err.details['cycle']) &&
-    err.details['cycle'].length >= 2
+    Array.isArray(cyclePath) &&
+    cyclePath.length >= 2 &&
+    cyclePath.every((s): s is string => typeof s === 'string')
   ) {
-    const steps = err.details['cycle'] as string[];
-    return [...steps, steps[0]].join(' → ');
-  }
-
-  if (err.message.includes('→') && err.message.toLowerCase().includes('cycle')) {
-    const match = /cycle[:\s]+(.+)/i.exec(err.message);
-    if (match?.[1] !== undefined) return match[1].trim();
+    return [...cyclePath, cyclePath[0]].join(' → ');
   }
 
   return null;

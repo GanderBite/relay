@@ -214,7 +214,7 @@ function kahnTopoSort(
   return err(
     new FlowDefinitionError(
       `cycle detected in step dependencies: ${path.join(' -> ')}. Remove one of the dependsOn references in this cycle so the flow has a valid topological order.`,
-      { cycle: path },
+      { cyclePath: [...path] },
     ),
   );
 }

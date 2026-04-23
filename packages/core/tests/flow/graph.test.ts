@@ -69,9 +69,9 @@ describe('buildGraph — DAG construction', () => {
       expect(err.message).toContain('cycle detected');
       expect(err.message).toContain('a');
       expect(err.message).toContain('b');
-      const cycle = err.details?.cycle;
-      expect(Array.isArray(cycle)).toBe(true);
-      const cycleArr = cycle as string[];
+      const cyclePath = err.details?.cyclePath;
+      expect(Array.isArray(cyclePath)).toBe(true);
+      const cycleArr = cyclePath as string[];
       expect(cycleArr).toContain('a');
       expect(cycleArr).toContain('b');
       expect(cycleArr[0]).toBe(cycleArr[cycleArr.length - 1]);
@@ -85,11 +85,11 @@ describe('buildGraph — DAG construction', () => {
       };
       const result = buildGraph(steps);
       expect(result.isErr()).toBe(true);
-      const cycle = result._unsafeUnwrapErr().details?.cycle as string[];
-      expect(cycle.length).toBe(4);
-      const distinct = new Set(cycle);
+      const cyclePath = result._unsafeUnwrapErr().details?.cyclePath as string[];
+      expect(cyclePath.length).toBe(4);
+      const distinct = new Set(cyclePath);
       expect(distinct.size).toBe(3);
-      expect(cycle[0]).toBe(cycle[3]);
+      expect(cyclePath[0]).toBe(cyclePath[3]);
     });
 
     it('[DAG-004] self-dependency is rejected as a cycle', () => {
@@ -99,8 +99,8 @@ describe('buildGraph — DAG construction', () => {
       const result = buildGraph(steps);
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr().message).toContain('cycle detected');
-      const cycle = result._unsafeUnwrapErr().details?.cycle as string[];
-      expect(cycle).toContain('loop');
+      const cyclePath = result._unsafeUnwrapErr().details?.cyclePath as string[];
+      expect(cyclePath).toContain('loop');
     });
 
     it('[DAG-005] parallel step referencing itself in branches is rejected with distinct message', () => {

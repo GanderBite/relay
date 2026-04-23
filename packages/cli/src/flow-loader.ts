@@ -17,8 +17,20 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Flow, Result } from '@relay/core';
-import { err, ok } from '@relay/core';
+import { err, ok, z } from '@relay/core';
 import { looksLikePath } from './util/path.js';
+
+// ---------------------------------------------------------------------------
+// package.json shape — only the fields Relay actually reads
+// ---------------------------------------------------------------------------
+
+const PkgSchema = z
+  .object({
+    name: z.string().optional(),
+    version: z.string().optional(),
+    relay: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -101,15 +113,16 @@ function isFlow(value: unknown): value is Flow<unknown> {
 // ---------------------------------------------------------------------------
 
 /**
- * Read and JSON-parse a package.json file at the given directory.
- * Returns the parsed object, or an empty record on any failure.
+ * Read and Zod-parse a package.json file at the given directory.
+ * Returns the parsed object, or an empty record on any failure (file absent,
+ * unreadable, or schema mismatch).
  */
 async function readPkg(dir: string): Promise<Record<string, unknown>> {
   try {
     const raw = await readFile(join(dir, 'package.json'), 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+    const result = PkgSchema.safeParse(JSON.parse(raw));
+    if (result.success) {
+      return result.data;
     }
     return {};
   } catch {

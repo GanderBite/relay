@@ -28,8 +28,13 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-
+import { RelaySettings, z } from '@relay/core';
 import { Chalk, type ChalkInstance } from 'chalk';
+
+// Extend the base settings schema with the color field this module reads.
+const ColorSettingsSchema = RelaySettings.extend({
+  color: z.enum(['auto', 'always', 'never']).optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Deferred state
@@ -63,12 +68,9 @@ function requireChalk(): ChalkInstance {
 function readSettingsColor(): 'auto' | 'always' | 'never' | null {
   try {
     const raw = readFileSync(join(homedir(), '.relay', 'settings.json'), 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const color = (parsed as Record<string, unknown>)['color'];
-      if (color === 'auto' || color === 'always' || color === 'never') {
-        return color;
-      }
+    const result = ColorSettingsSchema.safeParse(JSON.parse(raw));
+    if (result.success) {
+      return result.data.color ?? null;
     }
   } catch {
     // File absent or unreadable — not an error, fall through to TTY detection.
