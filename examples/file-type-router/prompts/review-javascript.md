@@ -1,4 +1,4 @@
-You are reviewing a JavaScript source file. The file path is in the `FILE_PATH` environment variable — read it with your tools to obtain the absolute path, then read the file's contents.
+You are reviewing a JavaScript source file. Read the file at `{{input.filePath}}` with your file-reading tools, then review its contents.
 
 Produce a JavaScript-focused code review as a markdown document with this shape:
 

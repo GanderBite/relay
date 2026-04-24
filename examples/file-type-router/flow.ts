@@ -5,7 +5,13 @@ export default defineFlow({
   version: '0.1.0',
   description:
     'A routing example: a branch step inspects a file path from the FILE_PATH env var and picks one of three review prompts based on the extension (.ts, .js, or other).',
-  input: z.object({}),
+  input: z.object({
+    filePath: z
+      .string()
+      .describe(
+        'Path to the file to review. Passed to the leaf prompt steps via template substitution.',
+      ),
+  }),
   steps: {
     route: step.branch({
       run: [
@@ -17,6 +23,7 @@ export default defineFlow({
         '0': 'reviewTypescript',
         '1': 'reviewJavascript',
         '2': 'analyzeText',
+        default: 'abort',
       },
     }),
     reviewTypescript: step.prompt({

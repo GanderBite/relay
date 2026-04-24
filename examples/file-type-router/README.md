@@ -2,25 +2,27 @@
 
 `●─▶●─▶●─▶●  file-type-router`
 
-A routing example. Use it to see how `step.branch()` inspects a condition, maps an exit code to a step id, and selects exactly one downstream step out of a fan — the pattern most real flows use for dispatching on file kind, feature flag, or input shape.
+A routing example. Use it to see how `step.branch()` inspects a condition, maps an exit code to a step id, and records the routing decision in the run state — the pattern most real flows use for dispatching on file kind, feature flag, or input shape.
 
 ## What it does
 
 The flow looks at one file path and picks a review prompt that matches the file's extension:
 
-- `.ts` files go to a TypeScript-specific code review.
-- `.js` files go to a JavaScript-specific code review.
-- Anything else goes to a generic plain-text analysis.
+- `.ts` files route to a TypeScript-specific code review.
+- `.js` files route to a JavaScript-specific code review.
+- Anything else routes to a generic plain-text analysis.
 
-It exists to demonstrate one primitive: `step.branch()`. A branch step runs a short command, reads its exit code, and looks the exit code up in an `onExit` map to decide which step runs next. There is no artifact, no handoff — the branch's only product is the routing decision.
+It exists to demonstrate one primitive: `step.branch()`. A branch step runs a short command, reads its exit code, and looks the exit code up in an `onExit` map to record which step id is the selected route. The branch step itself produces no artifact and no handoff — its only product is the routing decision.
 
-The flow has four steps in total: one branch (`route`) and three leaf prompt steps (`reviewTypescript`, `reviewJavascript`, `analyzeText`). On any given run, exactly one leaf runs. The other two are not dispatched.
+The flow has four steps in total: one branch (`route`) and three leaf prompt steps (`reviewTypescript`, `reviewJavascript`, `analyzeText`). The `route` step's exit code identifies the selected branch and is written to `steps.route.exitCode` in the run state.
+
+> Note: branch-step sibling skipping is not yet implemented in the Relay orchestrator. All three leaf steps run on every invocation; the branch step's exit code is captured in the run state (`steps.route.exitCode`) for reference. Once sibling skipping lands in a later sprint, the two un-selected leaves will be marked `skipped` and will not be dispatched. The flow remains useful today as a demonstration of the `step.branch()` primitive and its `onExit` contract.
 
 ## Prerequisites
 
 - Node ≥ 20.10 and pnpm, same as the rest of the Relay monorepo.
-- A working Claude subscription (Pro or Max). The selected leaf runs one short prompt.
-- A file you want to review on your local disk. The flow reads its path from the `FILE_PATH` environment variable.
+- A working Claude subscription (Pro or Max). The three leaf prompts each run one short prompt.
+- A file you want to review on your local disk. The flow reads its path from the `FILE_PATH` environment variable (for the branch step) and from the `--filePath` input variable (for the leaf prompts).
 
 ## Install
 
@@ -39,17 +41,22 @@ The flow runs on your Claude subscription. If `ANTHROPIC_API_KEY` is set in your
 
 Run `relay doctor` before your first run to confirm Node, the `claude` binary, auth state, and the `.relay` directory are all in order.
 
-No per-step model overrides are set. The selected leaf runs on whichever model your provider picks by default.
+No per-step model overrides are set. The leaf prompts run on whichever model your provider picks by default.
 
 ## Run
 
-Set `FILE_PATH` to the file you want to review, then run the flow:
+Set `FILE_PATH` for the branch step, pass `--filePath` for the prompt steps, then run the flow:
 
 ```bash
-FILE_PATH=/abs/path/to/some/file.ts relay run /path/to/relay/examples/file-type-router
+FILE_PATH=./src/index.ts relay run /path/to/relay/examples/file-type-router --filePath=./src/index.ts
 ```
 
-The `route` step is where the routing happens. It runs a short node one-liner that reads `FILE_PATH`, extracts the extension, and exits with code `0` for `.ts`, `1` for `.js`, or `2` for anything else. The step's `onExit` map translates that exit code into a step id:
+Two separate channels are required because they have different reachability:
+
+- The `route` branch step is a subprocess that inherits the full parent env, so it reads `FILE_PATH` from the shell.
+- The leaf prompt steps run through the claude-cli provider, which strips non-allowlisted env vars before subprocess launch. They read the path through Zod input substitution — `{{input.filePath}}` in each prompt template — which requires `--filePath` on the CLI.
+
+The `route` step runs a short node one-liner that reads `FILE_PATH`, extracts the extension, and exits with code `0` for `.ts`, `1` for `.js`, or `2` for anything else. The step's `onExit` map translates that exit code into a step id:
 
 ```ts
 route: step.branch({
@@ -58,34 +65,27 @@ route: step.branch({
     '0': 'reviewTypescript',
     '1': 'reviewJavascript',
     '2': 'analyzeText',
+    default: 'abort',
   },
 });
 ```
 
-### Reading the selected branch in the live output
+The `default: 'abort'` entry makes the failure mode explicit: if the node one-liner itself crashes (a node runtime error exiting with an unmapped code), the branch step aborts the run rather than silently falling through.
 
-While the flow runs, the CLI prints one row per step in the step grid. The branch step appears first:
+### Reading the routing decision
 
-```
- ✓ route              script     0.1s    exit=0  →  reviewTypescript
- ⠋ reviewTypescript   sonnet     turn 2  0.6K→0.4K    ~.014
- ○ reviewJavascript   not selected
- ○ analyzeText        not selected
-```
+While the flow runs, the `relay run` CLI shows a live step grid with one row per step (status symbol, step id, model, duration, tokens). The branch step appears first in the grid and succeeds once the node one-liner exits.
 
-The `exit=<n>  →  <stepId>` tail on the branch row is how you read the decision the router made. The two un-selected leaves show `not selected` in the status column and never transition to running.
+After the run, the routing decision is on disk in `.relay/runs/<runId>/state.json`:
 
-After the run, the same information is on disk in `.relay/runs/<runId>/state.json`:
-
-- `steps.route.exitCode` — the numeric exit the node script returned.
+- `steps.route.exitCode` — the numeric exit the node script returned (`0`, `1`, or `2`).
 - `steps.route.next` — the step id the router chose (`reviewTypescript`, `reviewJavascript`, or `analyzeText`).
-- `steps.<leaf>.status` — `succeeded` on the chosen leaf; `skipped` on the others.
 
-The selected leaf writes a `review.md` artifact into `.relay/runs/<runId>/artifacts/`. The file shape differs per branch — the two review prompts produce sectioned code reviews, and the fallback produces a short file analysis.
+The selected leaf writes a `review.md` artifact into `.relay/runs/<runId>/artifacts/`. The file shape differs per branch — the two review prompts produce sectioned code reviews, and the fallback produces a short file analysis. Because branch-sibling skipping is not yet wired, the other two leaves also write their own `review.md` under their own artifact paths on each run; `steps.route.next` is the authoritative pointer to the primary result.
 
 ## Sample Output
 
-For `FILE_PATH=./src/orchestrator.ts`, `artifacts/review.md` looks like:
+For a `.ts` file, `artifacts/review.md` from the `reviewTypescript` leaf looks like:
 
 ```markdown
 # TypeScript Review: orchestrator.ts
@@ -111,7 +111,7 @@ decides when a run ends.
 - Add a `undefined` guard at L210 and propagate a typed error.
 ```
 
-For `FILE_PATH=./README.md`, the flow picks the fallback branch and produces:
+For a non-code file, `artifacts/review.md` from the `analyzeText` leaf looks like:
 
 ```markdown
 # File Analysis: README.md
@@ -134,18 +134,19 @@ The exact wording varies per run because the model generates it.
 
 ## Estimated cost and duration
 
-- **Cost:** under $0.02 per run. The branch step runs locally in node and costs nothing. The selected leaf runs one short prompt against a single file, typically a few thousand tokens of input and under 500 tokens of output. On a Claude subscription the dollar figure is an API-equivalent estimate, not a charge on your account.
-- **Duration:** 1–3 minutes, dominated by model latency on the one prompt that actually runs. The branch step completes in well under a second.
+- **Cost:** under $0.05 per run today. The branch step runs locally in node and costs nothing. All three leaf prompts currently dispatch on every run (see the orchestrator-gap note above), each reading the same file and producing a short review. On a Claude subscription the dollar figure is an API-equivalent estimate, not a charge on your account. Once sibling skipping lands, the per-run cost will drop to the single selected leaf.
+- **Duration:** 1–3 minutes, dominated by model latency on the leaf prompts (which run in parallel). The branch step completes in well under a second.
 
 ## Configuration
 
-The flow's Zod input schema is empty — the file to review comes in through the environment instead, because branch-step commands cannot read input variables at runtime.
+The flow takes one Zod input variable and reads one environment variable.
 
-| Variable | Source | Default | Notes |
+| Name | Kind | Default | Notes |
 |---|---|---|---|
-| `FILE_PATH` | process env | (required) | Absolute or relative path to the file to review. Read by the `route` branch step and by the selected leaf prompt. |
+| `filePath` | Zod input (`--filePath=...`) | (required) | Path to the file to review. Read by the three leaf prompt steps via `{{input.filePath}}` template substitution. |
+| `FILE_PATH` | process env | (required) | Same path, passed to the `route` branch step's subprocess. The branch step cannot read Zod input variables — the `node -e` one-liner reads `process.env.FILE_PATH` at runtime. |
 
-If `FILE_PATH` is empty or unset, the `route` step's extension match returns an empty string, which falls to exit code `2` — the `analyzeText` branch runs and produces a short analysis stating the file was missing.
+Both channels are required; set `FILE_PATH` in the shell environment and pass `--filePath` on the CLI to the same value. If `FILE_PATH` is empty or unset, the `route` step's extension match returns an empty string, which falls to exit code `2` — the `analyzeText` leaf becomes the selected route and produces a short analysis stating the file was missing or unreadable.
 
 ## Customization
 
@@ -158,7 +159,7 @@ cd ./my-router
 
 Then edit:
 
-- `flow.ts` — add more extensions to the router by extending the node one-liner and the `onExit` map. Every exit code you return must map to a step id, `'abort'`, or `'continue'`; unmapped non-zero exits cause the branch step to fail the run.
+- `flow.ts` — add more extensions to the router by extending the node one-liner and the `onExit` map. Every exit code you return must map to a step id, `'abort'`, or `'continue'`; unmapped non-zero exits without a `default` entry cause the branch step to fail the run.
 - `prompts/review-typescript.md`, `prompts/review-javascript.md`, `prompts/analyze-text.md` — change the document shape, the sections, or the rules for what the review should cover.
 - `package.json` — update the `name`, `description`, and the `relay` metadata block (especially `displayName` and `tags`).
 
@@ -171,6 +172,7 @@ onExit: {
   '1': 'reviewJavascript',
   '2': 'analyzeText',
   '3': 'reviewPython',
+  default: 'abort',
 },
 ```
 

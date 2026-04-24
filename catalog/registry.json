@@ -39,24 +39,6 @@
       "readmeExcerpt": "git-log-summary\n\n●─▶●─▶●─▶●  git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  captures shell output into a run artifact, then hands the run off to a prompt step that turns the data into a markdown document.\n\nPurpose\n\nThe flow captures the 20 most recent commits on the current branch with , then asks Claude to read that capture and write a short changelog entry as a markdown artifact. It exists to demonstrate the script-then-prompt pattern — most real flows start with a s"
     },
     {
-      "name": "@relay/example-file-type-router",
-      "version": "0.1.0",
-      "displayName": "File Type Router",
-      "description": "A branch-step example flow that routes a file path to one of three review prompts based on its extension — .ts, .js, or other.",
-      "tags": ["branch", "routing", "example"],
-      "audience": ["dev"],
-      "estimatedCostUsd": {
-        "min": 0,
-        "max": 0.02
-      },
-      "estimatedDurationMin": {
-        "min": 1,
-        "max": 3
-      },
-      "npmPackage": "@relay/example-file-type-router",
-      "readmeExcerpt": "file-type-router\n\n●─▶●─▶●─▶●  file-type-router\n\nA routing example. Use it to see how  inspects a condition, maps an exit code to a step id, and selects exactly one downstream step out of a fan — the pattern most real flows use for dispatching on file kind, feature flag, or input shape.\n\nPurpose\n\nThe flow looks at one file path and picks a review prompt that matches the file's extension:\n\n- .ts files go to a TypeScript-specific code review.\n- .js files go to a JavaScript-specific code review.\n- A"
-    },
-    {
       "name": "@relay/example-multi-perspective-review",
       "version": "0.1.0",
       "displayName": "Multi-Perspective Review",
