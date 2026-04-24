@@ -36,7 +36,7 @@
         "max": 3
       },
       "npmPackage": "@relay/example-git-log-summary",
-      "readmeExcerpt": "git-log-summary\n\n●─▶●─▶●─▶●  git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  captures shell output into a run artifact, then hands the run off to a prompt step that turns the data into a markdown document.\n\nPurpose\n\nThe flow captures the 20 most recent commits on the current branch with , then asks Claude to read that capture and write a short changelog entry as a markdown artifact. It exists to demonstrate the script-then-prompt pattern — most real flows start with a s"
+      "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a "
     },
     {
       "name": "@relay/example-multi-perspective-review",
@@ -54,7 +54,7 @@
         "max": 8
       },
       "npmPackage": "@relay/example-multi-perspective-review",
-      "readmeExcerpt": "multi-perspective-review\n\n●─▶●─▶●─▶●  multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nPurpose\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three han"
+      "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd"
     }
   ]
 }
