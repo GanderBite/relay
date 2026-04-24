@@ -1,6 +1,6 @@
 You are writing a short changelog entry from a list of recent git commits.
 
-The previous step captured the output of `git log --oneline -20` into the run's artifact file at `artifacts/commits.txt`. Read that file with your tools — it contains 20 lines, each `<sha> <subject>`.
+The previous step already confirmed that `git` is available and that the working tree has commits — its artifact is not what you read. Run `git log --oneline -20` yourself using your shell tool, in the current working directory. The output is 20 lines, each `<sha> <subject>`.
 
 Produce a markdown document with this shape:
 

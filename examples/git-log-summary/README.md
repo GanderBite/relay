@@ -2,18 +2,20 @@
 
 `●─▶●─▶●─▶●  git-log-summary`
 
-A minimal script-then-prompt example. Use it to see how `step.script()` captures shell output into a run artifact, then hands the run off to a prompt step that turns the data into a markdown document.
+A minimal script-then-prompt example. Use it to see how `step.script()` acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.
 
 ## What it does
 
-The flow captures the 20 most recent commits on the current branch with `git log --oneline -20`, then asks Claude to read that capture and write a short changelog entry as a markdown artifact. It exists to demonstrate the script-then-prompt pattern — most real flows start with a script step that collects facts from the local machine, then move to a prompt step that reasons over those facts.
+The first step runs `git log --oneline -20` as a gate: if `git` is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact (`commits.txt`) so you have a record of exactly what the gate saw. The second step is a prompt step that runs `git log --oneline -20` again using its own shell tool, reads the 20 subjects, and writes a short changelog entry as a markdown artifact.
 
-Two steps, two artifacts: `commits.txt` (raw git output) and `changelog.md` (the summary).
+The flow exists to demonstrate the gate-then-prompt pattern — most real flows start with a cheap local check that refuses to spend tokens when preconditions are not met, then hand off to a prompt step that does the reasoning. Claude does not read the first step's artifact directly; the artifact is a breadcrumb, not a channel.
+
+Two steps, two artifacts: `commits.txt` (the gate's capture) and `changelog.md` (the summary).
 
 ## Prerequisites
 
 - Node ≥ 20.10 and pnpm, same as the rest of the Relay monorepo.
-- `git` on your `PATH`. The first step shells out directly; there is no fallback.
+- `git` on your `PATH`. The first step shells out directly as a gate, and the prompt step then shells out again via Claude's tool use; there is no fallback.
 - You must run the flow inside a git working tree that has at least one commit. If there are fewer than 20 commits, `git log` returns what it has and Claude summarizes that — the flow does not fail.
 - A working Claude subscription (Pro or Max). The second step runs one short prompt.
 
@@ -54,7 +56,7 @@ The path form tells the CLI to resolve the flow from a local directory instead o
 
 ## Sample Output
 
-`artifacts/commits.txt` holds the raw capture — 20 lines, each `<sha> <subject>`:
+`artifacts/commits.txt` holds the gate's capture — 20 lines, each `<sha> <subject>`:
 
 ```
 75ded7e fix(core): address FLAG-C from sprint-24 re-review
@@ -108,8 +110,8 @@ cd ./my-changelog
 
 Then edit:
 
-- `flow.ts` — change the `run` command to capture a different git range (e.g. `git log --since="1 week ago" --oneline`), or add a third step that writes the changelog to a file on disk.
-- `prompts/summarize-commits.md` — change the document shape, the bullet count, or the rules for what counts as a noise commit.
+- `flow.ts` — change the gate's `run` command to cover a different git range (e.g. `git log --since="1 week ago" --oneline`). Keep the prompt in sync: if you change the range here, change the `git log` command in the prompt too.
+- `prompts/summarize-commits.md` — change the document shape, the bullet count, the git range the prompt reads, or the rules for what counts as a noise commit.
 - `package.json` — update the `name`, `description`, and the `relay` metadata block (especially `displayName` and `tags`).
 
 Rebuild with `pnpm --filter my-changelog build` after any change to `flow.ts`.
