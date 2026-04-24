@@ -27,7 +27,7 @@ export default defineFlow({
     }),
     aggregate: step.prompt({
       promptFile: 'prompts/aggregate-reviews.md',
-      dependsOn: ['fanOut'],
+      dependsOn: ['reviewSecurity', 'reviewPerformance', 'reviewReadability'],
       contextFrom: ['security', 'performance', 'readability'],
       output: { artifact: 'report.md' },
     }),

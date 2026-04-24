@@ -62,7 +62,7 @@ filePath ── fanOut ─────┼─ reviewPerformance   ┼──▶ ag
 
 `fanOut` is a `step.parallel()` step. Its `branches` list names the three reviewer steps; the orchestrator dispatches all three at once and waits for every branch to finish before it marks `fanOut` complete. Each reviewer writes a typed JSON handoff under its own handoff id (`security`, `performance`, `readability`).
 
-`fanOut` sets `onAllComplete: 'aggregate'`, which tells the orchestrator to run the `aggregate` step after the three branches succeed. `aggregate` declares `dependsOn: ['fanOut']` so it cannot start until the parallel step is done, and `contextFrom: ['security', 'performance', 'readability']` so its prompt receives all three handoffs as named context blocks. That is how parallel step outputs are collected — the branches write into the HandoffStore under their own ids, and the fan-in step reads them back by id via `contextFrom`.
+`fanOut` sets `onAllComplete: 'aggregate'`, which tells the orchestrator to run the `aggregate` step after the three branches succeed. `aggregate` declares `dependsOn: ['reviewSecurity', 'reviewPerformance', 'reviewReadability']` so it cannot start until all three reviewer steps are done, and `contextFrom: ['security', 'performance', 'readability']` so its prompt receives all three handoffs as named context blocks. That is how parallel step outputs are collected — the branches write into the HandoffStore under their own ids, and the fan-in step reads them back by id via `contextFrom`.
 
 ## Sample Output
 
