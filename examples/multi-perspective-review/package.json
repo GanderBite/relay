@@ -26,6 +26,7 @@
     "typescript": "6.0.3"
   },
   "relay": {
+    "flowName": "multi-perspective-review",
     "displayName": "Multi-Perspective Review",
     "tags": [
       "parallel",

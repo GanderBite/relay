@@ -26,6 +26,7 @@
     "typescript": "6.0.3"
   },
   "relay": {
+    "flowName": "file-type-router",
     "displayName": "File Type Router",
     "tags": [
       "branch",

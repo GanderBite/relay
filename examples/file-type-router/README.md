@@ -4,7 +4,7 @@
 
 A routing example. Use it to see how `step.branch()` inspects a condition, maps an exit code to a step id, and selects exactly one downstream step out of a fan — the pattern most real flows use for dispatching on file kind, feature flag, or input shape.
 
-## Purpose
+## What it does
 
 The flow looks at one file path and picks a review prompt that matches the file's extension:
 
@@ -132,12 +132,12 @@ and lists install, run, and contribution instructions.
 
 The exact wording varies per run because the model generates it.
 
-## Cost Estimate
+## Estimated cost and duration
 
 - **Cost:** under $0.02 per run. The branch step runs locally in node and costs nothing. The selected leaf runs one short prompt against a single file, typically a few thousand tokens of input and under 500 tokens of output. On a Claude subscription the dollar figure is an API-equivalent estimate, not a charge on your account.
 - **Duration:** 1–3 minutes, dominated by model latency on the one prompt that actually runs. The branch step completes in well under a second.
 
-## Configuration Table
+## Configuration
 
 The flow's Zod input schema is empty — the file to review comes in through the environment instead, because branch-step commands cannot read input variables at runtime.
 

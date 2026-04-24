@@ -4,7 +4,7 @@
 
 A five-step fan-out / fan-in example. Use it to see how `step.parallel()` dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.
 
-## Purpose
+## What it does
 
 Three reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markdown report that ranks the findings across the three perspectives.
 
@@ -103,12 +103,12 @@ The core logic is easy to follow; only one minor naming issue.
 
 The exact findings and wording vary per run because every section is model-generated.
 
-## Cost Estimate
+## Estimated cost and duration
 
 - **Cost:** around $0.02 to $0.08 per run, depending on file size. Three reviewers read the file and each write a short JSON handoff (~300 tokens out), then the aggregator consumes all three handoffs plus the file path and writes a markdown document (~500 tokens out). On a Claude subscription the dollar figure is an API-equivalent estimate, not a charge on your account.
 - **Duration:** 2–8 minutes. The three reviewers run concurrently, so wall-clock time is roughly one reviewer plus the aggregator, not three reviewers plus the aggregator. The longer end of the range reflects a large file or a slow model pick.
 
-## Configuration Table
+## Configuration
 
 The flow accepts one input:
 
