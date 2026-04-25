@@ -423,7 +423,9 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
 
   let exitCode = 0;
   try {
-    const resumeOpts: Parameters<typeof orchestrator.resume>[1] = {};
+    const resumeOpts: Parameters<typeof orchestrator.resume>[1] = {
+      logToStdout: !process.stdout.isTTY,
+    };
     if (options.provider !== undefined) {
       resumeOpts.flagProvider = options.provider;
     }

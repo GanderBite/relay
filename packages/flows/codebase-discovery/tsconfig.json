@@ -6,6 +6,6 @@
     "noEmit": false
   },
   "files": [],
-  "include": ["flow.ts", "schemas/**/*.ts"],
+  "include": ["flow.ts", "schemas/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

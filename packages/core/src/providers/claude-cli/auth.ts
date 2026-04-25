@@ -3,16 +3,24 @@
  * subprocess and decides whether the run may proceed.
  *
  * The claude-cli provider spawns the `claude` binary using the user's stored
- * subscription credentials. Cloud routing (Bedrock/Vertex/Foundry) bypasses
- * the subscription check — those tokens bill to the cloud account.
+ * subscription credentials. On macOS, those credentials live in the system
+ * Keychain (not a file on disk). On CI, they are provided via
+ * CLAUDE_CODE_OAUTH_TOKEN. We cannot reliably probe credential storage
+ * cross-platform, so auth inspection reduces to:
+ *
+ *   1. CLAUDE_CODE_OAUTH_TOKEN set → ok (CI / headless path)
+ *   2. Cloud routing vars set → ok (Bedrock / Vertex / Foundry)
+ *   3. claude binary reachable via `claude --version` → ok (trust the binary)
+ *   4. Binary missing → err (install instructions)
+ *
+ * If the binary is present but the user has not run `claude /login`, the
+ * first actual `claude -p` invocation will fail with claude's own auth error,
+ * which surfaces as a StepFailureError with a clear remediation message.
  *
  * Returns `Result<AuthState, ClaudeAuthError>`. Never throws.
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { err, ok, type Result } from 'neverthrow';
@@ -28,10 +36,6 @@ const CLAUDE_VERSION_TIMEOUT_MS = 5_000;
 /** Returned when the `claude` binary is not on PATH. */
 const CLAUDE_MISSING_MESSAGE =
   'claude command not found on PATH. Install it: npm install -g @anthropic-ai/claude-code';
-
-/** Remediation when the CLI provider has no detectable subscription credentials. */
-const CLI_REQUIRES_SUBSCRIPTION =
-  'claude-cli requires subscription auth. Run `claude /login`, then re-run `relay init`.';
 
 /**
  * Inspect the host env and return the billing surface the claude-cli provider
@@ -77,9 +81,7 @@ export async function inspectClaudeAuth(): Promise<Result<AuthState, ClaudeAuthE
 async function inspectCli(args: {
   hasOauth: boolean;
 }): Promise<Result<AuthState, ClaudeAuthError>> {
-  // (1) Authoritative env signal — the OAuth token tells the binary which
-  // subscription account to bill against, so accept it without a filesystem
-  // probe.
+  // (1) CI / headless path — OAuth token set explicitly.
   if (args.hasOauth) {
     const binaryCheck = await ensureClaudeBinary();
     if (binaryCheck.isErr()) return err(binaryCheck.error);
@@ -90,29 +92,22 @@ async function inspectCli(args: {
     });
   }
 
-  // (2) Lightweight probe for keychain-stored credentials. We pick
-  // fs.existsSync over `claude mcp list` because it is synchronous, has no
-  // TTY-allocation surprises in CI, and never hangs on a stuck binary. The
-  // tradeoff is that we trust file presence without parsing — a corrupt
-  // credentials file will still fail at runtime, but it will fail loudly
-  // with the binary's own error rather than silently here.
-  if (existsSync(join(homedir(), '.claude', '.credentials.json'))) {
-    const binaryCheck = await ensureClaudeBinary();
-    if (binaryCheck.isErr()) return err(binaryCheck.error);
-    return ok({
-      ok: true,
-      billingSource: 'subscription',
-      detail: 'subscription (interactive credentials)',
-    });
-  }
-
-  // (3) No subscription signal — reject before reaching any subprocess.
-  return err(
-    new ClaudeAuthError(CLI_REQUIRES_SUBSCRIPTION, {
-      envObserved: [],
-      billingSource: 'subscription',
-    }),
-  );
+  // (2) Interactive path — confirm the binary is reachable and trust it.
+  //
+  // On macOS, `claude /login` stores credentials in the system Keychain; on
+  // Linux it may use a file. Neither is reliably detectable cross-platform
+  // without parsing platform-specific credential stores. Instead we follow
+  // the same approach as Archon: if the binary is on PATH and answers
+  // `claude --version`, we accept it as authenticated. A real auth failure
+  // (user never ran `claude /login`) surfaces at the first `claude -p` call
+  // with claude's own error message and a clear remediation prompt.
+  const binaryCheck = await ensureClaudeBinary();
+  if (binaryCheck.isErr()) return err(binaryCheck.error);
+  return ok({
+    ok: true,
+    billingSource: 'subscription',
+    detail: 'subscription (interactive)',
+  });
 }
 
 function cloudRoutingAuthState(args: {

@@ -12,6 +12,11 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: [
     'src/cli.ts',
+    'src/brand.ts',
+    'src/color.ts',
+    'src/format.ts',
+    'src/layout.ts',
+    'src/util/path.ts',
     'src/banner.ts',
     'src/dispatcher.ts',
     'src/exit-codes.ts',

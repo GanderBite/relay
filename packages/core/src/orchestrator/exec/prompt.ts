@@ -19,7 +19,7 @@ import type {
   Provider,
 } from '../../providers/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
-import { safeParse } from '../../util/json.js';
+import { extractJson } from '../../util/json.js';
 import { z } from '../../zod.js';
 import { writeLiveState } from '../live-state.js';
 
@@ -297,11 +297,13 @@ export async function executePrompt(
     if (handoffsResult.isErr()) throw handoffsResult.error;
 
     // 3. Assemble the final prompt with <context> blocks + rendered template.
+    // flowDir is always injected so prompt templates can reference scripts via
+    // {{flowDir}}/dist/scripts/<name>.js — caller stepVars can override it.
     const assembled = assemblePrompt({
       promptBody,
       handoffs: handoffsResult.value,
       inputVars: ctx.inputVars ?? {},
-      ...(ctx.stepVars !== undefined ? { stepVars: ctx.stepVars } : {}),
+      stepVars: { flowDir: ctx.flowDir, ...(ctx.stepVars ?? {}) },
     });
     if (assembled.isErr()) throw assembled.error;
 
@@ -386,7 +388,7 @@ export async function executePrompt(
 
     if ('handoff' in step.output) {
       const handoffKey = step.output.handoff;
-      const parsedJson = safeParse(response.text);
+      const parsedJson = extractJson(response.text);
       if (parsedJson.isErr()) {
         throw new HandoffSchemaError(
           `handoff "${handoffKey}" response is not valid JSON: ${parsedJson.error.message}`,

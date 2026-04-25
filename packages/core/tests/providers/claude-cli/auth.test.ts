@@ -81,20 +81,20 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
   // -----------------------------------------------------------------------
 
   describe('claude-cli truth table', () => {
-    it('[AUTH-CLI-001] no env at all + no credentials file returns ClaudeAuthError', async () => {
-      mockExistsSync.mockReturnValue(false);
-      stubExecFileOk(); // should not be reached
+    it('[AUTH-CLI-001] no env at all, binary present → ok(subscription, interactive)', async () => {
+      // Credentials are stored in the OS keychain (macOS) or by the binary
+      // itself — we cannot probe them cross-platform. If the binary answers
+      // `claude --version`, we trust it and let it surface auth failures at
+      // invocation time with its own error message.
+      stubExecFileOk();
 
       const result = await inspectClaudeAuth();
 
-      expect(result.isErr()).toBe(true);
-      const err = result._unsafeUnwrapErr();
-      expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err.message).toBe(
-        'claude-cli requires subscription auth. Run `claude /login`, then re-run `relay init`.',
-      );
-      expect(err.code).toBe(ERROR_CODES.CLAUDE_AUTH);
-      expect(mockExecFile).not.toHaveBeenCalled();
+      expect(result.isOk()).toBe(true);
+      const state = result._unsafeUnwrap();
+      expect(state.billingSource).toBe('subscription');
+      expect(state.detail).toContain('interactive');
+      expect(mockExecFile).toHaveBeenCalledOnce();
     });
 
     it('[AUTH-CLI-003] CLAUDE_CODE_OAUTH_TOKEN set returns ok(subscription, token)', async () => {
@@ -109,8 +109,7 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       expect(state.detail).toContain('CLAUDE_CODE_OAUTH_TOKEN');
     });
 
-    it('[AUTH-CLI-004] credentials file present (no env) returns ok(subscription, interactive)', async () => {
-      mockExistsSync.mockReturnValue(true);
+    it('[AUTH-CLI-004] no oauth env, binary present → ok(subscription, interactive)', async () => {
       stubExecFileOk();
 
       const result = await inspectClaudeAuth();
@@ -143,18 +142,16 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       expect(result._unsafeUnwrap().billingSource).toBe('foundry');
     });
 
-    it('[AUTH-CLI-010] credentials probe checks the right path', async () => {
-      let capturedPath: string | undefined;
-      mockExistsSync.mockImplementation((p: string): boolean => {
-        capturedPath = p;
-        return true;
-      });
-      stubExecFileOk();
+    it('[AUTH-CLI-010] binary missing → err(ClaudeAuthError) with install instructions', async () => {
+      // When the binary is absent, auth must fail — there is nothing to run.
+      stubExecFileEnoent();
 
-      await inspectClaudeAuth();
+      const result = await inspectClaudeAuth();
 
-      expect(capturedPath).toBeDefined();
-      expect(capturedPath).toMatch(/\.claude[/\\]\.credentials\.json$/);
+      expect(result.isErr()).toBe(true);
+      const err = result._unsafeUnwrapErr();
+      expect(err).toBeInstanceOf(ClaudeAuthError);
+      expect(err.message).toContain('claude command not found on PATH');
     });
   });
 
@@ -178,15 +175,16 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       expect((err.details?.cause as string).length).toBeGreaterThan(0);
     });
 
-    it('[AUTH-BIN-002] empty-string OAuth treated as unset under cli', async () => {
+    it('[AUTH-BIN-002] empty-string OAuth treated as unset — falls through to binary check', async () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '');
-      mockExistsSync.mockReturnValue(false);
       stubExecFileOk();
 
       const result = await inspectClaudeAuth();
 
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr().message).toContain('requires subscription auth');
+      // Empty string is not a valid token; falls through to binary trust.
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap().billingSource).toBe('subscription');
+      expect(result._unsafeUnwrap().detail).toContain('interactive');
     });
 
     it('[AUTH-BIN-003] claude --version probe uses a filtered env', async () => {

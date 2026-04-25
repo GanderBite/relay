@@ -27,7 +27,7 @@ import { executeParallel } from './exec/parallel.js';
 import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
 import { executeTerminal } from './exec/terminal.js';
-import { clearLiveDir } from './live-state.js';
+import { writeLiveState } from './live-state.js';
 import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { withRetry } from './retry.js';
 import type { StepResult } from './types.js';
@@ -127,6 +127,14 @@ export interface RunOptions {
    * when the CLI has already authenticated to render the start banner.
    */
   preAuthedState?: Map<string, AuthState> | undefined;
+  /**
+   * When false, pino's stdout stream is suppressed and logs are written to the
+   * run file only. Set to `!process.stdout.isTTY` from the CLI so that NDJSON
+   * does not appear alongside the ProgressDisplay in interactive terminals.
+   * Non-TTY callers (CI, pipes) leave this true to preserve NDJSON on stdout.
+   * Defaults to true (backward compatible).
+   */
+  logToStdout?: boolean | undefined;
 }
 
 export interface RunResult {
@@ -238,7 +246,6 @@ export class Orchestrator {
     const validatedInput: TInput = parsed.data;
 
     await mkdir(runDir, { recursive: true });
-    await clearLiveDir(runDir);
     await mkdir(join(runDir, 'live'), { recursive: true });
 
     await this.#writeFlowRef(runDir, flow, opts.flowPath);
@@ -249,6 +256,7 @@ export class Orchestrator {
         flowName: flow.name,
         runId,
         logFile: join(runDir, RUN_LOG_FILENAME),
+        logToStdout: opts.logToStdout !== false,
       });
 
     const handoffStore = new HandoffStore(runDir);
@@ -460,6 +468,7 @@ export class Orchestrator {
         flowName: flow.name,
         runId,
         logFile: join(runDir, RUN_LOG_FILENAME),
+        logToStdout: opts.logToStdout !== false,
       });
 
     const handoffStore = new HandoffStore(runDir);
@@ -1183,6 +1192,13 @@ export class Orchestrator {
             const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
             if (completeResult.isErr()) throw completeResult.error;
             stateMachine.recordStepResult(stepId, value);
+            const succeededState = stateMachine.getState().steps[stepId];
+            void writeLiveState(runDir, stepId, {
+              status: 'succeeded',
+              attempt: succeededState?.attempts ?? 1,
+              startedAt: succeededState?.startedAt ?? new Date().toISOString(),
+              lastUpdateAt: new Date().toISOString(),
+            });
             return value;
           } catch (caught) {
             if (!isAbortLike(caught)) {
@@ -1197,6 +1213,13 @@ export class Orchestrator {
                   'state transition failed after step failure',
                 );
               }
+              const failedState = stateMachine.getState().steps[stepId];
+              void writeLiveState(runDir, stepId, {
+                status: 'failed',
+                attempt: failedState?.attempts ?? 1,
+                startedAt: failedState?.startedAt ?? new Date().toISOString(),
+                lastUpdateAt: new Date().toISOString(),
+              });
             }
             // Abort leaves the step in running state; markRun('aborted') sweeps
             // it to failed with a descriptive errorMessage so on-disk state is

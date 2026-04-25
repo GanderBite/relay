@@ -225,13 +225,17 @@ export class ProgressDisplay<TInput = unknown> {
   #startTTY(): void {
     const liveDir = join(this.#runDir, 'live');
 
-    this.#watcher = watch(`${liveDir}/*.json`, {
+    // Watch the directory itself, not a glob. On macOS the chokidar FSEvents
+    // backend fires zero events for a `dir/*.json` glob pattern — the directory
+    // watch is the only form that works reliably.
+    this.#watcher = watch(liveDir, {
       persistent: true,
       ignoreInitial: false,
       awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 20 },
     });
 
     const onFileChange = (filePath: string): void => {
+      if (!filePath.endsWith('.json')) return;
       void this.#loadLiveFile(filePath);
     };
 

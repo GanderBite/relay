@@ -1,22 +1,33 @@
 You are documenting a codebase for a `{{input.audience}}` audience. Produce a JSON object matching the EntitiesSchema.
 
-The package inventory is available as `{{inventory}}`. Walk each package in `{{inventory.packages}}` and identify its top-level named constructs. Use Read, Glob, and Grep against each package's `path` and `entryPoints` to inspect the real source.
+The package inventory is available as `{{inventory}}`.
 
-For each entity, classify its `kind` as one of:
+## Step 1 — pre-scan exported symbols
 
-- `model` — data shapes, schemas, domain types, records, DB entities.
-- `service` — classes or modules that orchestrate behavior (runners, providers, clients, managers).
-- `controller` — request handlers, CLI commands, route handlers, event dispatchers.
-- `util` — pure helpers, formatters, validators, small reusable functions.
+Run this command using the Bash tool:
 
-Record each entity with:
+```
+node {{flowDir}}/dist/scripts/list-exports.js {{input.repoPath}}
+```
 
-- `name`: the exported symbol or file-level construct, e.g. `Runner`, `ClaudeProvider`, `formatBanner`.
-- `kind`: one of the four values above.
-- `file`: the repository-relative path to the source file that defines the entity, e.g. `packages/core/src/runner/runner.ts`. Paths must be within one of the packages listed in `{{inventory.packages}}`; do not invent paths. Use Read or Glob to confirm the file exists before recording it.
-- `summary`: one sentence, 10–25 words, explaining what the entity does. Written for a `{{input.audience}}` reader — describe purpose and role, not implementation details.
+The script greps for top-level `export class|function|const|interface|type|enum` declarations across all `.ts` source files (excluding `node_modules` and `dist`) and returns `{ exports: [{ name, file, exportKind }] }`.
 
-Aim for 5–15 entities total for a typical monorepo. Favor the load-bearing constructs a new reader needs to understand the system; skip trivial wrappers and internal helpers.
+## Step 2 — classify and describe
+
+Work through the list from the script. For each exported symbol:
+
+1. Confirm the file exists in one of the packages in `{{inventory.packages}}` (use the `file` field from the script). Skip symbols whose file is outside all listed packages.
+2. Classify its `kind`:
+   - `model` — data shapes, schemas, Zod types, domain records, DB entities
+   - `service` — classes or modules that orchestrate behavior (runners, providers, clients, managers)
+   - `controller` — request handlers, CLI commands, route handlers, event dispatchers
+   - `util` — pure helpers, formatters, validators, small reusable functions
+3. Use Read on the file to confirm purpose before writing the `summary`.
+4. Write a `summary`: one sentence, 10–25 words, explaining what it does. Written for a `{{input.audience}}` reader.
+
+Aim for 5–15 entities total. Favor load-bearing constructs a new reader needs; skip trivial wrappers and internal helpers.
+
+## Output
 
 Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no preamble.
 
@@ -24,10 +35,10 @@ Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no 
 {
   "entities": [
     {
-      "name": "Runner",
+      "name": "Orchestrator",
       "kind": "service",
-      "file": "packages/core/src/runner/runner.ts",
-      "summary": "Executes a race's DAG of runners, handling retries, resumption, and baton validation."
+      "file": "packages/core/src/orchestrator/orchestrator.ts",
+      "summary": "Drives the execution of a compiled Flow's DAG, handling retries, resumption, and state persistence."
     }
   ]
 }

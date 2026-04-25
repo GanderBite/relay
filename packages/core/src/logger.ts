@@ -35,6 +35,10 @@ export interface CreateLoggerOptions {
   logFile?: string;
   // Defaults to process.env.LOG_LEVEL or 'info'.
   level?: string;
+  // When false AND logFile is set, suppress stdout output entirely.
+  // Use this in TTY runs where the ProgressDisplay handles all terminal output.
+  // Defaults to true (backward compatible).
+  logToStdout?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,23 +131,33 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
     },
   };
 
-  // pino-pretty is loaded only in development; production writes raw NDJSON to fd 1.
-  // Colorize is disabled in dev mode when ANSI codes should be stripped.
+  // Per-run file is always raw NDJSON regardless of env.
+  if (opts.logFile !== undefined) {
+    const fileDest = pino.destination({ dest: opts.logFile, sync: false, mkdir: true });
+
+    // TTY runs suppress stdout so NDJSON doesn't bleed into the ProgressDisplay.
+    // The run.log file still gets the full audit trail.
+    if (opts.logToStdout === false) {
+      return pino(pinoOptions, fileDest);
+    }
+
+    // pino-pretty is loaded only in development; production writes raw NDJSON to fd 1.
+    const stdoutDest: DestinationStream = IS_DEV
+      ? pino.transport({ target: 'pino-pretty', options: { colorize: !CONSOLE_COLOR_DISABLED } })
+      : pino.destination(1);
+
+    return pino(
+      pinoOptions,
+      pino.multistream([
+        { stream: fileDest, level },
+        { stream: stdoutDest, level },
+      ]),
+    );
+  }
+
+  // No log file — stdout only.
   const stdoutDest: DestinationStream = IS_DEV
     ? pino.transport({ target: 'pino-pretty', options: { colorize: !CONSOLE_COLOR_DISABLED } })
     : pino.destination(1);
-
-  if (opts.logFile === undefined) {
-    return pino(pinoOptions, stdoutDest);
-  }
-
-  // Per-run file is always raw NDJSON regardless of env.
-  const fileDest = pino.destination({ dest: opts.logFile, sync: false, mkdir: true });
-  return pino(
-    pinoOptions,
-    pino.multistream([
-      { stream: fileDest, level },
-      { stream: stdoutDest, level },
-    ]),
-  );
+  return pino(pinoOptions, stdoutDest);
 }

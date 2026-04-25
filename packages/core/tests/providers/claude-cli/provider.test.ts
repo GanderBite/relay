@@ -260,15 +260,14 @@ describe('ClaudeCliProvider', () => {
       expect(result._unsafeUnwrap().billingSource).toBe('subscription');
     });
 
-    it('[CLI-AUTH-003] no auth at all returns err(ClaudeAuthError)', async () => {
-      existsSyncMock.mockReturnValue(false);
+    it('[CLI-AUTH-003] no env, binary present → ok(subscription)', async () => {
       stubExecFileOk();
 
       const provider = new ClaudeCliProvider();
       const result = await provider.authenticate();
 
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr()).toBeInstanceOf(ClaudeAuthError);
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap().billingSource).toBe('subscription');
     });
 
     it('[CLI-AUTH-004] with credentials file present returns ok(subscription, interactive)', async () => {

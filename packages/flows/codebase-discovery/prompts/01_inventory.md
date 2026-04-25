@@ -1,24 +1,26 @@
-You are enumerating every package in the repository at `{{input.repoPath}}` for a `{{input.audience}}` audience. Produce a JSON object matching the InventorySchema.
+You are documenting a codebase for a `{{input.audience}}` audience. Produce a JSON object matching the InventorySchema.
 
-Use Read, Glob, and Grep to discover packages. Good starting points:
+## Step 1 — pre-scan the repository
 
-- `pnpm-workspace.yaml`, `lerna.json`, `nx.json`, or a root `package.json` with a `workspaces` field for JS/TS monorepos.
-- `go.work`, `Cargo.toml` workspace section, `pyproject.toml`, `pom.xml`, or `build.gradle` for other ecosystems.
-- If none are present, treat each top-level directory that contains a manifest file (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, etc.) as a package.
+Run this command using the Bash tool to get the package list pre-computed:
 
-For each package, record:
+```
+node {{flowDir}}/dist/scripts/scan-packages.js {{input.repoPath}}
+```
 
-- `path`: the directory relative to the repository root, e.g. `packages/core`.
-- `name`: the package's published or declared name (from its manifest). Fall back to the directory name if no manifest is present.
-- `language`: the primary source language. Exactly one of the following enum values — no other strings are valid:
-  - `ts` for TypeScript or JavaScript packages.
-  - `py` for Python packages.
-  - `go` for Go packages.
-  - `rust` for Rust packages.
-  - `other` for every other language (Java, Kotlin, Ruby, C#, Swift, etc.).
-- `entryPoints`: the files a reader should open first — main/bin entries from the manifest, plus any `index.*` or `src/index.*`. Paths are relative to the package directory. Include between 1 and 5 per package.
+The script scans every `package.json` (excluding `node_modules` and `dist`) and outputs a JSON object in the InventorySchema shape.
 
-Be thorough but do not invent packages. If a directory looks like an app or library but has no manifest, still include it with `name` set to the directory name.
+## Step 2 — verify and enrich
+
+For each package in the script output:
+
+- Use Read or Glob to confirm the `entryPoints` listed are real files. Add any significant entry points the script missed (e.g. `bin/`, a secondary CLI entry, a `testing/index.ts`).
+- Correct the `language` if wrong (the script infers from `tsconfig.json` presence and file extensions).
+- Keep the `path` and `name` as the script reported them unless you find a genuine error.
+
+Do not invent packages. Only include packages that `package.json` files confirm exist.
+
+## Output
 
 Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no preamble.
 
@@ -29,7 +31,7 @@ Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no 
       "path": "packages/core",
       "name": "@relay/core",
       "language": "ts",
-      "entryPoints": ["src/index.ts"]
+      "entryPoints": ["src/index.ts", "src/testing/index.ts"]
     }
   ]
 }

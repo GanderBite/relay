@@ -20,7 +20,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
@@ -250,6 +250,12 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // ---------------------------------------------------------------------------
   const progress = new ProgressDisplay(runDir, flow, authInfo);
 
+  // Create the live directory before starting the watcher so chokidar has a
+  // real path to watch from the start. The orchestrator calls mkdir(live/)
+  // idempotently later; pre-creating it here avoids the FSEvents race where
+  // files written to a newly-created directory are missed.
+  await mkdir(join(runDir, 'live'), { recursive: true });
+
   progress.start(runId);
 
   // ---------------------------------------------------------------------------
@@ -315,6 +321,9 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     const runOpts: Parameters<typeof orchestrator.run>[2] & { fresh?: boolean } = {
       flowDir: flowDir,
       flowPath: flowPath,
+      // Suppress pino stdout in TTY runs — the ProgressDisplay handles all
+      // terminal output. Non-TTY callers (CI, pipes) keep NDJSON on stdout.
+      logToStdout: !process.stdout.isTTY,
     };
     if (options.provider !== undefined) {
       runOpts.flagProvider = options.provider;
