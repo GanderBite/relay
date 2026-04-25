@@ -430,6 +430,9 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     if (options.worktree === false) {
       resumeOpts.worktree = false;
     }
+    const preAuthedMap = new Map<string, AuthState>();
+    preAuthedMap.set(providerResult.value.name, effectiveAuth);
+    resumeOpts.preAuthedState = preAuthedMap;
     const result = await orchestrator.resume(runDir, resumeOpts);
 
     process.removeListener('SIGINT', sigintHandler);
