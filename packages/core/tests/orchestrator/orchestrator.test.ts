@@ -670,3 +670,117 @@ describe('Step — resume protocol (sprint 5 task_41)', () => {
     expect(callOrder).toContain('c');
   });
 });
+
+describe('onStepComplete hook', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-hook-'));
+    await writeFile(join(tmp, 'p.md'), '# test prompt', 'utf8');
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it('[HOOK-001] onStepComplete fires once per completed step with correct stepId', async () => {
+    const provider = new MockProvider({
+      responses: {
+        a: canned,
+        b: canned,
+        c: canned,
+      },
+    });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const onStepComplete = vi.fn();
+    const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
+    const result = await orchestrator.run(
+      linearFlow(),
+      {},
+      {
+        flowDir: tmp,
+        authTimeoutMs: 1_000,
+        flagProvider: 'mock',
+        onStepComplete,
+      },
+    );
+
+    expect(result.status).toBe('succeeded');
+    expect(onStepComplete).toHaveBeenCalledTimes(3);
+
+    const calledStepIds = new Set(onStepComplete.mock.calls.map((call) => call[0] as string));
+    expect(calledStepIds).toEqual(new Set(['a', 'b', 'c']));
+
+    for (const call of onStepComplete.mock.calls) {
+      const stepResult = call[1];
+      expect(stepResult).toBeTruthy();
+    }
+  });
+
+  it('[HOOK-002] onStepComplete that throws is caught and run completes successfully', async () => {
+    const provider = new MockProvider({
+      responses: {
+        a: canned,
+        b: canned,
+        c: canned,
+      },
+    });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
+    const result = await orchestrator.run(
+      linearFlow(),
+      {},
+      {
+        flowDir: tmp,
+        authTimeoutMs: 1_000,
+        flagProvider: 'mock',
+        onStepComplete: () => {
+          throw new Error('boom');
+        },
+      },
+    );
+
+    expect(result.status).toBe('succeeded');
+  });
+
+  it('[HOOK-003] onStepComplete is not invoked when a step fails', async () => {
+    const flow = defineFlow({
+      name: 'failing',
+      version: '0.1.0',
+      input: z.object({}),
+      steps: {
+        a: step.prompt({ promptFile: 'p.md', output: { handoff: 'a-out' } }),
+      },
+    });
+
+    const provider = new MockProvider({
+      responses: {
+        a: () => {
+          throw new Error('step error');
+        },
+      },
+    });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const onStepComplete = vi.fn();
+    const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
+    const result = await orchestrator.run(
+      flow,
+      {},
+      {
+        flowDir: tmp,
+        authTimeoutMs: 1_000,
+        flagProvider: 'mock',
+        onStepComplete,
+      },
+    );
+
+    expect(result.status).toBe('failed');
+    expect(onStepComplete).not.toHaveBeenCalled();
+  });
+});
