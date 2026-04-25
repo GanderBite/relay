@@ -28,5 +28,6 @@ docs/api/
 Thumbs.db
 
 # AI artifacts
-# _work/
-# _specs/
+_work/
+relay_tests.json
+_specs/
