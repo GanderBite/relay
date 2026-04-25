@@ -245,9 +245,9 @@ export interface HandoffIoDetails extends Record<string, unknown> {
   /** Underlying cause message. */
   cause?: unknown;
   /** Node errno string (`ENOENT`, `EACCES`, etc.). */
-  errno?: string;
+  errno?: string | undefined;
   /** Directory path for `list()` failures. */
-  dir?: string;
+  dir?: string | undefined;
 }
 
 /**

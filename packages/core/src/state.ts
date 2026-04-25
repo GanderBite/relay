@@ -322,7 +322,7 @@ export class StateMachine {
         return err(
           new StateWriteError(`failed to write state.json: ${writeResult.error.message}`, {
             cause: writeResult.error,
-            errno: writeResult.error.errno,
+            ...(writeResult.error.errno !== undefined ? { errno: writeResult.error.errno } : {}),
             path: writeResult.error.path,
           }),
         );

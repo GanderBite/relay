@@ -96,7 +96,12 @@ function translateContentBlock(block: unknown): InvocationEvent | null {
     // result.
     const id = block['id'];
     const toolUseId = isString(id) ? id : undefined;
-    return { type: 'tool.call', name, input, toolUseId };
+    return {
+      type: 'tool.call' as const,
+      name,
+      ...(input !== undefined ? { input } : {}),
+      ...(toolUseId !== undefined ? { toolUseId } : {}),
+    };
   }
 
   return null;
@@ -150,7 +155,14 @@ function translateCore(msg: unknown): InvocationEvent[] {
       const input = 'input' in msg ? msg['input'] : undefined;
       const id = msg['id'];
       const toolUseId = isString(id) ? id : undefined;
-      return [{ type: 'tool.call', name, input, toolUseId }];
+      return [
+        {
+          type: 'tool.call' as const,
+          name,
+          ...(input !== undefined ? { input } : {}),
+          ...(toolUseId !== undefined ? { toolUseId } : {}),
+        },
+      ];
     }
 
     // Standalone tool_result block
@@ -162,7 +174,14 @@ function translateCore(msg: unknown): InvocationEvent[] {
       // itself, so we emit 'unknown'. The provider maintains an id-to-name
       // map and resolves the real name before yielding downstream.
       const toolUseId = isString(msg['tool_use_id']) ? msg['tool_use_id'] : undefined;
-      return [{ type: 'tool.result', name: 'unknown', ok, toolUseId }];
+      return [
+        {
+          type: 'tool.result' as const,
+          name: 'unknown',
+          ok,
+          ...(toolUseId !== undefined ? { toolUseId } : {}),
+        },
+      ];
     }
 
     // Content-block delta (streaming token-by-token form)
@@ -239,7 +258,12 @@ function translateCore(msg: unknown): InvocationEvent[] {
             const ok = isError !== true;
             const rawId = block['tool_use_id'];
             const toolUseId = isString(rawId) ? rawId : undefined;
-            events.push({ type: 'tool.result', name: 'unknown', ok, toolUseId });
+            events.push({
+              type: 'tool.result',
+              name: 'unknown',
+              ok,
+              ...(toolUseId !== undefined ? { toolUseId } : {}),
+            });
             continue;
           }
           const event = translateContentBlock(block);
@@ -278,7 +302,12 @@ function translateCore(msg: unknown): InvocationEvent[] {
           const ok = isError !== true;
           const rawId = block['tool_use_id'];
           const toolUseId = isString(rawId) ? rawId : undefined;
-          events.push({ type: 'tool.result', name: 'unknown', ok, toolUseId });
+          events.push({
+            type: 'tool.result',
+            name: 'unknown',
+            ok,
+            ...(toolUseId !== undefined ? { toolUseId } : {}),
+          });
         }
       }
 

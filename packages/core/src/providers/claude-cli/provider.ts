@@ -127,7 +127,7 @@ export class ClaudeCliProvider implements Provider {
     ctx: InvocationContext,
   ): AsyncGenerator<InvocationStep, RunClaudeProcessResult, void> {
     const env = buildEnvAllowlist({
-      extra: this.#options.extraEnv,
+      ...(this.#options.extraEnv !== undefined ? { extra: this.#options.extraEnv } : {}),
     });
     const cliArgs = buildCliArgs(req, this.#options);
     const binary = this.#options.binaryPath ?? DEFAULT_BINARY;
@@ -153,7 +153,7 @@ export class ClaudeCliProvider implements Provider {
       prompt: req.prompt,
       abortSignal: ctx.abortSignal,
       logger: ctx.logger,
-      cwd: ctx.cwd,
+      ...(ctx.cwd !== undefined ? { cwd: ctx.cwd } : {}),
     });
 
     let exitResult: RunClaudeProcessResult = {

@@ -159,7 +159,7 @@ export class HandoffStore {
       return err(
         new HandoffWriteError(`failed to write handoff "${id}"`, id, {
           cause: writeResult.error,
-          errno: writeResult.error.errno,
+          ...(writeResult.error.errno !== undefined ? { errno: writeResult.error.errno } : {}),
           path: writeResult.error.path,
         }),
       );
@@ -202,13 +202,14 @@ export class HandoffStore {
     try {
       raw = await readFile(pathResult.value, { encoding: 'utf8' });
     } catch (cause) {
-      if (errnoOf(cause) === 'ENOENT') {
+      const errno = errnoOf(cause);
+      if (errno === 'ENOENT') {
         return err(new HandoffNotFoundError(`handoff "${id}" not found`, id));
       }
       return err(
         new HandoffIoError(`failed to read handoff "${id}"`, id, {
           cause: messageOf(cause),
-          errno: errnoOf(cause),
+          ...(errno !== undefined ? { errno } : {}),
         }),
       );
     }
@@ -257,13 +258,14 @@ export class HandoffStore {
     try {
       entries = await readdir(this.#handoffsDir);
     } catch (cause) {
-      if (errnoOf(cause) === 'ENOENT') {
+      const errno = errnoOf(cause);
+      if (errno === 'ENOENT') {
         return ok([]);
       }
       return err(
         new HandoffIoError('failed to list handoffs directory', undefined, {
           cause: messageOf(cause),
-          errno: errnoOf(cause),
+          ...(errno !== undefined ? { errno } : {}),
           dir: this.#handoffsDir,
         }),
       );

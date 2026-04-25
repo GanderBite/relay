@@ -5,7 +5,7 @@ import type { Provider } from '../providers/types.js';
 import type { RelaySettings } from './schema.js';
 
 export interface ResolveProviderArgs {
-  flagProvider?: string;
+  flagProvider?: string | undefined;
   flowSettings: RelaySettings | null;
   globalSettings: RelaySettings | null;
   registry: ProviderRegistry;

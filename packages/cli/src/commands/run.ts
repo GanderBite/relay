@@ -151,7 +151,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const flowSettings = flowSettingsResult.isOk() ? flowSettingsResult.value : null;
 
   const resolveResult = resolveProvider({
-    flagProvider: options.provider,
+    ...(options.provider !== undefined ? { flagProvider: options.provider } : {}),
     flowSettings: flowSettings ?? null,
     globalSettings: globalSettings ?? null,
     registry: defaultRegistry,
@@ -537,6 +537,8 @@ async function buildFailureStepRows(
     }
     if (status === 'failed') {
       const errorMsg = stepState?.errorMessage;
+      const errorLines: [string, string] | undefined =
+        errorMsg !== undefined ? [errorMsg.slice(0, 80), ''] : undefined;
       return {
         name: runnerId,
         status: 'failed',
@@ -544,8 +546,7 @@ async function buildFailureStepRows(
         durationMs,
         costUsd,
         exitCode: 1,
-        errorLines:
-          errorMsg !== undefined ? ([errorMsg.slice(0, 80), ''] as [string, string]) : undefined,
+        ...(errorLines !== undefined ? { errorLines } : {}),
       };
     }
     // pending / running / skipped / undefined — treat as skipped in the banner

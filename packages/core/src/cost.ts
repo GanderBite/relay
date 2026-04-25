@@ -30,10 +30,10 @@ export interface StepMetrics {
    * subscription-billed runs where no per-token charge applies.
    * When present, 0 is a valid and distinct value from "unknown".
    */
-  costUsd?: number;
-  sessionId?: string;
-  stopReason?: string | null;
-  isError?: boolean;
+  costUsd?: number | undefined;
+  sessionId?: string | undefined;
+  stopReason?: string | null | undefined;
+  isError?: boolean | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ export class CostTracker {
       return err(
         new MetricsWriteError(`failed to write metrics.json: ${writeResult.error.message}`, {
           cause: writeResult.error,
-          errno: writeResult.error.errno,
+          ...(writeResult.error.errno !== undefined ? { errno: writeResult.error.errno } : {}),
           path: writeResult.error.path,
         }),
       );

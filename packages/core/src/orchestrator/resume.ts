@@ -30,7 +30,7 @@ export interface FlowRef {
 interface FlowRefRaw {
   flowName: string;
   flowVersion: string;
-  flowPath?: string | null;
+  flowPath?: string | null | undefined;
 }
 
 const FlowRefRawSchema: z.ZodType<FlowRefRaw> = z.object({

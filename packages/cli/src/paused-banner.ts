@@ -37,14 +37,14 @@ import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
 // ---------------------------------------------------------------------------
 
 interface RawStepState extends StepState {
-  model?: string;
+  model?: string | undefined;
 }
 
 interface RawMetrics {
   stepId: string;
-  durationMs?: number;
-  costUsd?: number;
-  model?: string;
+  durationMs?: number | undefined;
+  costUsd?: number | undefined;
+  model?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------

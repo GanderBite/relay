@@ -59,7 +59,10 @@ export async function executeBranch(
 
   if (mapped !== undefined) {
     const next = mapped === 'abort' || mapped === 'continue' ? undefined : mapped;
-    return { exitCode: result.exitCode, next };
+    return {
+      exitCode: result.exitCode,
+      ...(next !== undefined ? { next } : {}),
+    };
   }
 
   if (result.exitCode !== 0) {

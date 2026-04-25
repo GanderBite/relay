@@ -12,13 +12,13 @@ export interface StepBase {
   /** The step's stable identifier. Set by the flow compiler, not the builder. */
   id: string;
   /** Ids of steps that must succeed before this one runs. */
-  dependsOn?: string[];
+  dependsOn?: string[] | undefined;
 }
 
 export type PromptStepOutput =
-  | { handoff: string; schema?: z.ZodType }
+  | { handoff: string; schema?: z.ZodType | undefined }
   | { artifact: string }
-  | { handoff: string; artifact: string; schema?: z.ZodType };
+  | { handoff: string; artifact: string; schema?: z.ZodType | undefined };
 
 /**
  * Specification for a step that invokes a Claude prompt via a provider.
@@ -28,15 +28,15 @@ export type PromptStepOutput =
 export interface PromptStepSpec extends StepBase {
   kind: 'prompt';
   promptFile: string;
-  model?: string;
-  tools?: string[];
-  systemPrompt?: string;
-  contextFrom?: string[];
+  model?: string | undefined;
+  tools?: string[] | undefined;
+  systemPrompt?: string | undefined;
+  contextFrom?: string[] | undefined;
   output: PromptStepOutput;
-  maxRetries?: number;
-  maxBudgetUsd?: number;
-  timeoutMs?: number;
-  onFail?: 'abort' | 'continue' | string;
+  maxRetries?: number | undefined;
+  maxBudgetUsd?: number | undefined;
+  timeoutMs?: number | undefined;
+  onFail?: 'abort' | 'continue' | string | undefined;
 }
 
 /**
@@ -46,13 +46,13 @@ export interface PromptStepSpec extends StepBase {
 export interface ScriptStepSpec extends StepBase {
   kind: 'script';
   run: string | string[];
-  env?: Record<string, string>;
-  cwd?: string;
-  output?: { artifact?: string };
-  onExit?: Record<string, 'abort' | 'continue' | string>;
-  maxRetries?: number;
-  timeoutMs?: number;
-  onFail?: 'abort' | 'continue' | string;
+  env?: Record<string, string> | undefined;
+  cwd?: string | undefined;
+  output?: { artifact?: string | undefined } | undefined;
+  onExit?: Record<string, 'abort' | 'continue' | string> | undefined;
+  maxRetries?: number | undefined;
+  timeoutMs?: number | undefined;
+  onFail?: 'abort' | 'continue' | string | undefined;
 }
 
 /**
@@ -74,8 +74,8 @@ export interface BranchStepSpec extends Omit<ScriptStepSpec, 'output' | 'kind'> 
 export interface ParallelStepSpec extends StepBase {
   kind: 'parallel';
   branches: string[];
-  onAllComplete?: string;
-  onFail?: 'abort' | string;
+  onAllComplete?: string | undefined;
+  onFail?: 'abort' | string | undefined;
 }
 
 /**
@@ -84,8 +84,8 @@ export interface ParallelStepSpec extends StepBase {
  */
 export interface TerminalStepSpec extends StepBase {
   kind: 'terminal';
-  message?: string;
-  exitCode?: number;
+  message?: string | undefined;
+  exitCode?: number | undefined;
 }
 
 export type PromptStep = PromptStepSpec & { id: string };
@@ -125,12 +125,12 @@ export type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipp
 
 export interface StepState {
   status: StepStatus;
-  startedAt?: string;
-  completedAt?: string;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
   attempts: number;
-  artifacts?: string[];
-  handoffs?: string[];
-  errorMessage?: string;
+  artifacts?: string[] | undefined;
+  handoffs?: string[] | undefined;
+  errorMessage?: string | undefined;
 }
 
 export interface RunState {

@@ -33,9 +33,9 @@ interface LiveStatePartial {
   attempt: number;
   startedAt: string;
   lastUpdateAt: string;
-  model?: string;
-  tokensSoFar?: number;
-  turnsSoFar?: number;
+  model?: string | undefined;
+  tokensSoFar?: number | undefined;
+  turnsSoFar?: number | undefined;
 }
 
 const LiveStatePartialSchema = z.object({

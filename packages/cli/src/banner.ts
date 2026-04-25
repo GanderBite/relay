@@ -49,7 +49,7 @@ export interface FailureStepRow {
    * For failed steps: the process exit code. Shown in the model column as
    * "exit N" (e.g. "exit 1"): `✕ designReview    exit 1     0.2s`
    */
-  exitCode?: number;
+  exitCode?: number | undefined;
   /**
    * Only present on the failed step. The first line names the error class
    * and branch; the second names the specific field or handoff.
@@ -57,7 +57,7 @@ export interface FailureStepRow {
    *   "branch 'entities' raised HandoffSchemaError"
    *   "handoff 'entities' missing required field: entities[3].language"
    */
-  errorLines?: [string, string];
+  errorLines?: [string, string] | undefined;
 }
 
 // ---------------------------------------------------------------------------

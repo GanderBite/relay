@@ -301,7 +301,7 @@ export async function executePrompt(
       promptBody,
       handoffs: handoffsResult.value,
       inputVars: ctx.inputVars ?? {},
-      stepVars: ctx.stepVars,
+      ...(ctx.stepVars !== undefined ? { stepVars: ctx.stepVars } : {}),
     });
     if (assembled.isErr()) throw assembled.error;
 

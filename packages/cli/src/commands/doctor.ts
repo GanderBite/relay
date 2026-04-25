@@ -268,7 +268,7 @@ async function checkResolver(
   }
 
   const resolved = resolveProvider({
-    flagProvider,
+    ...(flagProvider !== undefined ? { flagProvider } : {}),
     flowSettings: flowSettingsResult.value,
     globalSettings: globalResult.value,
     registry,

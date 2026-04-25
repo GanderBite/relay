@@ -84,7 +84,7 @@ export async function executeScript(
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
-        next,
+        ...(next !== undefined ? { next } : {}),
       };
     }
   }
