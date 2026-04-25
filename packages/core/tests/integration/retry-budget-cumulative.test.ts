@@ -7,17 +7,10 @@
  *
  * The provider always fails so the run can never succeed regardless of retries.
  * The test asserts:
- *   - The provider is not invoked excessively (invokeCount <= 1 per the TC-006
- *     spec; see note below).
+ *   - The provider is invoked exactly once after resume (invokeCount === 1):
+ *     priorAttempts=2, maxRetries=1 → remainingRetries=0, so withRetry runs
+ *     the executor once at attempt=0 with no retries left.
  *   - The final run status is 'failed'.
- *
- * Note on invokeCount bound: the current implementation resets a failed step to
- * pending and re-dispatches it through withRetry(maxRetries:1), which allows up
- * to 2 provider calls in a single dispatch cycle independent of the accumulated
- * attempts counter persisted in state.json. TC-006 accepts invokeCount === 0
- * (budget recognized before dispatch) or invokeCount <= 1 (one attempt then
- * immediate exhaustion). A regression that grants unbounded retries would
- * produce invokeCount > 1 and be caught by this test.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -175,13 +168,12 @@ describe('TC-006: retry budget enforced cumulatively across crash and resume', (
     // The run must end in 'failed' — the exhausted step can never succeed.
     expect(result.status, 'run must end with status failed').toBe('failed');
 
-    // The provider must not be invoked more than once after resume.
-    // TC-006 permits invokeCount === 0 (budget recognized before dispatch)
-    // or invokeCount <= 1 (one attempt then gives up). A value > 1 indicates
-    // the implementation granted retries beyond the exhausted budget.
+    // With priorAttempts=2 and maxRetries=1, remainingRetries=0. withRetry
+    // runs the executor exactly once (attempt=0, no retries). A value != 1
+    // indicates either the budget clamping regressed or dispatch was skipped.
     expect(
       provider.invokeCount,
-      `provider was invoked ${provider.invokeCount} times after budget-exhausted resume; expected at most 1`,
-    ).toBeLessThanOrEqual(1);
+      `provider was invoked ${provider.invokeCount} times after budget-exhausted resume; expected exactly 1`,
+    ).toBe(1);
   });
 });

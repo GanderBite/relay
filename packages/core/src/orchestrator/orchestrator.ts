@@ -1137,11 +1137,6 @@ export class Orchestrator {
           throw new FlowDefinitionError(`unknown step id "${stepId}"`);
         }
 
-        // Snapshot the attempts counter before startStep increments it so the
-        // remaining retry budget can be clamped against attempts already consumed
-        // in prior run cycles (including runs that crashed before markRun fired).
-        const priorAttempts = stateMachine.getState().steps[stepId]?.attempts ?? 0;
-
         // inflight lifecycle is fully contained in this try/finally so the slot
         // is released regardless of which step of the dispatch pipeline throws
         // (startStep transition, startSave, executor, or completeStep). Without
@@ -1153,6 +1148,11 @@ export class Orchestrator {
 
         inflight.add(stepId);
         try {
+          // Snapshot before startStep increments attempts so remainingRetries is
+          // clamped against attempts already consumed in prior run cycles
+          // (including runs that crashed before markRun fired).
+          const priorAttempts = stateMachine.getState().steps[stepId]?.attempts ?? 0;
+
           const startResult = stateMachine.startStep(stepId);
           if (startResult.isErr()) throw startResult.error;
 
