@@ -118,7 +118,7 @@ export interface RunOptions {
    *
    * Result variants are discriminated on `kind` for prompt/parallel/terminal steps and on the script/branch exit-code shape — narrow with `'kind' in result` before reading variant fields.
    */
-  onStepComplete?: (stepId: string, result: StepResult) => void | undefined;
+  onStepComplete?: ((stepId: string, result: StepResult) => void) | undefined;
 }
 
 export interface RunResult {
