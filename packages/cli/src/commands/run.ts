@@ -26,16 +26,14 @@ import { join } from 'node:path';
 import {
   type AuthState,
   defaultRegistry,
-  ERROR_CODES,
   loadFlowSettings,
   loadGlobalSettings,
   Orchestrator,
   type RunResult,
   registerDefaultProviders,
   resolveProvider,
-  type StepState,
+  z,
 } from '@relay/core';
-import { z } from 'zod';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
@@ -111,13 +109,8 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const loadResult = await loadFlow(nameOrPath, process.cwd());
   if (loadResult.isErr()) {
     const loadErr = loadResult.error;
-    if (loadErr.code === ERROR_CODES.FLOW_NOT_FOUND) {
-      process.stderr.write(formatError(loadErr) + '\n');
-      process.exit(1);
-    }
-    // FLOW_INVALID
     process.stderr.write(formatError(loadErr) + '\n');
-    process.exit(2);
+    process.exit(exitCodeFor(loadErr));
   }
 
   const loaded = loadResult.value;
@@ -458,9 +451,17 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
 // Both are read once here; missing data falls back to safe zero values.
 // ---------------------------------------------------------------------------
 
-interface RawStepState extends StepState {
-  model?: string;
-}
+const RawStepStateSchema = z.object({
+  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
+  attempts: z.number().optional(),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  errorMessage: z.string().optional(),
+  artifacts: z.array(z.string()).optional(),
+  handoffs: z.array(z.string()).optional(),
+});
+
+type RawStepState = z.infer<typeof RawStepStateSchema>;
 
 interface RawMetrics {
   stepId: string;
@@ -468,14 +469,6 @@ interface RawMetrics {
   costUsd?: number;
   model?: string;
 }
-
-const RawStepStateSchema = z.object({
-  status: z.string(),
-  attempt: z.number().optional(),
-  startedAt: z.string().optional(),
-  completedAt: z.string().optional(),
-  error: z.string().optional(),
-});
 
 const RawStateJsonSchema = z.object({
   steps: z.record(z.string(), RawStepStateSchema).optional(),
@@ -494,9 +487,7 @@ async function readStateSteps(runDir: string): Promise<Record<string, RawStepSta
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
     const result = RawStateJsonSchema.safeParse(JSON.parse(raw));
-    return result.success
-      ? ((result.data.steps ?? {}) as unknown as Record<string, RawStepState>)
-      : {};
+    return result.success ? (result.data.steps ?? {}) : {};
   } catch {
     return {};
   }
