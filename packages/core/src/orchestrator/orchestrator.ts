@@ -108,6 +108,15 @@ export interface RunOptions {
    * immediately torn down; use `worktree: false` for script-only flows.
    */
   worktree?: boolean | 'auto';
+  /**
+   * Lifecycle hook fired after each step completes successfully. Embedding
+   * hosts (UIs, dashboards, IDE plugins) use this to subscribe to progress
+   * without polling state.json. Errors thrown by the callback are caught and
+   * logged at warn level — they never abort or affect the run. Async work
+   * inside the callback is the caller's responsibility; the Orchestrator does
+   * not await the callback.
+   */
+  onStepComplete?: (stepId: string, result: StepResult) => void;
 }
 
 export interface RunResult {
@@ -308,6 +317,7 @@ export class Orchestrator {
           validatedInput,
           initialQueue: [...flow.graph.rootSteps],
           invocationCwd: worktree.worktreeCwd,
+          ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
         });
       }
     } catch (caught) {
@@ -547,6 +557,7 @@ export class Orchestrator {
           validatedInput: stateMachine.getState().input,
           initialQueue,
           invocationCwd: worktree.worktreeCwd,
+          ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
         });
       }
     } catch (caught) {
@@ -871,6 +882,12 @@ export class Orchestrator {
      * or auto-skipped, so the subprocess inherits the parent cwd.
      */
     invocationCwd: string | undefined;
+    /**
+     * Lifecycle callback forwarded from RunOptions. Fired once per successful
+     * step completion inside the walker's drain loop. Errors thrown by the
+     * callback are caught at the call site and never escape into the walker.
+     */
+    onStepComplete?: (stepId: string, result: StepResult) => void;
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
     const {
       flow,
@@ -889,6 +906,7 @@ export class Orchestrator {
       validatedInput,
       initialQueue,
       invocationCwd,
+      onStepComplete,
     } = args;
 
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
@@ -1260,6 +1278,25 @@ export class Orchestrator {
               );
             } else {
               runFailed = true;
+            }
+          } else if (completed.error === undefined && completed.result !== undefined) {
+            // Lifecycle hook for embedding hosts. Fired only on successful
+            // completion. The callback is wrapped in try/catch so a buggy
+            // subscriber cannot abort the run or corrupt state — the worst
+            // case is a warn-level log entry.
+            if (onStepComplete !== undefined) {
+              try {
+                onStepComplete(completed.stepId, completed.result);
+              } catch (cbErr) {
+                logger.warn(
+                  {
+                    event: 'onStepComplete.callback_error',
+                    stepId: completed.stepId,
+                    error: cbErr,
+                  },
+                  'onStepComplete callback threw',
+                );
+              }
             }
           }
 

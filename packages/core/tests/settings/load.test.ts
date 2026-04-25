@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PipelineError } from '../../src/errors.js';
-import { loadFlowSettings, loadGlobalSettings } from '../../src/settings/load.js';
+import { loadFlowSettings } from '../../src/settings/load.js';
 import { flowSettingsPath, globalSettingsPath } from '../../src/settings/paths.js';
 
 describe('loadFlowSettings', () => {
