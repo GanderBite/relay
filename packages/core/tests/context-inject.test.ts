@@ -62,6 +62,21 @@ describe('assemblePrompt', () => {
     expect(r.isErr()).toBe(true);
     expect(r._unsafeUnwrapErr()).toBeInstanceOf(FlowDefinitionError);
   });
+
+  it('[CTX-007] nested handoff properties render via Handlebars template variables', () => {
+    const r = assemblePrompt({
+      promptBody: 'Value is {{handoff1.x}} and label is {{handoff2.label}}',
+      handoffs: { handoff1: { x: 42 }, handoff2: { label: 'hello' } },
+      inputVars: {},
+      stepVars: {},
+    });
+    expect(r.isOk()).toBe(true);
+    const out = r._unsafeUnwrap();
+    // Both template variables must be resolved — no unresolved {{ }} placeholders
+    expect(out).toContain('42');
+    expect(out).toContain('hello');
+    expect(out).not.toMatch(/\{\{handoff[12]\.\w+\}\}/);
+  });
 });
 
 describe('loadHandoffValues', () => {

@@ -99,6 +99,27 @@ describe('HandoffStore', () => {
     expect(await handoffsDirContents()).toEqual([]);
   });
 
+  it('[TC-007] HandoffSchemaError.issues carries path+message per Zod violation', async () => {
+    const schema = z.object({ correct: z.string(), count: z.number() });
+    const r = await store.write(
+      'myHandoff',
+      { wrong: 'shape', extra: 123 } as unknown as { correct: string; count: number },
+      schema,
+    );
+    expect(r.isErr()).toBe(true);
+    const err = r._unsafeUnwrapErr();
+    expect(err).toBeInstanceOf(HandoffSchemaError);
+    if (err instanceof HandoffSchemaError) {
+      expect(err.code).toBe('relay_HANDOFF_SCHEMA');
+      expect(Array.isArray(err.issues)).toBe(true);
+      expect(err.issues.length).toBeGreaterThanOrEqual(2);
+      for (const issue of err.issues) {
+        expect(Array.isArray(issue.path)).toBe(true);
+        expect(typeof issue.message).toBe('string');
+      }
+    }
+  });
+
   it('[HANDOFF-008] read with schema returns typed value on match', async () => {
     await mkdir(join(tmp, 'handoffs'), { recursive: true });
     await writeFile(join(tmp, 'handoffs', 'x.json'), JSON.stringify({ name: 'alice' }), 'utf8');

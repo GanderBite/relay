@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Module-level mock harness: each test can install a per-call override by
 // setting `failWriteFile` / `failRenameOnce`. When null, the real fs is used.
@@ -25,14 +25,18 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         const failure = failWriteFile.value;
         return {
           ...handle,
-          writeFile: () => Promise.reject(Object.assign(new Error(failure.message), { code: failure.code })),
+          writeFile: () =>
+            Promise.reject(Object.assign(new Error(failure.message), { code: failure.code })),
           sync: handle.sync.bind(handle),
           close: handle.close.bind(handle),
         } as unknown as Awaited<ReturnType<typeof actual.open>>;
       }
       return handle;
     },
-    async rename(src: Parameters<typeof actual.rename>[0], dst: Parameters<typeof actual.rename>[1]) {
+    async rename(
+      src: Parameters<typeof actual.rename>[0],
+      dst: Parameters<typeof actual.rename>[1],
+    ) {
       if (failRenameOnce.value !== null && !failRenameOnce.consumed) {
         failRenameOnce.consumed = true;
         const f = failRenameOnce.value;
@@ -43,8 +47,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-import { atomicWriteJson, atomicWriteText } from '../../src/util/atomic-write.js';
 import { AtomicWriteError } from '../../src/errors.js';
+import { atomicWriteJson, atomicWriteText } from '../../src/util/atomic-write.js';
 
 describe('atomicWriteJson / atomicWriteText', () => {
   let tmp: string;
@@ -125,5 +129,18 @@ describe('atomicWriteJson / atomicWriteText', () => {
     expect(err).toBeInstanceOf(AtomicWriteError);
     expect(err.errno).toBe('ENOSPC');
     expect(err.path).toContain('file.json');
+  });
+
+  it('[TC-008] original file intact when rename fails with ENOSPC', async () => {
+    const path = join(tmp, 'guarded.txt');
+    await writeFile(path, 'original content', 'utf8');
+
+    failRenameOnce.value = { code: 'ENOSPC', message: 'no space left on device' };
+    const r = await atomicWriteText(path, 'new content');
+
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr()).toBeInstanceOf(AtomicWriteError);
+    const actual = await readFile(path, 'utf8');
+    expect(actual).toBe('original content');
   });
 });

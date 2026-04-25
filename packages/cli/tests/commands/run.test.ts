@@ -31,7 +31,6 @@ vi.mock('@relay/core', async (importOriginal) => {
     loadFlowSettings: (_dir: string) => mockLoadFlowSettings(_dir),
     resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
     Orchestrator: class MockOrchestrator {
-      constructor(_opts: unknown) {}
       run = mockRunnerRun;
     },
   };
@@ -57,7 +56,6 @@ vi.mock('../../src/paused-banner.js', () => ({
 
 vi.mock('../../src/progress.js', () => ({
   ProgressDisplay: class MockProgress {
-    constructor(_runDir: unknown, _flow: unknown, _auth: unknown) {}
     start = vi.fn();
     stop = vi.fn();
   },
@@ -80,8 +78,10 @@ vi.mock('../../src/exit-codes.js', async (importOriginal) => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-import { ok } from '@relay/core';
+import { err, NoProviderConfiguredError, ok } from '@relay/core';
+import { renderFailureBanner } from '../../src/banner.js';
 import runCommand from '../../src/commands/run.js';
+import { renderPausedBanner } from '../../src/paused-banner.js';
 
 /** Minimal race object that satisfies the run command's needs. */
 function makeFlow() {
@@ -163,7 +163,7 @@ describe('relay run — --fresh flag', () => {
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts['fresh']).toBe(true);
+    expect(runOpts.fresh).toBe(true);
   });
 
   it('[RUN-FRESH-002] without --fresh, fresh is not set in runner.run() options', async () => {
@@ -171,7 +171,7 @@ describe('relay run — --fresh flag', () => {
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts['fresh']).toBeUndefined();
+    expect(runOpts.fresh).toBeUndefined();
   });
 
   it('[RUN-FRESH-003] --fresh=false does not set fresh in runner.run() options', async () => {
@@ -181,7 +181,7 @@ describe('relay run — --fresh flag', () => {
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts['fresh']).toBeUndefined();
+    expect(runOpts.fresh).toBeUndefined();
   });
 });
 
@@ -193,6 +193,54 @@ describe('relay run — --provider flag forwarding', () => {
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts['flagProvider']).toBe('claude-cli');
+    expect(runOpts.flagProvider).toBe('claude-cli');
+  });
+});
+
+describe('relay run — provider resolution failure', () => {
+  it('[TC-020] exits early when no provider is configured (NoProviderConfiguredError)', async () => {
+    mockResolveProvider.mockReturnValue(err(new NoProviderConfiguredError()));
+
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
+
+    // The runner must never be invoked — the command exits before reaching step 6.
+    expect(mockRunnerRun).not.toHaveBeenCalled();
+
+    // process.exit must have been called (the spy throws to capture the call).
+    expect(process.exit).toHaveBeenCalledOnce();
+
+    // Error detail must be written to stderr before exiting.
+    expect(process.stderr.write).toHaveBeenCalled();
+  });
+});
+
+describe('relay run — SIGINT paused banner', () => {
+  it('[TC-021] aborted run after SIGINT renders paused banner and exits 130, not failure banner', async () => {
+    // Make mockRunnerRun emit SIGINT mid-run then resolve with 'aborted'.
+    // This simulates the Orchestrator aborting after Ctrl-C.
+    mockRunnerRun.mockImplementation(() => {
+      // Emit SIGINT synchronously inside the run — the sigintHandler registered
+      // by the command sets wasInterrupted = true before orchestrator.run() resolves.
+      process.emit('SIGINT');
+      return Promise.resolve({
+        runId: 'abc123',
+        runDir: '/tmp/.relay/runs/abc123',
+        status: 'aborted' as const,
+        cost: { totalUsd: 0, totalTokens: 0 },
+        artifacts: [],
+        durationMs: 100,
+      });
+    });
+
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
+
+    // Paused banner must have been called.
+    expect(vi.mocked(renderPausedBanner)).toHaveBeenCalledOnce();
+
+    // Failure banner must NOT have been called.
+    expect(vi.mocked(renderFailureBanner)).not.toHaveBeenCalled();
+
+    // Exit code must be 130 (SIGINT convention).
+    expect(process.exit).toHaveBeenCalledWith(130);
   });
 });
