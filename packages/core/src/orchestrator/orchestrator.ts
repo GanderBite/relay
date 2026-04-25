@@ -1137,6 +1137,11 @@ export class Orchestrator {
           throw new FlowDefinitionError(`unknown step id "${stepId}"`);
         }
 
+        // Snapshot the attempts counter before startStep increments it so the
+        // remaining retry budget can be clamped against attempts already consumed
+        // in prior run cycles (including runs that crashed before markRun fired).
+        const priorAttempts = stateMachine.getState().steps[stepId]?.attempts ?? 0;
+
         // inflight lifecycle is fully contained in this try/finally so the slot
         // is released regardless of which step of the dispatch pipeline throws
         // (startStep transition, startSave, executor, or completeStep). Without
@@ -1145,12 +1150,17 @@ export class Orchestrator {
         // count. inflight is managed here (not by the walker) so steps
         // dispatched as parallel branches remove themselves on completion; the
         // walker's drain loop only observes the slot count to gate parallelism.
+
         inflight.add(stepId);
         try {
           const startResult = stateMachine.startStep(stepId);
           if (startResult.isErr()) throw startResult.error;
 
           const { maxRetries, timeoutMs } = stepRetryBudget(step);
+          // Clamp: a step that has already consumed its full budget on a prior run
+          // must not receive additional retries on resume. remainingRetries is zero
+          // when priorAttempts >= maxRetries.
+          const remainingRetries = Math.max(0, maxRetries - priorAttempts);
 
           const startSave = await stateMachine.save();
           if (startSave.isErr()) {
@@ -1164,7 +1174,7 @@ export class Orchestrator {
           try {
             const value = await raceAbort(
               withRetry((attempt) => runExecutor(step, attempt), {
-                maxRetries,
+                maxRetries: remainingRetries,
                 ...(timeoutMs !== undefined ? { timeoutMs } : {}),
                 logger,
                 stepId,
