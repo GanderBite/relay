@@ -27,14 +27,14 @@ describe('writeLiveState (sprint 5 task_39)', () => {
       startedAt: iso,
       lastUpdateAt: iso,
       tokensSoFar: 100,
-      turnsSoFar: 2,
+      toolsSoFar: 2,
       model: 'sonnet',
     });
     const raw = await readFile(join(tmp, 'live', 'inventory.json'), 'utf8');
     const parsed = JSON.parse(raw);
     expect(parsed.status).toBe('running');
     expect(parsed.tokensSoFar).toBe(100);
-    expect(parsed.turnsSoFar).toBe(2);
+    expect(parsed.toolsSoFar).toBe(2);
     expect(parsed.model).toBe('sonnet');
   });
 

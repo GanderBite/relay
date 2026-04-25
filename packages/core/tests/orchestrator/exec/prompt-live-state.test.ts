@@ -226,10 +226,11 @@ describe('executePrompt live-state cadence', () => {
     const final = JSON.parse(finalRaw) as {
       status: string;
       tokensSoFar: number;
-      turnsSoFar: number;
+      toolsSoFar: number;
     };
     expect(final.tokensSoFar).toBe(30);
     expect(final.status).toBe('running');
+    expect(final.toolsSoFar).toBe(0);
 
     // Aggregated stream text still lands as the artifact file. If the aggregator
     // were skipping text.delta events the artifact would be empty.
@@ -237,5 +238,38 @@ describe('executePrompt live-state cadence', () => {
     expect(artifactStat.isFile()).toBe(true);
     const artifact = await readFile(join(tmp, 'artifacts', 'out.json'), 'utf8');
     expect(artifact).toBe(fragments.join(''));
+  });
+
+  it('increments toolsSoFar once per tool.call event and persists the count in the live JSON', async () => {
+    // Regression guard: a future change that reverts to counting turn.end instead
+    // of tool.call would produce toolsSoFar: 0 here and fail this test.
+    const stepId = 'tool-count';
+    const events: InvocationEvent[] = [
+      { type: 'turn.start', turn: 1 },
+      { type: 'tool.call', name: 'read_file', toolUseId: 'call_1' },
+      { type: 'tool.call', name: 'write_file', toolUseId: 'call_2' },
+      { type: 'tool.call', name: 'bash', toolUseId: 'call_3' },
+      { type: 'text.delta', delta: 'done' },
+      {
+        type: 'usage',
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      },
+      { type: 'turn.end', turn: 1 },
+    ];
+
+    const provider = scriptedProvider(events, 'done');
+
+    const step = promptSpec(stepId, 'out.txt');
+    const ctx = {
+      ...makeCtxBase(),
+      stepId,
+      provider,
+      attempt: 1,
+    };
+    await executePrompt(step, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+    const finalRaw = await readFile(join(tmp, 'live', `${stepId}.json`), 'utf8');
+    const final = JSON.parse(finalRaw) as { toolsSoFar: number };
+    expect(final.toolsSoFar).toBe(3);
   });
 });
