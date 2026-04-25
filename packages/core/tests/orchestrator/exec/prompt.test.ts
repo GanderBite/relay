@@ -158,7 +158,7 @@ describe('executePrompt (sprint 5 task_33)', () => {
     const ctx = { ...ctxBase, stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     expect(recordSpy).toHaveBeenCalledTimes(1);
-    const metric = recordSpy.mock.calls[0]![0];
+    const metric = recordSpy.mock.calls[0]?.[0];
     expect(metric.tokensIn).toBe(100);
     expect(metric.tokensOut).toBe(50);
     expect(metric.costUsd).toBe(0.01);

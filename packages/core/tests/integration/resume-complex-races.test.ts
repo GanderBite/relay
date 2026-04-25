@@ -276,11 +276,11 @@ describe('resume with complex flow topologies', () => {
     const finalStateRaw = await readFile(join(runDir, 'state.json'), 'utf8');
     const finalState = JSON.parse(finalStateRaw) as RunState;
     expect(finalState.status).toBe('succeeded');
-    expect(finalState.steps['b2']?.status).toBe('succeeded');
-    expect(finalState.steps['end']?.status).toBe('succeeded');
-    expect(finalState.steps['b1']?.status).toBe('succeeded');
-    expect(finalState.steps['a1']?.status).toBe('skipped');
-    expect(finalState.steps['a2']?.status).toBe('skipped');
+    expect(finalState.steps.b2?.status).toBe('succeeded');
+    expect(finalState.steps.end?.status).toBe('succeeded');
+    expect(finalState.steps.b1?.status).toBe('succeeded');
+    expect(finalState.steps.a1?.status).toBe('skipped');
+    expect(finalState.steps.a2?.status).toBe('skipped');
   });
 
   // ── Test 2: parallel topology ───────────────────────────────────────────────
@@ -407,10 +407,10 @@ describe('resume with complex flow topologies', () => {
     const finalStateRaw = await readFile(join(runDir, 'state.json'), 'utf8');
     const finalState = JSON.parse(finalStateRaw) as RunState;
     expect(finalState.status).toBe('succeeded');
-    expect(finalState.steps['c3']?.status).toBe('succeeded');
-    expect(finalState.steps['end']?.status).toBe('succeeded');
-    expect(finalState.steps['c1']?.status).toBe('succeeded');
-    expect(finalState.steps['c2']?.status).toBe('succeeded');
-    expect(finalState.steps['parallel']?.status).toBe('succeeded');
+    expect(finalState.steps.c3?.status).toBe('succeeded');
+    expect(finalState.steps.end?.status).toBe('succeeded');
+    expect(finalState.steps.c1?.status).toBe('succeeded');
+    expect(finalState.steps.c2?.status).toBe('succeeded');
+    expect(finalState.steps.parallel?.status).toBe('succeeded');
   });
 });

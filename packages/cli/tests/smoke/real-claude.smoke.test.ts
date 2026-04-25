@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest';
 // Environment gate — every test in this file skips unless RELAY_SMOKE_REAL=1.
 // ---------------------------------------------------------------------------
 
-const SMOKE = Boolean(process.env['RELAY_SMOKE_REAL']);
+const SMOKE = Boolean(process.env.RELAY_SMOKE_REAL);
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -97,7 +97,7 @@ describe('relay run (real Claude)', () => {
     const childEnv = { ...process.env };
     // Explicitly delete the key — passing `undefined` in a spread does NOT
     // remove the key on all Node versions; we must use delete.
-    delete childEnv['ANTHROPIC_API_KEY'];
+    delete childEnv.ANTHROPIC_API_KEY;
 
     const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
       encoding: 'utf8',
@@ -165,7 +165,7 @@ describe('relay run (real Claude)', () => {
       ANTHROPIC_API_KEY: 'sk-ant-test-key-that-is-fake',
     };
     // Explicitly delete the key — same pattern as the primary smoke test above.
-    delete childEnv['RELAY_ALLOW_API_KEY'];
+    delete childEnv.RELAY_ALLOW_API_KEY;
 
     const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
       encoding: 'utf8',
@@ -206,7 +206,7 @@ describe('relay run (real Claude)', () => {
     () => {
       // Step 1 — first run (identical to the primary smoke test above).
       const childEnv = { ...process.env };
-      delete childEnv['ANTHROPIC_API_KEY'];
+      delete childEnv.ANTHROPIC_API_KEY;
 
       const firstRun = spawnSync(
         process.execPath,

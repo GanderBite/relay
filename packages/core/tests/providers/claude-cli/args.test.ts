@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'vitest';
-
-import { buildCliArgs } from '../../../src/providers/claude-cli/args.js';
+import { describe, expect, it } from 'vitest';
 import type { ClaudeCliProviderOptions } from '../../../src/providers/claude-cli/args.js';
+import { buildCliArgs } from '../../../src/providers/claude-cli/args.js';
 import type { InvocationRequest } from '../../../src/providers/types.js';
 
 const FIXED_PREFIX = [

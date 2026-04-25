@@ -208,9 +208,9 @@ describe('crash-resume integration (real SIGKILL)', () => {
     // was never called — the SIGKILL bypassed the cleanup path.
     expect(preResumeState.status).toBe('running');
     // Step "a" succeeded before the kill.
-    expect(preResumeState.steps['a']?.status).toBe('succeeded');
+    expect(preResumeState.steps.a?.status).toBe('succeeded');
     // Step "b" was started (running) when the process was killed.
-    expect(preResumeState.steps['b']?.status).toBe('running');
+    expect(preResumeState.steps.b?.status).toBe('running');
 
     // ── Phase 2: resume with a fresh TrackingProvider ──────────────────────
     const trackingProvider = new TrackingProvider();
@@ -261,7 +261,7 @@ describe('crash-resume integration (real SIGKILL)', () => {
 
     // Sanity-check the final persisted state is also succeeded.
     expect(finalState.status).toBe('succeeded');
-    expect(finalState.steps['a']?.status).toBe('succeeded');
-    expect(finalState.steps['b']?.status).toBe('succeeded');
+    expect(finalState.steps.a?.status).toBe('succeeded');
+    expect(finalState.steps.b?.status).toBe('succeeded');
   });
 });

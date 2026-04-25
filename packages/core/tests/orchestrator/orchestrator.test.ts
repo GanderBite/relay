@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClaudeAuthError, FlowDefinitionError } from '../../src/errors.js';
 import { defineFlow } from '../../src/flow/define.js';
 import { step } from '../../src/flow/step.js';
-import { createOrchestrator, Orchestrator } from '../../src/orchestrator/orchestrator.js';
+import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import type { InvocationResponse } from '../../src/providers/types.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';

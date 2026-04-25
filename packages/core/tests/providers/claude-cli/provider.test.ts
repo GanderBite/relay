@@ -140,73 +140,68 @@ function stubExecFileEnoent(): void {
 // ---------------------------------------------------------------------------
 
 // system.init envelope — emitted at start of each `claude -p` run.
-const FIXTURE_SYSTEM_INIT =
-  JSON.stringify({
-    type: 'system',
-    subtype: 'init',
-    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-    model: 'claude-sonnet-4-6',
-  }) + '\n';
+const FIXTURE_SYSTEM_INIT = `${JSON.stringify({
+  type: 'system',
+  subtype: 'init',
+  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+  model: 'claude-sonnet-4-6',
+})}\n`;
 
 // stream_event with content_block_delta — carries per-token text delta.
-const FIXTURE_DELTA_HELLO =
-  JSON.stringify({
-    type: 'stream_event',
-    event: {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'text_delta', text: 'Hello' },
-    },
-    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-  }) + '\n';
+const FIXTURE_DELTA_HELLO = `${JSON.stringify({
+  type: 'stream_event',
+  event: {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'text_delta', text: 'Hello' },
+  },
+  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+})}\n`;
 
-const FIXTURE_DELTA_THERE =
-  JSON.stringify({
-    type: 'stream_event',
-    event: {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'text_delta', text: ' there, friend.' },
-    },
-    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-  }) + '\n';
+const FIXTURE_DELTA_THERE = `${JSON.stringify({
+  type: 'stream_event',
+  event: {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'text_delta', text: ' there, friend.' },
+  },
+  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+})}\n`;
 
 // message_delta stream_event — carries stop_reason and usage totals.
-const FIXTURE_MESSAGE_DELTA =
-  JSON.stringify({
-    type: 'stream_event',
-    event: {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn', stop_sequence: null },
-      usage: {
-        input_tokens: 2,
-        cache_creation_input_tokens: 23980,
-        cache_read_input_tokens: 0,
-        output_tokens: 8,
-      },
-    },
-    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-  }) + '\n';
-
-// result — final envelope with totals.
-const FIXTURE_RESULT =
-  JSON.stringify({
-    type: 'result',
-    subtype: 'success',
-    is_error: false,
-    duration_ms: 2169,
-    num_turns: 1,
-    result: 'Hello there, friend.',
-    stop_reason: 'end_turn',
-    session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
-    total_cost_usd: 0.090051,
+const FIXTURE_MESSAGE_DELTA = `${JSON.stringify({
+  type: 'stream_event',
+  event: {
+    type: 'message_delta',
+    delta: { stop_reason: 'end_turn', stop_sequence: null },
     usage: {
       input_tokens: 2,
       cache_creation_input_tokens: 23980,
       cache_read_input_tokens: 0,
       output_tokens: 8,
     },
-  }) + '\n';
+  },
+  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+})}\n`;
+
+// result — final envelope with totals.
+const FIXTURE_RESULT = `${JSON.stringify({
+  type: 'result',
+  subtype: 'success',
+  is_error: false,
+  duration_ms: 2169,
+  num_turns: 1,
+  result: 'Hello there, friend.',
+  stop_reason: 'end_turn',
+  session_id: '6f5b82b2-0e07-4a31-8d84-694ca191674e',
+  total_cost_usd: 0.090051,
+  usage: {
+    input_tokens: 2,
+    cache_creation_input_tokens: 23980,
+    cache_read_input_tokens: 0,
+    output_tokens: 8,
+  },
+})}\n`;
 
 // ---------------------------------------------------------------------------
 // Tests
