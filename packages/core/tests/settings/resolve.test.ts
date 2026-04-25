@@ -116,7 +116,7 @@ describe('resolveProvider', () => {
 
   it('[RESOLVE-008] NoProviderConfiguredError has correct code and verbatim message', () => {
     const e = new NoProviderConfiguredError();
-    expect(e.code).toBe('E_NO_PROVIDER');
+    expect(e.code).toBe('relay_NO_PROVIDER');
     expect(e.message).toBe(
       'no provider configured. run `relay init` to pick one, or pass `--provider claude-cli`.',
     );

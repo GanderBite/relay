@@ -25,6 +25,7 @@
     "dist",
     "bin"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json",

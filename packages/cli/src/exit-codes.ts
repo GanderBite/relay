@@ -43,7 +43,7 @@ export const EXIT_CODES = {
   runner_failure: 1,
   definition_error: 2,
   auth_error: 3,
-  baton_error: 4,
+  handoff_error: 4,
   timeout: 5,
   no_provider: 6,
 } as const;
@@ -282,7 +282,7 @@ const errorRegistry = new Map<string, RegistryEntry>([
   [
     ERROR_CODES.HANDOFF_SCHEMA,
     makeHandler(
-      EXIT_CODES.baton_error,
+      EXIT_CODES.handoff_error,
       (e): e is HandoffSchemaError => e instanceof HandoffSchemaError,
       (err) => {
         const handoffId = err.handoffId;

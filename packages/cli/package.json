@@ -6,14 +6,20 @@
   "type": "module",
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    }
+  },
   "bin": {
-    "relay": "./bin/relay.js",
-    "generate-registry": "./bin/generate-registry.js"
+    "relay": "./bin/relay.js"
   },
   "files": [
     "bin",
     "dist"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

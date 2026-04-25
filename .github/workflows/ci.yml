@@ -7,12 +7,10 @@
 # runs unit tests with MockProvider; it does not execute any live races.
 #
 # Node version note
-# ─────────────────
-# The root package.json specifies engines.node ">=25.8". Node 25 is not
-# available on GitHub Actions runners (latest available LTS as of 2026 is
-# Node 22.x). This workflow uses node-version: '22' — the closest available
-# LTS — until GitHub Actions ships a Node 25 runner image. Update this value
-# once that image becomes available.
+# -----------------
+# The root package.json specifies engines.node ">=20.10". This workflow uses
+# node-version: '22' — the current LTS as of 2026. Update this value when a
+# newer LTS becomes available.
 
 name: CI
 
