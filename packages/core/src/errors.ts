@@ -6,6 +6,8 @@ export const ERROR_CODES = {
   AUTH_TIMEOUT: 'relay_AUTH_TIMEOUT',
   CLAUDE_AUTH: 'relay_CLAUDE_AUTH',
   FLOW_DEFINITION: 'relay_FLOW_DEFINITION',
+  FLOW_INVALID: 'relay_FLOW_INVALID',
+  FLOW_NOT_FOUND: 'relay_FLOW_NOT_FOUND',
   HANDOFF_IO: 'relay_HANDOFF_IO',
   HANDOFF_NOT_FOUND: 'relay_HANDOFF_NOT_FOUND',
   HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
@@ -748,7 +750,7 @@ export interface ProviderRateLimitDetails extends Record<string, unknown> {
  *
  * The original thrown value is preserved at `details.cause`.
  *
- * CLI exit code: 8
+ * CLI exit code: 8 (rate_limit).
  */
 export class ProviderRateLimitError extends PipelineError<ProviderRateLimitDetails> {
   readonly providerName: string;

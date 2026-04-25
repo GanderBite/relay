@@ -31,3 +31,4 @@ Thumbs.db
 _work/
 relay_tests.json
 _specs/
+.claude/agent-memory/

@@ -45,12 +45,6 @@ export interface RunEvent {
 // Config reading
 // ---------------------------------------------------------------------------
 
-interface RelayConfig {
-  telemetry?: {
-    enabled?: boolean;
-  };
-}
-
 /**
  * Returns true only when ~/.relay/config.json exists, is valid JSON, and
  * has telemetry.enabled set to true. Any read or parse failure returns false.
@@ -61,8 +55,13 @@ export function isEnabled(): boolean {
     const raw = readFileSync(CONFIG_PATH, 'utf8');
     const parsed: unknown = JSON.parse(raw);
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const config = parsed as RelayConfig;
-      return config.telemetry?.enabled === true;
+      const p = parsed as Record<string, unknown>;
+      const telemetry = p['telemetry'];
+      if (telemetry !== null && typeof telemetry === 'object' && !Array.isArray(telemetry)) {
+        const t = telemetry as Record<string, unknown>;
+        return t['enabled'] === true;
+      }
+      return false;
     }
     return false;
   } catch {

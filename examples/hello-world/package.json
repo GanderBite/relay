@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "relay test ."
+    "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
     "@relay/core": "^1.0.0"

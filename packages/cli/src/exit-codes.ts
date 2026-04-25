@@ -9,6 +9,8 @@
  *   4 — handoff / schema error (HandoffSchemaError)
  *   5 — timeout (TimeoutError, AuthTimeoutError)
  *   6 — no provider configured (NoProviderConfiguredError)
+ *   7 — I/O error (AtomicWriteError)
+ *   8 — rate limited (ProviderRateLimitError)
  *
  * Error format follows the product spec error template:
  *   ✕ <one-line headline>
@@ -27,11 +29,13 @@ import {
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
+  ProviderRateLimitError,
   StepFailureError,
   TimeoutError,
 } from '@relay/core';
 import { CommanderError } from 'commander';
 import { gray, red } from './color.js';
+import { FlowLoadError } from './flow-loader.js';
 import { fmtDuration } from './format.js';
 
 // ---------------------------------------------------------------------------
@@ -46,6 +50,8 @@ export const EXIT_CODES = {
   handoff_error: 4,
   timeout: 5,
   no_provider: 6,
+  io_error: 7,
+  rate_limit: 8,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
@@ -345,6 +351,61 @@ const errorRegistry = new Map<string, RegistryEntry>([
           remediation('relay doctor'),
         ].join('\n');
       },
+    ),
+  ],
+
+  // ProviderRateLimitError — rate limited by provider
+  [
+    ERROR_CODES.PROVIDER_RATE_LIMIT,
+    makeHandler(
+      EXIT_CODES.rate_limit,
+      (e): e is ProviderRateLimitError => e instanceof ProviderRateLimitError,
+      (err) => {
+        const runId = err.details?.runId ?? '<runId>';
+        return [
+          red(`✕ Rate limited by provider '${err.providerName}'`),
+          BLANK,
+          `${INDENT}The provider returned a rate-limit response on step '${err.stepId}' (attempt ${err.attempt}).`,
+          `${INDENT}Wait for the rate limit to reset, then resume the run.`,
+          BLANK,
+          remediation(`relay resume ${runId}      retry after the rate limit resets`),
+        ].join('\n');
+      },
+    ),
+  ],
+
+  // FlowLoadError — FLOW_NOT_FOUND
+  [
+    ERROR_CODES.FLOW_NOT_FOUND,
+    makeHandler(
+      EXIT_CODES.runner_failure,
+      (e): e is FlowLoadError =>
+        e instanceof FlowLoadError && e.code === ERROR_CODES.FLOW_NOT_FOUND,
+      (err) =>
+        [
+          red('✕ Flow not found'),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation('relay run <path-to-flow>    specify the correct path'),
+        ].join('\n'),
+    ),
+  ],
+
+  // FlowLoadError — FLOW_INVALID
+  [
+    ERROR_CODES.FLOW_INVALID,
+    makeHandler(
+      EXIT_CODES.definition_error,
+      (e): e is FlowLoadError => e instanceof FlowLoadError && e.code === ERROR_CODES.FLOW_INVALID,
+      (err) =>
+        [
+          red('✕ Flow package is invalid'),
+          BLANK,
+          `${INDENT}${err.message}`,
+          BLANK,
+          remediation('relay doctor    check your environment'),
+        ].join('\n'),
     ),
   ],
 ]);

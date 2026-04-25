@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "relay test .",
+    "test": "echo 'no unit tests — run relay test . with relay installed'",
     "run-mocked": "node dist/run-mocked.js"
   },
   "peerDependencies": {

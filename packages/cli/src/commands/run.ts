@@ -23,10 +23,10 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-
 import {
   type AuthState,
   defaultRegistry,
+  ERROR_CODES,
   loadFlowSettings,
   loadGlobalSettings,
   Orchestrator,
@@ -35,6 +35,7 @@ import {
   resolveProvider,
   type StepState,
 } from '@relay/core';
+import { z } from 'zod';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
@@ -110,7 +111,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const loadResult = await loadFlow(nameOrPath, process.cwd());
   if (loadResult.isErr()) {
     const loadErr = loadResult.error;
-    if (loadErr.code === 'FLOW_NOT_FOUND') {
+    if (loadErr.code === ERROR_CODES.FLOW_NOT_FOUND) {
       process.stderr.write(formatError(loadErr) + '\n');
       process.exit(1);
     }
@@ -465,11 +466,34 @@ interface RawMetrics {
   model?: string;
 }
 
+const RawStepStateSchema = z.object({
+  status: z.string(),
+  attempt: z.number().optional(),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  error: z.string().optional(),
+});
+
+const RawStateJsonSchema = z.object({
+  steps: z.record(z.string(), RawStepStateSchema).optional(),
+});
+
+const RawMetricsSchema = z.object({
+  stepId: z.string(),
+  durationMs: z.number().optional(),
+  costUsd: z.number().optional(),
+  model: z.string().optional(),
+});
+
+const RawMetricsArraySchema = z.array(RawMetricsSchema);
+
 async function readStateSteps(runDir: string): Promise<Record<string, RawStepState>> {
   try {
     const raw = await readFile(join(runDir, 'state.json'), 'utf8');
-    const parsed = JSON.parse(raw) as { steps?: Record<string, RawStepState> };
-    return parsed.steps ?? {};
+    const result = RawStateJsonSchema.safeParse(JSON.parse(raw));
+    return result.success
+      ? ((result.data.steps ?? {}) as unknown as Record<string, RawStepState>)
+      : {};
   } catch {
     return {};
   }
@@ -479,10 +503,11 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
   const map = new Map<string, RawMetrics>();
   try {
     const raw = await readFile(join(runDir, 'metrics.json'), 'utf8');
-    const entries = JSON.parse(raw) as RawMetrics[];
+    const parseResult = RawMetricsArraySchema.safeParse(JSON.parse(raw));
+    const entries = parseResult.success ? parseResult.data : [];
     for (const entry of entries) {
       if (typeof entry.stepId === 'string') {
-        map.set(entry.stepId, entry);
+        map.set(entry.stepId, entry as unknown as RawMetrics);
       }
     }
   } catch {

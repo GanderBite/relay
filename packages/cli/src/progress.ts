@@ -11,8 +11,9 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Flow } from '@relay/core';
+import type { Flow, StepStatus } from '@relay/core';
 import { z } from '@relay/core';
+import type { LiveStatePartial } from '@relay/core/live-state';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
@@ -22,21 +23,8 @@ import { fmtCostApprox, fmtK } from './format.js';
 import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
 
 // ---------------------------------------------------------------------------
-// Live state shape — mirrors LiveStatePartial from @relay/core/runner/live-state.
-// Defined locally because that module is not in the core package's exports map.
+// Live state Zod schema — LiveStatePartial type is imported from @relay/core/live-state.
 // ---------------------------------------------------------------------------
-
-type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
-
-interface LiveStatePartial {
-  status: StepStatus;
-  attempt: number;
-  startedAt: string;
-  lastUpdateAt: string;
-  model?: string | undefined;
-  tokensSoFar?: number | undefined;
-  turnsSoFar?: number | undefined;
-}
 
 const LiveStatePartialSchema = z.object({
   status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
@@ -270,7 +258,16 @@ export class ProgressDisplay<TInput = unknown> {
       const raw = await readFile(filePath, 'utf8');
       const result = LiveStatePartialSchema.safeParse(JSON.parse(raw));
       if (!result.success) return;
-      parsed = result.data;
+      const d = result.data;
+      parsed = {
+        status: d.status,
+        attempt: d.attempt,
+        startedAt: d.startedAt,
+        lastUpdateAt: d.lastUpdateAt,
+        ...(d.model !== undefined ? { model: d.model } : {}),
+        ...(d.tokensSoFar !== undefined ? { tokensSoFar: d.tokensSoFar } : {}),
+        ...(d.turnsSoFar !== undefined ? { turnsSoFar: d.turnsSoFar } : {}),
+      };
     } catch {
       // File read race or JSON parse failure — skip; next event will retry.
       return;

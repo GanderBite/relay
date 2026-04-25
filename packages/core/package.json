@@ -15,6 +15,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./live-state": {
+      "types": "./dist/orchestrator/live-state.d.ts",
+      "import": "./dist/orchestrator/live-state.js"
     }
   },
   "files": [

@@ -17,7 +17,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Flow, Result } from '@relay/core';
-import { err, ok, z } from '@relay/core';
+import { ERROR_CODES, err, ok, PipelineError, z } from '@relay/core';
 import { looksLikePath } from './util/path.js';
 
 // ---------------------------------------------------------------------------
@@ -36,15 +36,13 @@ const PkgSchema = z
 // Error class
 // ---------------------------------------------------------------------------
 
-export type FlowLoadCode = 'FLOW_NOT_FOUND' | 'FLOW_INVALID';
-
-export class FlowLoadError extends Error {
-  readonly code: FlowLoadCode;
-
-  constructor(message: string, code: FlowLoadCode) {
-    super(message);
+export class FlowLoadError extends PipelineError {
+  constructor(message: string, code: 'FLOW_NOT_FOUND' | 'FLOW_INVALID') {
+    super(
+      message,
+      code === 'FLOW_NOT_FOUND' ? ERROR_CODES.FLOW_NOT_FOUND : ERROR_CODES.FLOW_INVALID,
+    );
     this.name = 'FlowLoadError';
-    this.code = code;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }

@@ -30,6 +30,8 @@ import {
   registerDefaultProviders,
   resolveProvider,
 } from '@relay/core';
+import semver from 'semver';
+
 import { MARK, SYMBOLS } from '../brand.js';
 import { green, red, yellow } from '../color.js';
 
@@ -61,26 +63,6 @@ function failRow(label: string, value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Semver comparison (no external dep — only used for node version check)
-// ---------------------------------------------------------------------------
-
-/**
- * Returns true if versionA >= versionB.
- * Parses simple "major.minor.patch" semver strings.
- */
-function semverGte(versionA: string, versionB: string): boolean {
-  const parse = (v: string): [number, number, number] => {
-    const parts = v.replace(/^v/, '').split('.').map(Number);
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
-  };
-  const [aMaj, aMin, aPatch] = parse(versionA);
-  const [bMaj, bMin, bPatch] = parse(versionB);
-  if (aMaj !== bMaj) return aMaj > bMaj;
-  if (aMin !== bMin) return aMin > bMin;
-  return aPatch >= bPatch;
-}
-
-// ---------------------------------------------------------------------------
 // Individual checks
 // ---------------------------------------------------------------------------
 
@@ -93,7 +75,7 @@ interface CheckResult {
 function checkNode(): CheckResult {
   const version = process.versions.node;
   const required = '20.10.0';
-  const ok = semverGte(version, required);
+  const ok = semver.gte(version, required) === true;
   return {
     line: ok
       ? okRow('node', `${version}  (≥ ${required} required)`)

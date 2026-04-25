@@ -20,8 +20,23 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FlowStatus, RunState } from '@relay/core';
+import { z } from 'zod';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
+
+// ---------------------------------------------------------------------------
+// Minimal schema for parsing state files
+// ---------------------------------------------------------------------------
+
+const RunStateMinimalSchema = z
+  .object({
+    runId: z.string(),
+    flowName: z.string(),
+    flowVersion: z.string(),
+    startedAt: z.string(),
+    status: z.string(),
+  })
+  .passthrough();
 
 // ---------------------------------------------------------------------------
 // Column widths for the table
@@ -163,19 +178,9 @@ async function loadRuns(runsDir: string): Promise<RunState[]> {
     const stateFile = join(runsDir, entry, 'state.json');
     try {
       const raw = await readFile(stateFile, { encoding: 'utf8' });
-      const parsed: unknown = JSON.parse(raw);
-      // Minimal guard: must be an object with the fields we need.
-      if (
-        parsed !== null &&
-        typeof parsed === 'object' &&
-        !Array.isArray(parsed) &&
-        typeof (parsed as Record<string, unknown>)['runId'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['flowName'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['flowVersion'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['startedAt'] === 'string' &&
-        typeof (parsed as Record<string, unknown>)['status'] === 'string'
-      ) {
-        states.push(parsed as RunState);
+      const stateResult = RunStateMinimalSchema.safeParse(JSON.parse(raw));
+      if (stateResult.success) {
+        states.push(stateResult.data as unknown as RunState);
       }
     } catch {
       // Missing, unreadable, or malformed — skip silently.

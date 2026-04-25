@@ -35,7 +35,8 @@
     "chokidar": "^5.0.0",
     "commander": "13.1.0",
     "log-update": "^7.2.0",
-    "semver": "^7.7.4"
+    "semver": "^7.7.4",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/semver": "^7.5.8",
