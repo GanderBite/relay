@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CommanderError } from 'commander';
+import { z } from 'zod';
 import { MARK } from './brand.js';
 import { buildProgram } from './dispatcher.js';
 import { exitCodeFor, formatError } from './exit-codes.js';
@@ -17,15 +18,8 @@ function resolveVersion(pkg: string): string {
   try {
     const req = createRequire(import.meta.url);
     const meta: unknown = req(`${pkg}/package.json`);
-    if (
-      meta !== null &&
-      typeof meta === 'object' &&
-      'version' in meta &&
-      typeof (meta as Record<string, unknown>)['version'] === 'string'
-    ) {
-      return (meta as Record<string, unknown>)['version'] as string;
-    }
-    return 'unknown';
+    const parsed = z.object({ version: z.string() }).passthrough().safeParse(meta);
+    return parsed.success ? parsed.data.version : 'unknown';
   } catch {
     return 'unknown';
   }

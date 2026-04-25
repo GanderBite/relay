@@ -42,7 +42,18 @@ export interface ProviderCapabilities {
   /** True if the provider can be told a per-call USD budget cap. */
   budgetCap: boolean;
 
-  /** Catalog of model identifiers this provider accepts. Empty array means "any string allowed". */
+  /**
+   * Catalog of model identifiers this provider accepts in `InvocationRequest.model`.
+   *
+   * Empty array is the sentinel for "any string is accepted" — providers like
+   * `ClaudeCliProvider` that delegate model selection to the underlying runtime
+   * use this. The `ProviderCapabilityError` static check in the Orchestrator
+   * skips the model allowlist check when this array is empty.
+   *
+   * Non-empty arrays are treated as an allowlist: a step that requests a model
+   * not in this array fails at flow-definition validation time, before any step
+   * executes.
+   */
   models: readonly string[];
 
   /** Maximum context window across all advertised models. Informational. */

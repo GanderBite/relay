@@ -40,6 +40,15 @@ for about $0.40 (estimated API equivalent; billed to your subscription).
 - [Flow Package Format](docs/flow-package-format.md) — directory layout, package.json shape, step types, versioning
 - [Billing Safety](docs/billing-safety.md) — the API-key guard, opt-in paths, env allowlist, `relay doctor`
 - [Naming Conventions](docs/naming-conventions.md) — vocabulary table, words to avoid, PR checklist
+- [Authoring Your First Flow](docs/authoring-your-first-flow.md) — step-by-step guide from scaffold to first run
+- [Resume Semantics](docs/resume-semantics.md) — how checkpoint, crash recovery, and `relay resume` work
+- [Troubleshooting](docs/troubleshooting.md) — common errors and remediation steps
+- [Env Containment](docs/flow-package-env-containment.md) — how Relay isolates subprocess environment variables
+
+## Limitations
+
+- **No `onStepStart` hook.** The `onStepComplete` callback fires after a step finishes. There is no corresponding hook for when a step is dispatched. Hosts that need this signal must poll `state.json`.
+- **No flow composition.** A flow cannot call another flow as a sub-flow. Multi-flow pipelines require separate `relay run` invocations or a host process that sequences them.
 
 ## Flows
 

@@ -13,7 +13,20 @@ export class ProviderRegistry {
     return ok(undefined);
   }
 
-  /** No-op when the provider name is already present — double-registration is not an error. */
+  /**
+   * Register a provider if no provider with the same name is present.
+   * Double-registration is treated as a no-op rather than an error — callers
+   * that set up default providers at module load time can safely call this
+   * from multiple entry points without coordinating initialization order.
+   *
+   * Return value semantics differ from `register()` by design:
+   * - `register()` returns `err(FlowDefinitionError)` on collision — callers
+   *   that need to detect duplicates (e.g., user-defined registry setup) should
+   *   use `register()`.
+   * - `registerIfAbsent()` returns `ok('registered')` or `ok('already-present')`
+   *   so callers can log or branch on the outcome without treating either case
+   *   as an error. The `never` error type signals that this call cannot fail.
+   */
   registerIfAbsent(provider: Provider): Result<'registered' | 'already-present', never> {
     if (this.#providers.has(provider.name)) {
       return ok('already-present');

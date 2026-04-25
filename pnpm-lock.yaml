@@ -112,13 +112,13 @@ importers:
   packages/core:
     dependencies:
       handlebars:
-        specifier: ^4.7.9
+        specifier: 4.7.9
         version: 4.7.9
       neverthrow:
-        specifier: ^8.2.0
+        specifier: 8.2.0
         version: 8.2.0
       p-retry:
-        specifier: ^7
+        specifier: 7.1.1
         version: 7.1.1
       pino:
         specifier: 10.3.1
