@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { fmtDuration, fmtK } from '../src/format.js';
+import { fmtCostApprox, fmtDuration, fmtK } from '../src/format.js';
 
 // ---------------------------------------------------------------------------
 // fmtK
@@ -53,5 +53,19 @@ describe('fmtDuration', () => {
 
   it('returns "1m 0s" for exactly 60 seconds', () => {
     expect(fmtDuration(60000)).toBe('1m 0s');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fmtCostApprox
+// ---------------------------------------------------------------------------
+
+describe('fmtCostApprox', () => {
+  it('returns "--" for exactly 0 (subscription billing has no measurable cost)', () => {
+    expect(fmtCostApprox(0)).toBe('--');
+  });
+
+  it('returns "~$" prefixed value for non-zero costs', () => {
+    expect(fmtCostApprox(0.004)).toBe('~$0.004');
   });
 });
