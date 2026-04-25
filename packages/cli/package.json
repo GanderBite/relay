@@ -24,7 +24,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:smoke": "vitest run tests/smoke",
+    "test:smoke": "vitest run --config vitest.smoke.config.ts",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "dependencies": {

@@ -67,3 +67,7 @@ jobs:
       # ── 7. Test all packages ──────────────────────────────────────────────
       - name: Test
         run: pnpm -r test
+
+      # ── 8. Coverage threshold — @relay/core ──────────────────────────────────
+      - name: Coverage (@relay/core)
+        run: pnpm -F @relay/core test:coverage
