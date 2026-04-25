@@ -11,6 +11,7 @@
  *   fmtDuration(15000)  → "15s"    (integer for 10s–59s)
  *
  *   fmtCost(0.0042)     → "$0.0042"
+ *   fmtCostApprox(0)    → "--"
  *   fmtCostApprox(0.004)→ "~$0.004"
  *
  *   fmtK(999)           → "999"
@@ -69,12 +70,17 @@ export function fmtCost(usd: number): string {
 /**
  * Formats an approximate cost in USD with a tilde prefix.
  * Three decimal places — used for in-flight or estimated values.
- * Example: fmtCostApprox(0.004) → "~$0.004"
+ * Returns "--" when usd is exactly 0 (subscription billing has no measurable API cost).
+ *
+ * Boundary behaviours:
+ *   fmtCostApprox(0)     → "--"
+ *   fmtCostApprox(0.004) → "~$0.004"
  *
  * The tilde signals "this may change" to the user, so fewer decimal places
  * are appropriate — false precision on an estimate is misleading.
  */
 export function fmtCostApprox(usd: number): string {
+  if (usd === 0) return '--';
   return `~$${usd.toFixed(3)}`;
 }
 

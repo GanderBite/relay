@@ -33,7 +33,7 @@ const LiveStatePartialSchema = z.object({
   lastUpdateAt: z.string(),
   model: z.string().optional(),
   tokensSoFar: z.number().optional(),
-  turnsSoFar: z.number().optional(),
+  toolsSoFar: z.number().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ export class ProgressDisplay<TInput = unknown> {
         lastUpdateAt: d.lastUpdateAt,
         ...(d.model !== undefined ? { model: d.model } : {}),
         ...(d.tokensSoFar !== undefined ? { tokensSoFar: d.tokensSoFar } : {}),
-        ...(d.turnsSoFar !== undefined ? { turnsSoFar: d.turnsSoFar } : {}),
+        ...(d.toolsSoFar !== undefined ? { toolsSoFar: d.toolsSoFar } : {}),
       };
     } catch {
       // File read race or JSON parse failure — skip; next event will retry.
@@ -374,9 +374,9 @@ export class ProgressDisplay<TInput = unknown> {
     // Running — show model, turn N or elapsed, live token count (no cost — not calculable in-flight)
     if (status === 'running') {
       const model = (live.model ?? '-').padEnd(MODEL_WIDTH);
-      const turns = live.turnsSoFar ?? 0;
+      const tools = live.toolsSoFar ?? 0;
       const runStart = state.runningStartedAt ?? live.startedAt;
-      const progress = turns > 0 ? `turn ${turns}` : fmtElapsedSec(runStart);
+      const progress = tools > 0 ? `${tools} tools` : fmtElapsedSec(runStart);
       const progressCol = progress.padEnd(DURATION_WIDTH);
       const totalToks = live.tokensSoFar ?? 0;
       const tokensCol = fmtK(totalToks).padEnd(13);

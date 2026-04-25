@@ -435,6 +435,17 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     const preAuthedMap = new Map<string, AuthState>();
     preAuthedMap.set(providerResult.value.name, effectiveAuth);
     resumeOpts.preAuthedState = preAuthedMap;
+    resumeOpts.onStepComplete = (stepId, stepResult) => {
+      if ('kind' in stepResult && stepResult.kind === 'prompt') {
+        display.updateRunnerMetrics(stepId, {
+          tokensIn: stepResult.tokensIn,
+          tokensOut: stepResult.tokensOut,
+          costUsd: stepResult.costUsd,
+          durationMs: stepResult.durationMs,
+          model: stepResult.model,
+        });
+      }
+    };
     const result = await orchestrator.resume(runDir, resumeOpts);
 
     process.removeListener('SIGINT', sigintHandler);

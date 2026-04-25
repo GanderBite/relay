@@ -340,6 +340,17 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     const preAuthedMap = new Map<string, AuthState>();
     preAuthedMap.set(resolvedProvider.name, authState);
     runOpts.preAuthedState = preAuthedMap;
+    runOpts.onStepComplete = (stepId, stepResult) => {
+      if ('kind' in stepResult && stepResult.kind === 'prompt') {
+        progress.updateRunnerMetrics(stepId, {
+          tokensIn: stepResult.tokensIn,
+          tokensOut: stepResult.tokensOut,
+          costUsd: stepResult.costUsd,
+          durationMs: stepResult.durationMs,
+          model: stepResult.model,
+        });
+      }
+    };
     result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
