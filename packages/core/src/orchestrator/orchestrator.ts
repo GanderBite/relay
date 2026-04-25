@@ -107,7 +107,7 @@ export interface RunOptions {
    * When the flow has no prompt steps the worktree is created and
    * immediately torn down; use `worktree: false` for script-only flows.
    */
-  worktree?: boolean | 'auto';
+  worktree?: boolean | 'auto' | undefined;
   /**
    * Lifecycle hook fired after each step completes successfully. Embedding
    * hosts (UIs, dashboards, IDE plugins) use this to subscribe to progress
@@ -115,8 +115,10 @@ export interface RunOptions {
    * logged at warn level — they never abort or affect the run. Async work
    * inside the callback is the caller's responsibility; the Orchestrator does
    * not await the callback.
+   *
+   * Result variants are discriminated on `kind` for prompt/parallel/terminal steps and on the script/branch exit-code shape — narrow with `'kind' in result` before reading variant fields.
    */
-  onStepComplete?: (stepId: string, result: StepResult) => void;
+  onStepComplete?: (stepId: string, result: StepResult) => void | undefined;
 }
 
 export interface RunResult {
