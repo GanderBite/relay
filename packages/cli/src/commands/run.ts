@@ -335,6 +335,9 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     if (options.worktree === false) {
       runOpts.worktree = false;
     }
+    const preAuthedMap = new Map<string, AuthState>();
+    preAuthedMap.set(resolvedProvider.name, authState);
+    runOpts.preAuthedState = preAuthedMap;
     result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);

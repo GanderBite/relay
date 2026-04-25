@@ -14,7 +14,7 @@ import type { Flow, RunState, Step, StepState } from '../flow/types.js';
 import { HandoffStore } from '../handoffs.js';
 import { createLogger, type Logger } from '../logger.js';
 import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js';
-import type { Provider } from '../providers/types.js';
+import type { AuthState, Provider } from '../providers/types.js';
 import { loadFlowSettings, loadGlobalSettings } from '../settings/load.js';
 import { resolveProvider } from '../settings/resolve.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
@@ -119,6 +119,14 @@ export interface RunOptions {
    * Result variants are discriminated on `kind` for prompt/parallel/terminal steps and on the script/branch exit-code shape — narrow with `'kind' in result` before reading variant fields.
    */
   onStepComplete?: ((stepId: string, result: StepResult) => void) | undefined;
+  /**
+   * Pre-verified auth states from a prior authenticate() call, keyed by
+   * provider name. When a provider's name is present in this map,
+   * #authenticateAll skips re-authentication for that provider and uses
+   * the cached AuthState directly. This avoids a second subprocess spawn
+   * when the CLI has already authenticated to render the start banner.
+   */
+  preAuthedState?: Map<string, AuthState> | undefined;
 }
 
 export interface RunResult {
@@ -283,7 +291,12 @@ export class Orchestrator {
     let gitRoot: string | undefined;
 
     try {
-      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
+      await this.#authenticateAll(
+        uniqueProviders,
+        opts.authTimeoutMs,
+        abortController.signal,
+        opts.preAuthedState,
+      );
 
       // Worktree setup happens AFTER auth so an auth timeout (or missing
       // provider) does not spend seconds on a `git worktree add` that would
@@ -521,7 +534,12 @@ export class Orchestrator {
     let gitRoot: string | undefined;
 
     try {
-      await this.#authenticateAll(uniqueProviders, opts.authTimeoutMs, abortController.signal);
+      await this.#authenticateAll(
+        uniqueProviders,
+        opts.authTimeoutMs,
+        abortController.signal,
+        opts.preAuthedState,
+      );
 
       // Worktree setup happens AFTER auth so an auth timeout does not spend
       // seconds on a `git worktree add` that would immediately be torn down.
@@ -805,10 +823,12 @@ export class Orchestrator {
     providers: Iterable<Provider>,
     authTimeoutMs: number | undefined,
     signal: AbortSignal,
+    preAuthedState?: Map<string, AuthState>,
   ): Promise<void> {
     const timeoutMs = authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
     for (const provider of providers) {
       if (signal.aborted) throw new RunAbortedError();
+      if (preAuthedState?.has(provider.name)) continue;
 
       let timerId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_resolve, reject) => {
