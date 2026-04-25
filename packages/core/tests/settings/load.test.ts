@@ -42,13 +42,14 @@ describe('loadFlowSettings', () => {
     expect(result._unsafeUnwrap()).toEqual({});
   });
 
-  it('[SETTINGS-LOAD-004] extra keys are preserved via passthrough', async () => {
+  it('[SETTINGS-LOAD-004] extra keys are rejected by strict schema', async () => {
     const settingsPath = flowSettingsPath(dir);
     await writeFile(settingsPath, JSON.stringify({ provider: 'claude-cli', extra: 42 }));
 
     const result = await loadFlowSettings(dir);
-    expect(result.isOk()).toBe(true);
-    expect(result._unsafeUnwrap()).toEqual({ provider: 'claude-cli', extra: 42 });
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(PipelineError);
+    expect(result._unsafeUnwrapErr().message).toContain('failed schema validation');
   });
 
   it('[SETTINGS-LOAD-005] invalid JSON returns err(PipelineError)', async () => {

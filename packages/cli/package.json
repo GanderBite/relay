@@ -24,6 +24,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:smoke": "vitest run tests/smoke",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@types/semver": "^7.5.8",
+    "@vitest/coverage-v8": "4.1.4",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.4"

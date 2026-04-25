@@ -93,6 +93,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.7.1
+      '@vitest/coverage-v8':
+        specifier: 4.1.4
+        version: 4.1.4(vitest@4.1.4)
       tsup:
         specifier: 8.5.1
         version: 8.5.1(postcss@8.5.10)(typescript@6.0.3)(yaml@2.8.3)

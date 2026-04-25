@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AtomicWriteError,
+  AuthTimeoutError,
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
@@ -10,9 +11,10 @@ import {
   HandoffSchemaError,
   HandoffWriteError,
   MetricsWriteError,
-  type PipelineError,
+  PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
+  ProviderRateLimitError,
   StateCorruptError,
   StateNotFoundError,
   StateTransitionError,
@@ -68,6 +70,35 @@ describe('Error hierarchy', () => {
     expect(e.stepId).toBe('inventory');
     expect(e.attempt).toBe(3);
     expect(e.code).toBe(ERROR_CODES.STEP_FAILURE);
+  });
+
+  it('[ERROR-006] AuthTimeoutError has correct code, name, and own properties', () => {
+    const e = new AuthTimeoutError('timed out', 'claude-cli', 30_000);
+    expect(e.code).toBe(ERROR_CODES.AUTH_TIMEOUT);
+    expect(e.name).toBe('AuthTimeoutError');
+    expect(e.providerName).toBe('claude-cli');
+    expect(e.timeoutMs).toBe(30_000);
+    expect(e).toBeInstanceOf(PipelineError);
+  });
+
+  it('[ERROR-007] ProviderRateLimitError has correct code, name, and own properties', () => {
+    const e = new ProviderRateLimitError('rate limited', 'claude-cli', 'step-1', 2, 60_000);
+    expect(e.code).toBe(ERROR_CODES.PROVIDER_RATE_LIMIT);
+    expect(e.name).toBe('ProviderRateLimitError');
+    expect(e.providerName).toBe('claude-cli');
+    expect(e.stepId).toBe('step-1');
+    expect(e.attempt).toBe(2);
+    expect(e.retryAfterMs).toBe(60_000);
+    expect(e).toBeInstanceOf(PipelineError);
+  });
+
+  it('[ERROR-008] ProviderCapabilityError has correct code, name, and own properties', () => {
+    const e = new ProviderCapabilityError('no streaming', 'mock-provider', 'streaming');
+    expect(e.code).toBe(ERROR_CODES.PROVIDER_CAPABILITY);
+    expect(e.name).toBe('ProviderCapabilityError');
+    expect(e.providerName).toBe('mock-provider');
+    expect(e.capability).toBe('streaming');
+    expect(e).toBeInstanceOf(PipelineError);
   });
 });
 
