@@ -287,3 +287,40 @@ export default {
     expect(error.name).toBe('FlowLoadError');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TC-017: Path resolution when a fully-qualified .js entry path is supplied
+// ---------------------------------------------------------------------------
+
+describe('TC-017: path-like with .js extension', () => {
+  it('[TC-017a] passing the full compiled entry path resolves to the package root', async () => {
+    const pkgDir = join(tmp, 'my-pkg');
+    await writeValidFlowPackage(pkgDir, 'my-pkg');
+
+    // Pass the full <pkgDir>/dist/flow.js path — this is what the double-path
+    // fix in flow-loader.ts must handle without doubling the dist/flow.js suffix.
+    const entryPath = join(pkgDir, 'dist', 'flow.js');
+    const result = await loadFlow(entryPath, tmp);
+
+    expect(result.isOk()).toBe(true);
+    const loaded = result._unsafeUnwrap();
+    expect(loaded.flow.name).toBe('my-pkg');
+    expect(loaded.source).toBe('path');
+    // dir must be the package root, not the .js file path or dist/
+    expect(loaded.dir).toBe(pkgDir);
+  });
+
+  it('[TC-017b] passing a directory path (no .js extension) still resolves correctly', async () => {
+    const pkgDir = join(tmp, 'my-pkg-dir');
+    await writeValidFlowPackage(pkgDir, 'my-pkg-dir');
+
+    // Pass the package root directory (absolute path, no .js suffix).
+    const result = await loadFlow(pkgDir, tmp);
+
+    expect(result.isOk()).toBe(true);
+    const loaded = result._unsafeUnwrap();
+    expect(loaded.flow.name).toBe('my-pkg-dir');
+    expect(loaded.source).toBe('path');
+    expect(loaded.dir).toBe(pkgDir);
+  });
+});
