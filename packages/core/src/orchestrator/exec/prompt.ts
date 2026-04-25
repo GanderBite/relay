@@ -167,6 +167,7 @@ async function runProviderInvocation(args: {
       cacheCreationTokens: 0,
     };
     let toolCallCount = 0;
+    let turnCount = 0;
     const model = request.model ?? '';
     let firstDeltaSeen = false;
     // Fallback sentinel for providers whose stream never emits stream.end
@@ -193,6 +194,9 @@ async function runProviderInvocation(args: {
         case 'tool.call':
           toolCallCount += 1;
           break;
+        case 'turn.end':
+          turnCount = Math.max(turnCount, event.turn);
+          break;
         case 'stream.end':
           capturedStopReason = event.stopReason;
           capturedCostUsd = event.costUsd;
@@ -207,7 +211,7 @@ async function runProviderInvocation(args: {
       text: accumulatedText,
       usage,
       durationMs: Date.now() - started,
-      numTurns: 0,
+      numTurns: turnCount,
       model,
       stopReason: capturedStopReason,
       ...(capturedCostUsd !== undefined ? { costUsd: capturedCostUsd } : {}),
