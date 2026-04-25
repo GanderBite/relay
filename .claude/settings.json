@@ -135,7 +135,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import sys, json; data=json.load(sys.stdin); fp=data.get(\"tool_input\",{}).get(\"file_path\",\"\"); blocked = (\"/_specs/\" in fp) or (\"/_work/sprint-\" in fp and fp.endswith(\".json\")); sys.exit(2 if blocked else 0)' 2>/dev/null && exit 0 || { echo 'BLOCKED: spec files (_specs/) and sprint backlog (_work/sprint-*.json) are frozen sources of truth. Do not edit them — they define what gets built. If a spec is wrong, raise it with the user before changing.' >&2; exit 2; }",
+            "command": "python3 -c 'import sys, json, os; data=json.load(sys.stdin); fp=data.get(\"tool_input\",{}).get(\"file_path\",\"\"); blocked = (\"/_specs/\" in fp) or (\"/_work/sprint-\" in fp and fp.endswith(\".json\") and os.path.exists(fp)); sys.exit(2 if blocked else 0)' 2>/dev/null && exit 0 || { echo 'BLOCKED: spec files (_specs/) and sprint backlog (_work/sprint-*.json) are frozen sources of truth. Do not edit them — they define what gets built. If a spec is wrong, raise it with the user before changing.' >&2; exit 2; }",
             "timeout": 5
           }
         ]

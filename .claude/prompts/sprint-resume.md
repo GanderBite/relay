@@ -24,6 +24,7 @@ Resume sprint <SPRINT_NUMBER> from wave <START_WAVE> onward. First verify that w
 Trigger the `sprint-workflow` skill IMMEDIATELY — it encodes the wave protocol and the agent picker table.
 
 Per task, remind the dispatched agent to invoke the relevant sub-skill:
+
 - User-visible string → `relay-brand-grammar`
 - `ANTHROPIC_API_KEY` / auth / env / doctor → `billing-safety`
 - Flow package → `flow-package-format`
@@ -32,7 +33,7 @@ Per task, remind the dispatched agent to invoke the relevant sub-skill:
 - Vitest test → `vitest`
 - Bin shim / catalog JS / GitHub Actions → `javascript`
 - Scaffolding / workspace config → `relay-monorepo`
-</skills_to_use>
+  </skills_to_use>
 
 <agents>
 Dispatch every task via the Agent tool with one of these subagent_types:
@@ -76,6 +77,7 @@ Each dispatch passes the full task JSON block.
 </do>
 
 <do_not>
+
 - Do NOT re-dispatch tasks from waves before <START_WAVE> unless step 3 flagged them as missing AND the user approved re-dispatch.
 - Do NOT dispatch sequentially across messages.
 - Do NOT write code, tests, or docs yourself.
@@ -83,7 +85,7 @@ Each dispatch passes the full task JSON block.
 - Do NOT edit `_specs/` or `_work/sprint-*.json`.
 - Do NOT use emojis, the word "simply", or trailing exclamation marks.
 - Do NOT commit anything yourself — agents commit.
-</do_not>
+  </do_not>
 
 <verification>
 Before declaring the sprint complete, confirm:

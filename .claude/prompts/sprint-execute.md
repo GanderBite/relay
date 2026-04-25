@@ -36,7 +36,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Type picks:
 
-- `feat` — new user-visible capability (commands, races, CLI output)
+- `feat` — new user-visible capability (commands, flows, CLI output)
 - `fix` — bug fix in existing behavior
 - `chore` — scaffolding, build config, workspace plumbing (sprint 0 is mostly this)
 - `docs` — README / docs/ / copy-kit / glossary
@@ -46,7 +46,7 @@ Type picks:
 
 Scope picks (the dominant area the wave touches):
 
-- `root`, `core`, `cli`, `generator`, `examples`, `races`, `catalog`, `docs`
+- `root`, `core`, `cli`, `generator`, `examples`, `flows`, `catalog`, `docs`
 - If a wave genuinely spans multiple areas, use the highest-impact scope or omit the scope (`feat: ...`).
 
 Example:

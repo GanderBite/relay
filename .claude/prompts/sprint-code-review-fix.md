@@ -51,7 +51,7 @@ Mixed cluster: prefer `fix` over `refactor`, `refactor` over `docs`.
 
 Scope picks (dominant area the cluster touches):
 
-- `root`, `core`, `cli`, `generator`, `examples`, `races`, `catalog`, `docs`
+- `root`, `core`, `cli`, `generator`, `examples`, `flows`, `catalog`, `docs`
 - If a cluster genuinely spans multiple areas, use the highest-impact scope or omit the scope (`fix: ...`).
 
 Example (sprint 5, billing-safety BLOCK cluster):
@@ -60,7 +60,7 @@ Example (sprint 5, billing-safety BLOCK cluster):
 fix(core): address BLOCK-1, BLOCK-2, BLOCK-3 from sprint-5 review
 
 - BLOCK-1: thread allowApiKey through Runner so the §8.1 opt-in actually reaches ClaudeProvider.authenticate
-- BLOCK-2: apply the §4.4.1 default of 600_000ms to PromptRunnerSpec.timeoutMs at the schema layer
+- BLOCK-2: apply the §4.4.1 default of 600_000ms to PromptStepSpec.timeoutMs at the schema layer
 - BLOCK-3: add parallel→branch DAG edges so branches run exactly once per parallel invocation
 
 Closes BLOCK-1, BLOCK-2, BLOCK-3 from _work/sprint-5.code_review.md
@@ -87,7 +87,7 @@ While orchestrating, ensure the dispatched agent invokes the right sub-skill for
 <agents>
 Dispatch every cluster via the Agent tool with the subagent_type matching one of these agents. Use the picker table in the sprint-workflow skill against the cluster's dominant file path; the rules summarized here:
 
-- `@systems-engineer (agent)` — cluster touches `packages/core/src/runner/`, `packages/core/src/providers/claude/`, `packages/core/src/race/graph.ts`, or `packages/core/src/state.ts`
+- `@systems-engineer (agent)` — cluster touches `packages/core/src/runner/`, `packages/core/src/providers/claude/`, `packages/core/src/flow/graph.ts`, or `packages/core/src/state.ts`
 - `@cli-ux-engineer (agent)` — cluster's dominant path is under `packages/cli/src/` (wins over risk level)
 - `@flow-author (agent)` — cluster touches `prompts/`, `flow.ts`, or `packages/generator/templates/`
 - `@test-engineer (agent)` — cluster is entirely under `tests/` or only repairs tests

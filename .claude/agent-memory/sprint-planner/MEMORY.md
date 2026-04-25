@@ -1,0 +1,3 @@
+- [Sprint numbering and history](project_sprint_history.md) — last sprint in backlog is sprint-26; _work/ is wiped between sessions; check git log, not disk.
+- [File collision resolution pattern](feedback_file_collisions.md) — when multiple tasks share a target file in the same wave, merge them into one task rather than adding wave depth.
+- [Hook blocks Write/Edit to existing sprint files](feedback_sprint_file_hook.md) — the PreToolUse hook blocks Write and Edit to _work/sprint-*.json if the file exists; delete with rm then Write to recreate.
