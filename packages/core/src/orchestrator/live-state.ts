@@ -14,7 +14,7 @@ export interface LiveStatePartial {
   lastUpdateAt: string;
   model?: string;
   tokensSoFar?: number;
-  turnsSoFar?: number;
+  toolsSoFar?: number;
 }
 
 export function writeLiveState(

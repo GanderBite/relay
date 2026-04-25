@@ -137,7 +137,7 @@ async function runProviderInvocation(args: {
 }): Promise<InvocationResponse> {
   const { provider, request, invocationCtx, runDir, stepId, attempt, startedIso, logger } = args;
 
-  const emitLive = async (usage: NormalizedUsage, turns: number, model: string): Promise<void> => {
+  const emitLive = async (usage: NormalizedUsage, tools: number, model: string): Promise<void> => {
     const tokensSoFar = usage.inputTokens + usage.outputTokens;
     const partial = {
       status: 'running' as const,
@@ -145,7 +145,7 @@ async function runProviderInvocation(args: {
       startedAt: startedIso,
       lastUpdateAt: new Date().toISOString(),
       tokensSoFar,
-      turnsSoFar: turns,
+      toolsSoFar: tools,
       ...(model !== '' ? { model } : {}),
     };
     const write = await writeLiveState(runDir, stepId, partial);
@@ -166,7 +166,7 @@ async function runProviderInvocation(args: {
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
     };
-    let turnCount = 0;
+    let toolCallCount = 0;
     const model = request.model ?? '';
     let firstDeltaSeen = false;
     // Fallback sentinel for providers whose stream never emits stream.end
@@ -183,15 +183,15 @@ async function runProviderInvocation(args: {
           accumulatedText += event.delta;
           if (!firstDeltaSeen) {
             firstDeltaSeen = true;
-            await emitLive(usage, turnCount, model);
+            await emitLive(usage, toolCallCount, model);
           }
           break;
         case 'usage':
           usage = mergeUsage(usage, event.usage);
-          await emitLive(usage, turnCount, model);
+          await emitLive(usage, toolCallCount, model);
           break;
-        case 'turn.end':
-          turnCount = Math.max(turnCount, event.turn);
+        case 'tool.call':
+          toolCallCount += 1;
           break;
         case 'stream.end':
           capturedStopReason = event.stopReason;
@@ -207,7 +207,7 @@ async function runProviderInvocation(args: {
       text: accumulatedText,
       usage,
       durationMs: Date.now() - started,
-      numTurns: turnCount,
+      numTurns: 0,
       model,
       stopReason: capturedStopReason,
       ...(capturedCostUsd !== undefined ? { costUsd: capturedCostUsd } : {}),
@@ -220,7 +220,7 @@ async function runProviderInvocation(args: {
   const result = await provider.invoke(request, invocationCtx);
   if (result.isErr()) throw result.error;
   const response = result.value;
-  await emitLive(response.usage, response.numTurns, response.model);
+  await emitLive(response.usage, 0, response.model);
   return response;
 }
 
