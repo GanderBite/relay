@@ -219,16 +219,14 @@ const errorRegistry = new Map<string, RegistryEntry>([
           ].join('\n');
         }
 
-        // Shape: ANTHROPIC_API_KEY conflict — the subscription-billing safety guard
+        // Shape: subscription credentials missing or binary not found
         return [
-          red('✕ Refusing to run: ANTHROPIC_API_KEY would override your subscription'),
+          red('✕ Authentication failed — subscription credentials not found'),
           BLANK,
-          `${INDENT}Relay detected ANTHROPIC_API_KEY in your environment. Running now would`,
-          `${INDENT}bill your API account instead of your Max subscription — a surprise we`,
-          `${INDENT}prevent by default.`,
+          `${INDENT}${msg}`,
           BLANK,
-          remediation('unset ANTHROPIC_API_KEY    use subscription (recommended)'),
-          remediation('relay doctor              full environment check'),
+          remediation('run: claude /login'),
+          remediation('relay doctor     full environment check'),
         ].join('\n');
       },
     ),

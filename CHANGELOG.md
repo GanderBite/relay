@@ -11,7 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 #### @relay/core
 - `defineFlow` / `step.*` DSL for declaring deterministic multi-step flows
 - `Orchestrator` with checkpoint/resume, DAG scheduling, and parallel step execution
-- `ClaudeCliProvider` — subscription-safe Claude backend with `ANTHROPIC_API_KEY` suppression
+- \`ClaudeCliProvider\` — subscription-safe Claude backend with env allowlist suppression
 - `MockProvider` for deterministic unit testing without live Claude calls
 - `ProviderRegistry` for registering custom provider backends
 - `HandoffStore` for typed, schema-validated inter-step data passing

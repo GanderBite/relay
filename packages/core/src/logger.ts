@@ -88,7 +88,6 @@ export const CONSOLE_COLOR_DISABLED = resolveConsoleColorDisabled();
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const REDACT_PATHS: readonly string[] = [
-  '*.ANTHROPIC_API_KEY',
   '*.CLAUDE_CODE_OAUTH_TOKEN',
   'env',
   'environment',

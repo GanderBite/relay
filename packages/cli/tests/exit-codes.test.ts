@@ -75,7 +75,7 @@ describe('exitCodeFor', () => {
   // -------------------------------------------------------------------------
 
   it('[TC-014] ClaudeAuthError maps to auth_error (3)', () => {
-    const err = new ClaudeAuthError('ANTHROPIC_API_KEY present without opt-in');
+    const err = new ClaudeAuthError('subscription credentials not found');
     expect(exitCodeFor(err)).toBe(EXIT_CODES.auth_error);
     expect(EXIT_CODES.auth_error).toBe(3);
   });

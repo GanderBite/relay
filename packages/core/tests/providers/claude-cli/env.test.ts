@@ -10,8 +10,6 @@ import {
 describe('buildEnvAllowlist — claude-cli containment contract', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
-    // Clear the two TOS-leak surfaces so each test starts from a known floor.
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
     vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '');
   });
 
@@ -121,29 +119,12 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       expect(result.CLAUDE_CUSTOM).toBe('sentinel');
     });
 
-    it('[ENV-CLI-002] suppresses ANTHROPIC_API_KEY even when host has it set', () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-
-      const result = buildEnvAllowlist();
-
-      expect('ANTHROPIC_API_KEY' in result).toBe(true);
-      expect(result.ANTHROPIC_API_KEY).toBeUndefined();
-    });
-
-    it('[ENV-CLI-003] emits ANTHROPIC_API_KEY=undefined sentinel even when host did NOT set it', () => {
-      const result = buildEnvAllowlist();
-
-      expect('ANTHROPIC_API_KEY' in result).toBe(true);
-      expect(result.ANTHROPIC_API_KEY).toBeUndefined();
-    });
-
-    it('[ENV-CLI-004] forwards other ANTHROPIC_* vars (only ANTHROPIC_API_KEY is the suppressed surface)', () => {
+    it('[ENV-CLI-002] suppresses non-allowlisted ANTHROPIC_* vars (e.g. ANTHROPIC_BASE_URL)', () => {
       vi.stubEnv('ANTHROPIC_BASE_URL', 'https://api.example.com');
 
       const result = buildEnvAllowlist();
 
-      // ANTHROPIC_BASE_URL is not on the CLI prefix list and not a cloud
-      // routing key, so it is suppressed.
+      // Not on any allowlist or cloud-routing list — suppressed to undefined.
       expect('ANTHROPIC_BASE_URL' in result).toBe(true);
       expect(result.ANTHROPIC_BASE_URL).toBeUndefined();
     });
@@ -158,14 +139,14 @@ describe('buildEnvAllowlist — claude-cli containment contract', () => {
       expect(result.ANTHROPIC_FOUNDRY_URL).toBe('https://foundry.example.com');
     });
 
-    it('[ENV-CLI-006] caller can re-inject ANTHROPIC_API_KEY via extra (escape hatch)', () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'host-key');
+    it('[ENV-CLI-006] caller-supplied extras override suppression for any key', () => {
+      vi.stubEnv('CUSTOM_SECRET', 'host-value');
 
       const result = buildEnvAllowlist({
-        extra: { ANTHROPIC_API_KEY: 'caller-supplied' },
+        extra: { CUSTOM_SECRET: 'caller-supplied' },
       });
 
-      expect(result.ANTHROPIC_API_KEY).toBe('caller-supplied');
+      expect(result.CUSTOM_SECRET).toBe('caller-supplied');
     });
 
     it('[ENV-CLI-007] the published prefix list is exactly CLAUDE_', () => {

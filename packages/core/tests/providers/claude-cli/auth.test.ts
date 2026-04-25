@@ -51,13 +51,11 @@ function stubExecFileEnoent(): void {
 function clearAllAuthEnv(): void {
   vi.unstubAllEnvs();
   for (const key of [
-    'ANTHROPIC_API_KEY',
     'ANTHROPIC_FOUNDRY_URL',
     'CLAUDE_CODE_OAUTH_TOKEN',
     'CLAUDE_CODE_USE_BEDROCK',
     'CLAUDE_CODE_USE_VERTEX',
     'CLAUDE_CODE_USE_FOUNDRY',
-    'RELAY_ALLOW_API_KEY',
   ]) {
     vi.stubEnv(key, '');
   }
@@ -99,20 +97,6 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       expect(mockExecFile).not.toHaveBeenCalled();
     });
 
-    it('[AUTH-CLI-002] ANTHROPIC_API_KEY only (no subscription) returns ClaudeAuthError', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      mockExistsSync.mockReturnValue(false);
-      stubExecFileOk(); // should not be reached
-
-      const result = await inspectClaudeAuth();
-
-      expect(result.isErr()).toBe(true);
-      const err = result._unsafeUnwrapErr();
-      expect(err).toBeInstanceOf(ClaudeAuthError);
-      expect(err.message).toContain('ANTHROPIC_API_KEY is set but claude-cli cannot use it');
-      expect(mockExecFile).not.toHaveBeenCalled();
-    });
-
     it('[AUTH-CLI-003] CLAUDE_CODE_OAUTH_TOKEN set returns ok(subscription, token)', async () => {
       vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
       stubExecFileOk();
@@ -137,31 +121,6 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
       expect(state.detail).toContain('interactive');
     });
 
-    it('[AUTH-CLI-005] both ANTHROPIC_API_KEY and OAuth set — OAuth wins, ok(subscription)', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'oat-xxx');
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth();
-
-      expect(result.isOk()).toBe(true);
-      const state = result._unsafeUnwrap();
-      expect(state.billingSource).toBe('subscription');
-      expect(state.detail).toContain('CLAUDE_CODE_OAUTH_TOKEN');
-    });
-
-    it('[AUTH-CLI-006] credentials file + ANTHROPIC_API_KEY only — credentials wins', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      mockExistsSync.mockReturnValue(true);
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth();
-
-      expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap().billingSource).toBe('subscription');
-      expect(result._unsafeUnwrap().detail).toContain('interactive');
-    });
-
     it('[AUTH-CLI-007] cloud routing (Bedrock) bypasses subscription probe', async () => {
       vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '1');
       mockExistsSync.mockReturnValue(false);
@@ -171,18 +130,6 @@ describe('inspectClaudeAuth — claude-cli TOS contract', () => {
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('bedrock');
-    });
-
-    it('[AUTH-CLI-008] cloud routing + ANTHROPIC_API_KEY → cloud wins under CLI too', async () => {
-      vi.stubEnv('CLAUDE_CODE_USE_VERTEX', '1');
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      mockExistsSync.mockReturnValue(false);
-      stubExecFileOk();
-
-      const result = await inspectClaudeAuth();
-
-      expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap().billingSource).toBe('vertex');
     });
 
     it('[AUTH-CLI-009] cloud routing + OAuth only — cloud wins, no leak', async () => {

@@ -186,9 +186,9 @@ Two critical blockers remain. First, `.claude/` (56 files of internal agent scaf
 
 **Evidence:**
 - `pnpm audit` — "No known vulnerabilities found." (plus a DeprecationWarning about `url.parse()` from a transitive dep — not a CVE).
-- `packages/core/src/providers/claude-cli/env.ts` — `ANTHROPIC_API_KEY` is force-suppressed in `buildEnvAllowlist()`. Two-defense approach is correct.
+- `packages/core/src/providers/claude-cli/env.ts` — `buildEnvAllowlist()` uses a positive allowlist; unlisted vars are suppressed.
 - `packages/core/src/handoffs.ts:19` — `HANDOFF_ID_PATTERN` plus explicit path-escape check. Two-layer defense.
-- `packages/core/src/logger.ts` — pino redacts `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, and all `_api_key`, `_token`, `_secret`, `_password` suffix patterns.
+- `packages/core/src/logger.ts` — pino redacts `CLAUDE_CODE_OAUTH_TOKEN` and all `_api_key`, `_token`, `_secret`, `_password` suffix patterns.
 - `.gitignore` — `_work/` and `relay_tests.json` listed. Sprint-27 removed both from git tracking.
 - `git show HEAD:.claude/settings.json` — returns content. `.claude/` (56 tracked files) and `CLAUDE.md` are **tracked in git HEAD** and **absent from `.gitignore`**. A public push exposes internal agent definitions, sprint workflow instructions, and settings.json permission hooks.
 - `.npmrc` — `save-exact=true`, `strict-peer-dependencies=false`, `auto-install-peers=true`. No `ignore-scripts` setting; install scripts run on `pnpm install`, which is standard.
@@ -313,7 +313,7 @@ Ordered by impact on public-release readiness:
 - [x] **Lockfile committed** — `pnpm-lock.yaml` present.
 - [x] **sideEffects declared** — `"sideEffects": false` in all three packages.
 - [x] **Atomic writes for state files** — `atomicWriteJson`/`atomicWriteText` used consistently.
-- [x] **ANTHROPIC_API_KEY guard** — Billing safety contract enforced in env.ts and auth.ts.
+- [x] **Auth guard** — Billing safety contract enforced in env.ts and auth.ts.
 - [x] **exports map** — All three packages have correct `exports` maps.
 - [x] **Consistent engines.node** — All packages and CI use `>=20.10`.
 

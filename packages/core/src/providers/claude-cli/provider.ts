@@ -3,8 +3,7 @@
  *
  * Wraps the `claude` binary's stream-json output. The provider uses the auth
  * inspector (`inspectClaudeAuth`) and env allowlist builder
- * (`buildEnvAllowlist`) so the TOS-leak surface (a stray `ANTHROPIC_API_KEY`
- * in the host env) is stripped at the subprocess boundary.
+ * (`buildEnvAllowlist`) so only allowlisted vars reach the subprocess.
  *
  * Translator: the stream-json envelopes from `claude -p` have stable
  * snake_case shapes — `system`, `assistant`, `user`, `result`, plus the
@@ -17,14 +16,11 @@
  *
  * Design invariants:
  *   - authenticate() delegates to `inspectClaudeAuth()`; never inlines auth
- *     checks. ANTHROPIC_API_KEY-only environments fail with the
- *     subscription-remediation message the inspector produced.
+ *     checks.
  *   - invoke() and stream() share the private #iterate() generator; there is
  *     one subprocess spawn per invocation, no duplicated `claude -p` calls.
  *   - The env passed to runClaudeProcess always comes from
- *     `buildEnvAllowlist({ extra })` — that builder force-strips
- *     ANTHROPIC_API_KEY at the boundary regardless of what is in process.env.
- *     This is mandatory for TOS safety.
+ *     `buildEnvAllowlist({ extra })` — only allowlisted vars reach the binary.
  *   - Abort plumbing: the InvocationContext.abortSignal is forwarded straight
  *     to runClaudeProcess; no extra AbortController is constructed.
  *   - No provider-level retries. Step retries are owned by the Orchestrator.

@@ -93,7 +93,7 @@ Every flow is a typed DAG in a file. Same input, same steps, same artifact — r
 State is saved after every step. A failed run resumes with `relay resume <runId>`. Successful work never gets redone.
 
 **Never surprise-billed.**
-The CLI checks your auth before the first token. If `ANTHROPIC_API_KEY` is set, Relay refuses to run until you opt in.
+The CLI checks your auth before the first token. Relay runs on your Claude subscription — no API key required.
 
 **Hire a pre-built flow.**
 The public catalog ships verified flows for codebase discovery, API audits, and migration planning. Installable in one command.

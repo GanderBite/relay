@@ -171,11 +171,11 @@ export interface ClaudeAuthDetails extends Record<string, unknown> {
 }
 
 /**
- * Thrown when the environment is unsafe to spawn Claude — either
- * `ANTHROPIC_API_KEY` is present without an explicit opt-in, or the
- * subscription token is absent. Checked before any subprocess is launched.
+ * Thrown when the environment is unsafe to spawn Claude — subscription
+ * credentials are absent or the `claude` binary is not installed.
+ * Checked before any subprocess is launched.
  *
- * This is the subscription-billing safety guard specific to the Claude backend.
+ * This is the auth guard specific to the Claude CLI backend.
  * Generic provider auth misconfiguration uses `ProviderAuthError` instead.
  *
  * CLI exit code: 3

@@ -37,7 +37,7 @@ The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the C
 
 ## Configure
 
-The flow runs on your Claude subscription. If `ANTHROPIC_API_KEY` is set in your environment, Relay refuses to start the run and prints a remediation message — unset the variable, pass `--api-key` to opt in explicitly, or set `RELAY_ALLOW_API_KEY=1`. See `docs/billing-safety.md` for the full auth precedence.
+This flow runs on your Claude subscription. Run `claude /login` once to authenticate before your first run.
 
 Run `relay doctor` before your first run to confirm Node, the `claude` binary, auth state, and the `.relay` directory are all in order.
 

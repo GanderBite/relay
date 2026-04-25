@@ -265,8 +265,7 @@ export type { ClaudeCliProviderOptions } from './providers/claude-cli/index.js';
 
 /**
  * Provider that runs `claude -p` as a managed subprocess.
- * Enforces the subscription-billing safety contract — rejects runs when
- * `ANTHROPIC_API_KEY` is present without an explicit opt-in.
+ * Requires subscription auth via `claude /login` or `CLAUDE_CODE_OAUTH_TOKEN`.
  */
 export { ClaudeCliProvider } from './providers/claude-cli/index.js';
 

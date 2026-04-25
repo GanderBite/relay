@@ -9,7 +9,6 @@
  * Preconditions:
  *   - claude binary on PATH
  *   - CLAUDE_CODE_OAUTH_TOKEN set (subscription billing)
- *   - ANTHROPIC_API_KEY must NOT be set for test 1 (billing-safety guard)
  *
  * Before running, build the fixture flow:
  *   cd packages/cli/tests/smoke/fixtures/mini-flow
@@ -88,16 +87,9 @@ describe('relay run (real Claude)', () => {
    *   1. Exit code 0.
    *   2. state.json final status is 'succeeded'.
    *   3. Banner contains the word "subscription" (billing mode is subscription).
-   *   4. No `api-account` token appears in run.log (SDK env allowlist is working).
-   *   5. ANTHROPIC_API_KEY is absent from the child environment.
    */
   it.skipIf(!SMOKE)('runs a two-step flow to completion', () => {
-    // Strip ANTHROPIC_API_KEY from the child env so the billing-safety guard
-    // does not fire on the developer's shell if they happen to have it set.
     const childEnv = { ...process.env };
-    // Explicitly delete the key — passing `undefined` in a spread does NOT
-    // remove the key on all Node versions; we must use delete.
-    delete childEnv.ANTHROPIC_API_KEY;
 
     const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
       encoding: 'utf8',
@@ -115,8 +107,7 @@ describe('relay run (real Claude)', () => {
 
     // --- 2. state.json status ---
     const runId = extractRunId(result.stdout);
-    expect(runId, 'could not find run ID in stdout').not.toBeNull();
-
+    expect(runId, 'could not find run ID in stdout').not.toBeNull(); // biome-ignore lint/style/noNonNullAssertion: runId is checked to be non-null in above expect()
     const runDir = runDirFor(runId!);
     const stateJsonPath = join(runDir, 'state.json');
     expect(existsSync(stateJsonPath), `state.json not found at ${stateJsonPath}`).toBe(true);
@@ -131,60 +122,6 @@ describe('relay run (real Claude)', () => {
     // Match on the word "subscription" since chalk may colorize the text and
     // colors are disabled when stdout is not a TTY (which it isn't in spawnSync).
     expect(result.stdout).toContain('subscription');
-
-    // --- 4. run.log does not mention api-account billing ---
-    // The auth guard emits billingSource: 'api-account' in the ClaudeAuthError
-    // if ANTHROPIC_API_KEY bypassed the check. Verify the log is clean.
-    const runLogPath = join(runDir, 'run.log');
-    if (existsSync(runLogPath)) {
-      const runLog = readFileSync(runLogPath, 'utf8');
-      expect(runLog).not.toContain('api-account');
-    }
-
-    // --- 5. ANTHROPIC_API_KEY was absent from child env ---
-    // The env we passed to spawnSync had the key deleted. This assertion is a
-    // belt-and-suspenders check that we did not accidentally re-inject it.
-    expect(childEnv).not.toHaveProperty('ANTHROPIC_API_KEY');
-  });
-
-  /**
-   * Billing-safety guard smoke test.
-   *
-   * Asserts that when ANTHROPIC_API_KEY is present in the environment (and no
-   * --api-key flag is passed), relay run exits with code 3 and the stderr
-   * mentions ANTHROPIC_API_KEY. This validates the §8.1 guard fires end-to-end
-   * through the real binary, not just through unit tests of auth.ts.
-   */
-  it.skipIf(!SMOKE)('billing-safety: ANTHROPIC_API_KEY blocked without --api-key', () => {
-    // Build the child env by copy-then-delete so RELAY_ALLOW_API_KEY is truly
-    // absent. Passing `undefined` in an inline object literal does NOT remove the
-    // key on all Node versions — spawnSync may receive the string "undefined".
-    const childEnv = {
-      ...process.env,
-      // Inject a fake API key. The guard must reject it regardless of value.
-      ANTHROPIC_API_KEY: 'sk-ant-test-key-that-is-fake',
-    };
-    // Explicitly delete the key — same pattern as the primary smoke test above.
-    delete childEnv.RELAY_ALLOW_API_KEY;
-
-    const result = spawnSync(process.execPath, [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'], {
-      encoding: 'utf8',
-      // Short timeout — the guard fires before any SDK call.
-      timeout: 10_000,
-      env: childEnv,
-      cwd: process.cwd(),
-    });
-
-    // Exit code 3 is ClaudeAuthError (see packages/cli/src/exit-codes.ts).
-    expect(
-      result.status,
-      `expected exit 3 (ClaudeAuthError) but got ${result.status}.\nstderr:\n${result.stderr}`,
-    ).toBe(3);
-
-    // The formatted error (formatError) includes "ANTHROPIC_API_KEY" in the
-    // refusal message. Confirmed from packages/cli/src/exit-codes.ts:
-    //   "✕ Refusing to run: ANTHROPIC_API_KEY would override your subscription"
-    expect(result.stderr).toContain('ANTHROPIC_API_KEY');
   });
 
   /**
@@ -206,12 +143,16 @@ describe('relay run (real Claude)', () => {
     () => {
       // Step 1 — first run (identical to the primary smoke test above).
       const childEnv = { ...process.env };
-      delete childEnv.ANTHROPIC_API_KEY;
 
       const firstRun = spawnSync(
         process.execPath,
         [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world'],
-        { encoding: 'utf8', timeout: 120_000, env: childEnv, cwd: process.cwd() },
+        {
+          encoding: 'utf8',
+          timeout: 120_000,
+          env: childEnv,
+          cwd: process.cwd(),
+        },
       );
       expect(firstRun.status).toBe(0);
 
@@ -222,8 +163,14 @@ describe('relay run (real Claude)', () => {
       const t0 = Date.now();
       const secondRun = spawnSync(
         process.execPath,
+        // biome-ignore lint/style/noNonNullAssertion: runId is guaranteed to be non-null here
         [RELAY_BIN, 'run', FIXTURE_DIR, 'target=world', '--resume', runId!],
-        { encoding: 'utf8', timeout: 10_000, env: childEnv, cwd: process.cwd() },
+        {
+          encoding: 'utf8',
+          timeout: 10_000,
+          env: childEnv,
+          cwd: process.cwd(),
+        },
       );
       const elapsed = Date.now() - t0;
 
@@ -235,7 +182,10 @@ describe('relay run (real Claude)', () => {
 
       // Step 4 — status must still be 'succeeded'.
       expect(secondRun.status).toBe(0);
-      const stateJson = JSON.parse(readFileSync(join(runDirFor(runId!), 'state.json'), 'utf8')) as {
+      const stateJson = JSON.parse(
+        // biome-ignore lint/style/noNonNullAssertion: runId is guaranteed to be non-null here
+        readFileSync(join(runDirFor(runId!), 'state.json'), 'utf8'),
+      ) as {
         status: string;
       };
       expect(stateJson.status).toBe('succeeded');

@@ -82,7 +82,7 @@ Every `MockProvider` key must match a step id in `flow.ts`. Missing a key surfac
 
 ## Environment
 
-This flow needs no Claude subscription and no API key. It runs against a `MockProvider` wired up in `run-mocked.ts`, so the `ANTHROPIC_API_KEY` guard never fires and no subprocess is spawned. Use it in CI, offline demos, or any environment where you want to exercise Relay end-to-end without spending a Claude turn. See `docs/billing-safety.md` for the full auth precedence and the opt-in paths that apply to flows that do call the model.
+This flow needs no Claude subscription. It runs against a `MockProvider` wired up in `run-mocked.ts`, so no subprocess is spawned. Use it in CI, offline demos, or any environment where you want to exercise Relay end-to-end without spending a Claude turn.
 
 ## Customization
 

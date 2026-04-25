@@ -2,14 +2,9 @@
  * Auth inspection for the claude-cli provider — runs BEFORE any `claude -p`
  * subprocess and decides whether the run may proceed.
  *
- * The claude-cli provider spawns the `claude` binary, which uses the user's
- * stored subscription credentials. An `ANTHROPIC_API_KEY` in the host env
- * would silently route tokens through the API, which is the inverse of what
- * the user asked for when they picked this provider; the case is flagged as
- * an auth error so the user does not assume the key is in use.
- *
- * Cloud routing (Bedrock/Vertex/Foundry) bypasses the subscription check —
- * those tokens bill to the cloud account, not to Anthropic.
+ * The claude-cli provider spawns the `claude` binary using the user's stored
+ * subscription credentials. Cloud routing (Bedrock/Vertex/Foundry) bypasses
+ * the subscription check — those tokens bill to the cloud account.
  *
  * Returns `Result<AuthState, ClaudeAuthError>`. Never throws.
  */
@@ -38,10 +33,6 @@ const CLAUDE_MISSING_MESSAGE =
 const CLI_REQUIRES_SUBSCRIPTION =
   'claude-cli requires subscription auth. Run `claude /login`, then re-run `relay init`.';
 
-/** Remediation when the CLI provider has no subscription credentials but ANTHROPIC_API_KEY is set — steer the user away from assuming the key will be used. */
-const CLI_API_KEY_NOT_USABLE =
-  'ANTHROPIC_API_KEY is set but claude-cli cannot use it — the subscription path requires `claude /login` first.';
-
 /**
  * Inspect the host env and return the billing surface the claude-cli provider
  * would use, or an error explaining why the run cannot proceed.
@@ -55,9 +46,7 @@ const CLI_API_KEY_NOT_USABLE =
  *   Otherwise:
  *     1. CLAUDE_CODE_OAUTH_TOKEN set → ok(subscription, token mode).
  *     2. ~/.claude/.credentials.json present → ok(subscription, interactive).
- *     3. ANTHROPIC_API_KEY set with no subscription signals → err(key set but
- *        not usable on this path).
- *     4. Otherwise → err(missing subscription).
+ *     3. Otherwise → err(missing subscription).
  *
  * After deciding, spawns `claude --version` to confirm the binary exists.
  * The probe runs after the policy check so a misconfigured machine never
@@ -65,7 +54,6 @@ const CLI_API_KEY_NOT_USABLE =
  */
 export async function inspectClaudeAuth(): Promise<Result<AuthState, ClaudeAuthError>> {
   const env = process.env;
-  const hasApiKey = isNonEmpty(env.ANTHROPIC_API_KEY);
   const hasOauth = isNonEmpty(env.CLAUDE_CODE_OAUTH_TOKEN);
 
   const useBedrock = env.CLAUDE_CODE_USE_BEDROCK === '1';
@@ -74,9 +62,7 @@ export async function inspectClaudeAuth(): Promise<Result<AuthState, ClaudeAuthE
   const hasCloudRouting = useBedrock || useVertex || useFoundry;
 
   // Cloud routing is acceptable; tokens bill to the cloud account and the
-  // subscription contract does not apply. Decide before the CLI-specific
-  // branch so a stray ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN does not
-  // block a legitimate cloud-routed run.
+  // subscription contract does not apply.
   if (hasCloudRouting) {
     const binaryCheck = await ensureClaudeBinary();
     if (binaryCheck.isErr()) return err(binaryCheck.error);
@@ -85,11 +71,10 @@ export async function inspectClaudeAuth(): Promise<Result<AuthState, ClaudeAuthE
     );
   }
 
-  return inspectCli({ hasApiKey, hasOauth });
+  return inspectCli({ hasOauth });
 }
 
 async function inspectCli(args: {
-  hasApiKey: boolean;
   hasOauth: boolean;
 }): Promise<Result<AuthState, ClaudeAuthError>> {
   // (1) Authoritative env signal — the OAuth token tells the binary which
@@ -121,20 +106,7 @@ async function inspectCli(args: {
     });
   }
 
-  // (3) No subscription signal. ANTHROPIC_API_KEY is intentionally NOT a
-  // valid fallback here — the user picked claude-cli, which means they want
-  // subscription billing; an API key in the env is something to strip from
-  // the subprocess, not something to silently route the run through. When a
-  // key is nonetheless present, point that out so the user does not assume
-  // it is in use.
-  if (args.hasApiKey) {
-    return err(
-      new ClaudeAuthError(CLI_API_KEY_NOT_USABLE, {
-        envObserved: ['ANTHROPIC_API_KEY'],
-        billingSource: 'subscription',
-      }),
-    );
-  }
+  // (3) No subscription signal — reject before reaching any subprocess.
   return err(
     new ClaudeAuthError(CLI_REQUIRES_SUBSCRIPTION, {
       envObserved: [],

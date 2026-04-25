@@ -131,11 +131,11 @@ Generator CLI stderr. Preferred: `scaffold: layout not found: ${e.template}`.
 
 ### "recommended" in user-facing output
 
-**`packages/cli/src/exit-codes.ts:153`**
+**`packages/cli/src/exit-codes.ts`**
 ```
-remediation('unset ANTHROPIC_API_KEY                 use subscription (recommended)')
+remediation('run: claude /login')
 ```
-This string is shown verbatim in the `ClaudeAuthError` block printed to stderr. The product spec §12.1 shows this remediation line with `(recommended)` — this is one case where the spec and the avoid list conflict. The spec copy wins: do not change this line without updating the spec. Flag this to the spec owner for resolution.
+Auth error remediations use imperative form: state the exact command to run. Do not add `(recommended)` qualifiers — there is only one path.
 
 ---
 

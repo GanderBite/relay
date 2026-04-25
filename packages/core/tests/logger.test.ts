@@ -48,9 +48,9 @@ async function capture(
 }
 
 describe('createLogger — redaction and binding', () => {
-  it('[LOG-001] redacts ANTHROPIC_API_KEY when present in a nested payload', async () => {
+  it('[LOG-001] redacts sensitive credential keys (ANTHROPIC_* prefix) in nested payloads', async () => {
     const lines = await capture((logger) => {
-      logger.info({ creds: { ANTHROPIC_API_KEY: 'sk-ant-xxx' }, ok: true }, 'nested');
+      logger.info({ creds: { ANTHROPIC_SECRET: 'sk-ant-xxx' }, ok: true }, 'nested');
     });
     expect(lines.length).toBeGreaterThan(0);
     const raw = JSON.stringify(lines[0]);

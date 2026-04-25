@@ -13,19 +13,14 @@
  * inherited var during the merge. The returned object is therefore
  * `Record<string, string | undefined>` — a patch, not a standalone env.
  *
- * TOS surface:
+ * Allowlisted:
+ *   - POSIX/system vars the binary needs (PATH, HOME, USER, …)
+ *   - CLAUDE_* prefix (OAuth token and subscription credentials)
+ *   - Cloud-routing exact keys (CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY,
+ *     ANTHROPIC_FOUNDRY_URL) — these bill to a cloud account, not Anthropic.
  *
- *   claude-cli → forwards `CLAUDE_*` (so the binary sees the OAuth token and
- *     subscription credentials), and EXPLICITLY suppresses `ANTHROPIC_API_KEY`
- *     even if the host has it set. The API key must never reach this
- *     subprocess — the user picked the subscription path.
- *
- * Cloud-routing exact keys (`CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY`,
- * `ANTHROPIC_FOUNDRY_URL`) are forwarded because they pre-empt either token
- * at runtime and route tokens to a cloud account.
- *
- * Caller-supplied `extra` values are merged last, so per-step env overrides
- * always win over host env and are never suppressed.
+ * Everything else is suppressed to `undefined`. Caller-supplied `extra`
+ * values are merged last and always win.
  */
 
 // ---------------------------------------------------------------------------
@@ -61,16 +56,8 @@ export const ALLOWLIST_CLOUD_ROUTING: readonly string[] = [
 /**
  * Prefix list forwarded under the claude-cli provider.
  * Captures CLAUDE_CODE_OAUTH_TOKEN and any future CLAUDE_* vars.
- * ANTHROPIC_API_KEY is explicitly suppressed below.
  */
 export const ALLOWLIST_PREFIX_CLI: readonly string[] = ['CLAUDE_'] as const;
-
-/**
- * Keys explicitly suppressed (mapped to `undefined`) under the claude-cli
- * provider, even if they would otherwise be matched by a prefix or are
- * present in the host env. These are the TOS-leak surfaces.
- */
-const SUPPRESS_CLI: readonly string[] = ['ANTHROPIC_API_KEY'] as const;
 
 // ---------------------------------------------------------------------------
 // buildEnvAllowlist
@@ -106,21 +93,13 @@ export function buildEnvAllowlist(
   opts: BuildEnvAllowlistOptions = {},
 ): Record<string, string | undefined> {
   const prefixes = ALLOWLIST_PREFIX_CLI;
-  const suppress = SUPPRESS_CLI;
   const exact = new Set<string>([...ALLOWLIST_EXACT, ...ALLOWLIST_CLOUD_ROUTING]);
-  const suppressSet = new Set<string>(suppress);
   const result: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
     // Skip keys the host never actually set — there is nothing to suppress
     // and no value to forward.
     if (value === undefined) {
-      continue;
-    }
-
-    // Force-suppress wins over any allowlist match for this provider.
-    if (suppressSet.has(key)) {
-      result[key] = undefined;
       continue;
     }
 
@@ -132,15 +111,6 @@ export function buildEnvAllowlist(
       result[key] = value;
     } else {
       // Suppress: tell the subprocess step to drop this inherited var.
-      result[key] = undefined;
-    }
-  }
-
-  // Make the suppression patch complete: even if the host did not have the
-  // key set, emit the undefined sentinel so downstream code reading the
-  // returned object does not have to know which keys could leak.
-  for (const key of suppressSet) {
-    if (!(key in result)) {
       result[key] = undefined;
     }
   }

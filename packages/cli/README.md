@@ -47,8 +47,6 @@ relay run codebase-discovery --repoPath=. --audience=dev
 relay run ./packages/flows/codebase-discovery --repoPath=.
 ```
 
-Pass `--api-key` to opt in to `ANTHROPIC_API_KEY` billing explicitly.
-
 ### `relay resume <runId>`
 
 Resume a run from its last checkpoint. Skips steps that completed successfully.
@@ -112,10 +110,9 @@ checkpoint  the saved state of a run after each step completes
 
 ## Billing safety
 
-Relay defaults to subscription billing. If `ANTHROPIC_API_KEY` is set in your
-environment, the CLI exits with code 3 before any step executes. Pass `--api-key`
-or set `RELAY_ALLOW_API_KEY=1` to opt in explicitly. See `docs/billing-safety.md`
-for the full auth precedence table and CI guidance.
+Relay runs on your Claude subscription. Run `claude /login` once to authenticate.
+The CLI exits with code 3 (`ClaudeAuthError`) if subscription credentials are
+not found before any step executes. See `docs/billing-safety.md` for CI guidance.
 
 ---
 

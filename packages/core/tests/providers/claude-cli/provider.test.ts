@@ -216,7 +216,6 @@ describe('ClaudeCliProvider', () => {
     existsSyncMock.mockReturnValue(false);
     vi.unstubAllEnvs();
     // Clear all auth-related env vars.
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
     vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '');
     vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '');
     vi.stubEnv('CLAUDE_CODE_USE_VERTEX', '');
@@ -259,20 +258,6 @@ describe('ClaudeCliProvider', () => {
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap().billingSource).toBe('subscription');
-    });
-
-    it('[CLI-AUTH-002] with ANTHROPIC_API_KEY only returns err(ClaudeAuthError)', async () => {
-      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-xxx');
-      existsSyncMock.mockReturnValue(false);
-      stubExecFileOk();
-
-      const provider = new ClaudeCliProvider();
-      const result = await provider.authenticate();
-
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr()).toBeInstanceOf(ClaudeAuthError);
-      // Must mention how to fix — the CLI path.
-      expect(result._unsafeUnwrapErr().message).toContain('claude /login');
     });
 
     it('[CLI-AUTH-003] no auth at all returns err(ClaudeAuthError)', async () => {

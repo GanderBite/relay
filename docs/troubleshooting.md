@@ -103,27 +103,21 @@ relay run <flowName> <input> --provider claude-cli
 
 ### `ClaudeAuthError`
 
-**What it means.** The environment is unsafe to spawn Claude. Relay detected `ANTHROPIC_API_KEY` in the environment without an explicit opt-in, or the subscription token is absent.
+**What it means.** Subscription credentials are absent or the `claude` binary is not installed. The run was blocked before any subprocess was launched.
 
-**Most common cause.** `ANTHROPIC_API_KEY` is set in the shell environment. Relay defaults to subscription billing. If the key is present without an opt-in, any run would silently bill the API account — Relay blocks the run before any subprocess is launched to prevent this.
+**Most common cause.** You have not run `claude /login` on this machine.
 
-This is the billing safety guard. Full details are in [`docs/billing-safety.md`](billing-safety.md).
-
-→ Unset `ANTHROPIC_API_KEY` to use subscription billing (the default and recommended path):
+→ Authenticate:
 ```
-unset ANTHROPIC_API_KEY
+claude /login
 relay run <flowName> <input>
 ```
-→ If you need to route to a cloud account instead of your subscription, set the appropriate variable before running:
+→ In CI, set `CLAUDE_CODE_OAUTH_TOKEN` as a secret (generated once via `claude /login`) instead of running the interactive login.
+→ To route to a cloud account instead of your subscription:
 ```
 CLAUDE_CODE_USE_BEDROCK=1 relay run <flowName> <input>
-# or
-CLAUDE_CODE_USE_VERTEX=1 relay run <flowName> <input>
-# or
-CLAUDE_CODE_USE_FOUNDRY=1 relay run <flowName> <input>
 ```
-→ For CI, generate a subscription token once with `claude /login` and export `CLAUDE_CODE_OAUTH_TOKEN` as a CI secret — this path does not require `ANTHROPIC_API_KEY` to be present at all.
-→ see `docs/billing-safety.md` for full detail on the billing safety guard.
+→ Run `relay doctor` for a full environment check.
 
 ---
 

@@ -168,24 +168,20 @@ When `@relay/core` reaches `1.0.0`, flows published against `^1.0.0` continue to
 
 ## Env containment — prompt vs. script/branch steps
 
-`step.prompt` runs in a contained subprocess. The step runner builds an explicit env allowlist (`PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `SHELL`, `CLAUDE_*`, opt-in `ANTHROPIC_*`) and passes only those variables to the Claude Agent SDK. `ANTHROPIC_API_KEY` is suppressed from the prompt subprocess unless the caller explicitly opted in. This is the §8.1 safety contract — see `docs/billing-safety.md` for the full guard protocol.
+`step.prompt` runs in a contained subprocess. The step runner builds an explicit env allowlist (`PATH`, `HOME`, `USER`, `LANG`, `TZ`, `TMPDIR`, `SHELL`, `CLAUDE_*`) and passes only those variables to the `claude` binary. Credentials not on the allowlist are suppressed. See `docs/billing-safety.md` for the full env passthrough rules.
 
-`step.script` and `step.branch` forward `process.env` intact to the spawned shell. Every variable on the machine — including `ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, and any other credential — is visible to the child process.
+`step.script` and `step.branch` forward `process.env` intact to the spawned shell. Every variable on the machine — `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, and any other credential — is visible to the child process.
 
-⚠ This is by design. Script and branch steps are user-controlled shell. If your script touches the network or an external tool, unset sensitive variables in a wrapper or pass an explicit `env` map:
+⚠ This is by design. Script and branch steps are user-controlled shell. If your script touches the network or an external tool, pass an explicit `env` map:
 
 ```ts
 step.script({
   run: 'curl -s -X POST $WEBHOOK_URL -d @handoffs/summary.json',
   env: { WEBHOOK_URL: process.env.WEBHOOK_URL ?? '' },
-  // ANTHROPIC_API_KEY and other credentials are still visible
-  // because step.script merges env on top of process.env.
 })
 ```
 
-`relay doctor` surfaces whether `ANTHROPIC_API_KEY` is set before any flow runs, giving you a chance to unset it or opt in explicitly before the step runner reaches a script step.
-
-See `docs/billing-safety.md` for the full env passthrough rules, the `RELAY_ALLOW_API_KEY` opt-in mechanism, and CI configuration guidance.
+See `docs/billing-safety.md` for env containment details and CI configuration guidance.
 
 ---
 
