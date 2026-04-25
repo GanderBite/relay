@@ -2,14 +2,7 @@
  * Splash help screen for `relay` (no arguments) and `relay --help`.
  *
  * Output matches product spec §6.1 verbatim, with the addition of `relay init`
- * as the first USAGE row (sprint-13 task_124 post-dated §6.1; see
- * _work/spec-amendment-init-command.md).
- *
- * Column layout note: the spec §6.1 uses two different verb column widths.
- * The first two USAGE rows ("relay <flow> [input]" and "relay run <flow>
- * [input]") have descriptions starting at col 35 (verb padEnd to 31).
- * All other rows have descriptions starting at col 36 (verb padEnd to 32).
- * This matches the spec byte-for-byte.
+ * as the first USAGE row.
  */
 
 import { MARK } from './brand.js';
@@ -23,13 +16,6 @@ const INDENT = '    ';
 /** Row with description at column 36 (verb column width = 32). */
 function row(verb: string, desc: string): string {
   return `${INDENT}${verb.padEnd(32)}${desc}`;
-}
-
-/** Row with description at column 35 (verb column width = 31).
- *  Used only for the two spec rows whose original spacing lands at col 35:
- *  "relay <flow> [input]" and "relay run <flow> [input]". */
-function row35(verb: string, desc: string): string {
-  return `${INDENT}${verb.padEnd(31)}${desc}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,8 +36,7 @@ export function renderSplash(): void {
     // USAGE — relay init added as first row per spec amendment
     'USAGE',
     row('relay init', 'configure your flow-running provider'),
-    row35('relay <flow> [input]', 'run a flow (shorthand)'),
-    row35('relay run <flow> [input]', 'same, explicit form'),
+    row('relay run <flow> [input]', 'run a flow'),
     row('relay resume <runId>', 'continue a failed or stopped run'),
     row('relay doctor', 'check your environment before running'),
     '',

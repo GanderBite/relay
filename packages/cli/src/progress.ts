@@ -75,6 +75,7 @@ interface StepDisplayState {
   finalTokensOut: number | null;
   finalCostUsd: number | null;
   finalModel: string | null;
+  cumulativeTokens: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +119,7 @@ export class ProgressDisplay<TInput = unknown> {
   readonly #isTTY: boolean;
   readonly #sigintHandlers: Array<() => void> = [];
   readonly #steps: Map<string, StepDisplayState> = new Map();
+  #cumulativeTokens: number = 0;
 
   constructor(runDir: string, flow: Flow<TInput>, auth: AuthInfo) {
     this.#runDir = runDir;
@@ -154,6 +156,7 @@ export class ProgressDisplay<TInput = unknown> {
         finalTokensOut: null,
         finalCostUsd: null,
         finalModel: null,
+        cumulativeTokens: null,
       });
     }
 
@@ -215,6 +218,8 @@ export class ProgressDisplay<TInput = unknown> {
     state.finalCostUsd = metrics.costUsd ?? 0;
     state.finalDurationMs = metrics.durationMs;
     state.finalModel = metrics.model;
+    this.#cumulativeTokens += metrics.tokensIn + metrics.tokensOut;
+    state.cumulativeTokens = this.#cumulativeTokens;
     if (this.#isTTY) this.#redraw();
   }
 
@@ -378,7 +383,7 @@ export class ProgressDisplay<TInput = unknown> {
       const runStart = state.runningStartedAt ?? live.startedAt;
       const progress = tools > 0 ? `${tools} tools` : fmtElapsedSec(runStart);
       const progressCol = progress.padEnd(DURATION_WIDTH);
-      const totalToks = live.tokensSoFar ?? 0;
+      const totalToks = this.#cumulativeTokens + (live.tokensSoFar ?? 0);
       const tokensCol = fmtK(totalToks).padEnd(13);
       return ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}`;
     }
@@ -392,7 +397,7 @@ export class ProgressDisplay<TInput = unknown> {
     );
     const tokIn = state.finalTokensIn ?? 0;
     const tokOut = state.finalTokensOut ?? 0;
-    const tokensCol = `${fmtK(tokIn)}→${fmtK(tokOut)}`.padEnd(13);
+    const tokensCol = fmtK(state.cumulativeTokens ?? tokIn + tokOut).padEnd(13);
     const costUsd = state.finalCostUsd ?? 0;
     const costStr = fmtCostApprox(costUsd);
 

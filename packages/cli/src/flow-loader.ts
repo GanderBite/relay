@@ -187,8 +187,9 @@ export async function loadFlow(
 ): Promise<Result<LoadedFlow, FlowLoadError>> {
   // ---- (1) Path-like: resolve to absolute and import directly ----
   if (looksLikePath(nameOrPath)) {
-    const absDir = resolve(cwd, nameOrPath);
-    return importFlow(absDir, 'path');
+    const absPath = resolve(cwd, nameOrPath);
+    const dir = absPath.endsWith('.js') ? resolve(absPath, '..', '..') : absPath;
+    return importFlow(dir, 'path');
   }
 
   const name = nameOrPath;

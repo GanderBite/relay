@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { CostTracker } from '../cost.js';
 import {
   AuthTimeoutError,
@@ -234,8 +234,8 @@ export class Orchestrator {
   }
 
   async run<TInput>(flow: Flow<TInput>, input: unknown, opts: RunOptions = {}): Promise<RunResult> {
-    const runId = shortRunId();
-    const runDir = this.#runDirOverride ?? defaultRunDir(runId);
+    const runDir = this.#runDirOverride ?? defaultRunDir(shortRunId());
+    const runId = basename(runDir);
     const parallelism = opts.parallelism ?? DEFAULT_PARALLELISM;
     const flowDir = opts.flowDir ?? process.cwd();
 
