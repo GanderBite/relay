@@ -12,6 +12,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Flow } from '@relay/core';
+import { z } from '@relay/core';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
@@ -36,6 +37,16 @@ interface LiveStatePartial {
   tokensSoFar?: number;
   turnsSoFar?: number;
 }
+
+const LiveStatePartialSchema = z.object({
+  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
+  attempt: z.number(),
+  startedAt: z.string(),
+  lastUpdateAt: z.string(),
+  model: z.string().optional(),
+  tokensSoFar: z.number().optional(),
+  turnsSoFar: z.number().optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Auth descriptor
@@ -257,7 +268,9 @@ export class ProgressDisplay<TInput = unknown> {
     let parsed: LiveStatePartial;
     try {
       const raw = await readFile(filePath, 'utf8');
-      parsed = JSON.parse(raw) as LiveStatePartial;
+      const result = LiveStatePartialSchema.safeParse(JSON.parse(raw));
+      if (!result.success) return;
+      parsed = result.data;
     } catch {
       // File read race or JSON parse failure — skip; next event will retry.
       return;
