@@ -114,6 +114,45 @@ describe('buildGraph — DAG construction', () => {
       expect(msg).toContain('lists itself');
       expect(msg).not.toContain('cycle detected');
     });
+
+    it('[DAG-015] fan-in barrier: branches in both dependsOn and branches does not produce a cycle', () => {
+      // prep → branch_a ─┐
+      //      → branch_b ─┼─▶ barrier ──▶ merge
+      //
+      // barrier.dependsOn and barrier.branches both list branch_a and branch_b.
+      // This is the canonical fan-in pattern; no cycle should be reported.
+      const steps: Record<string, Step> = {
+        prep: promptStep('prep', { output: { handoff: 'prep' } }),
+        branch_a: promptStep('branch_a', {
+          dependsOn: ['prep'],
+          contextFrom: ['prep'],
+          output: { handoff: 'branch_a' },
+        }),
+        branch_b: promptStep('branch_b', {
+          dependsOn: ['prep'],
+          contextFrom: ['prep'],
+          output: { handoff: 'branch_b' },
+        }),
+        barrier: parallelStep('barrier', ['branch_a', 'branch_b'], {
+          dependsOn: ['branch_a', 'branch_b'],
+        }),
+        merge: promptStep('merge', {
+          dependsOn: ['barrier'],
+          contextFrom: ['prep', 'branch_a', 'branch_b'],
+          output: { artifact: 'merged.md' },
+        }),
+      };
+      const result = buildGraph(steps, 'prep');
+      expect(result.isOk()).toBe(true);
+      const graph = result._unsafeUnwrap();
+      // barrier must come after both branches in topo order
+      const order = graph.topoOrder;
+      expect(order.indexOf('prep')).toBeLessThan(order.indexOf('branch_a'));
+      expect(order.indexOf('prep')).toBeLessThan(order.indexOf('branch_b'));
+      expect(order.indexOf('branch_a')).toBeLessThan(order.indexOf('barrier'));
+      expect(order.indexOf('branch_b')).toBeLessThan(order.indexOf('barrier'));
+      expect(order.indexOf('barrier')).toBeLessThan(order.indexOf('merge'));
+    });
   });
 
   describe('reference validation', () => {

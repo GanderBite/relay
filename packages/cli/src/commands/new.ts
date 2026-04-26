@@ -125,7 +125,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
   const result = await scaffoldFlow({
     template,
     outDir,
-    tokens: { name, 'flow-name': name },
+    tokens: { name, 'flow-name': name, pkgName: name },
     force: options.force ?? false,
   });
 

@@ -1,0 +1,55 @@
+{
+  "name": "@relay/flows-release-notes",
+  "version": "0.1.0",
+  "description": "Produces a technical changelog, user-facing what's new doc, and marketing highlights brief from a git commit range.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": {
+      "import": "./dist/flow.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no unit tests — run relay test . with relay installed'"
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "flowName": "release-notes",
+    "displayName": "Release Notes Generator",
+    "tags": [
+      "fan-out",
+      "parallel",
+      "git",
+      "changelog",
+      "release"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.1,
+      "max": 0.5
+    },
+    "estimatedDurationMin": {
+      "min": 5,
+      "max": 15
+    },
+    "audience": [
+      "dev",
+      "pm"
+    ]
+  }
+}

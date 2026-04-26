@@ -152,6 +152,24 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/flows/release-notes:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/flows/spec-generator:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/generator:
     dependencies:
       neverthrow:

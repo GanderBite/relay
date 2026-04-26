@@ -72,6 +72,9 @@ export function buildGraph(
     }
 
     if (step.kind === 'parallel') {
+      // Build a set of declared predecessors for O(1) lookup below.
+      const depSet = new Set(step.dependsOn ?? []);
+
       for (const branch of step.branches) {
         if (branch === key) {
           return err(
@@ -87,12 +90,18 @@ export function buildGraph(
             ),
           );
         }
-        // Synthetic predecessor edge: branches must wait for the parallel
-        // parent before the DAG walker schedules them. Without this, a branch
-        // with no explicit dependsOn becomes a root step and the walker would
-        // dispatch it concurrently with the parallel parent's own dispatch
-        // callback, double-billing prompt branches.
-        addEdge(key, branch);
+        // Synthetic predecessor edge: branches must wait for the parallel step
+        // before the DAG walker schedules them. Without this, a branch with no
+        // explicit dependsOn becomes a root step and the walker would dispatch
+        // it before the parallel step runs.
+        //
+        // Skip when the branch is already a declared predecessor (via
+        // dependsOn). In the fan-in barrier pattern both lists name the same
+        // steps; dependsOn already adds branch→parallel edges, so adding the
+        // reverse would form a cycle.
+        if (!depSet.has(branch)) {
+          addEdge(key, branch);
+        }
       }
 
       if (step.onAllComplete !== undefined && !stepMap.has(step.onAllComplete)) {
