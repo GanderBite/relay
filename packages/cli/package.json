@@ -47,5 +47,17 @@
   },
   "engines": {
     "node": ">=20.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ganderbite/relay.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://ganderbite.github.io/relay",
+  "bugs": {
+    "url": "https://github.com/ganderbite/relay/issues"
   }
 }

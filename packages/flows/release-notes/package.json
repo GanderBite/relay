@@ -51,5 +51,17 @@
       "dev",
       "pm"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ganderbite/relay.git",
+    "directory": "packages/flows/release-notes"
+  },
+  "homepage": "https://ganderbite.github.io/relay",
+  "bugs": {
+    "url": "https://github.com/ganderbite/relay/issues"
   }
 }
