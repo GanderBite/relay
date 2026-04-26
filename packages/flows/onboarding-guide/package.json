@@ -1,7 +1,7 @@
 {
-  "name": "@relay/flows-release-notes",
+  "name": "@relay/flows-onboarding-guide",
   "version": "0.1.0",
-  "description": "Produces a technical changelog, user-facing what's new doc, and marketing highlights brief from a git commit range.",
+  "description": "Scans a project directory and produces an audience-specific HTML onboarding guide.",
   "type": "module",
   "main": "./dist/flow.js",
   "exports": {
@@ -30,26 +30,24 @@
     "typescript": "6.0.3"
   },
   "relay": {
-    "flowName": "release-notes",
-    "displayName": "Release Notes Generator",
+    "flowName": "onboarding-guide",
+    "displayName": "Onboarding Guide",
     "tags": [
-      "fan-out",
-      "parallel",
-      "git",
-      "changelog",
-      "release"
+      "discovery",
+      "documentation",
+      "onboarding"
     ],
     "estimatedCostUsd": {
-      "min": 0.1,
-      "max": 0.5
+      "min": 0.3,
+      "max": 1.2
     },
     "estimatedDurationMin": {
-      "min": 5,
-      "max": 15
+      "min": 10,
+      "max": 30
     },
     "audience": [
-      "dev",
-      "pm"
+      "pm",
+      "dev"
     ]
   }
 }

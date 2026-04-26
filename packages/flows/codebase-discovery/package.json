@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r prompts dist/ && cp -r templates dist/",
     "typecheck": "tsc --noEmit",
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },

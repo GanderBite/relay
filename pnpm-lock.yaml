@@ -152,6 +152,15 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/flows/onboarding-guide:
+    devDependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../core
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/flows/release-notes:
     devDependencies:
       '@relay/core':
