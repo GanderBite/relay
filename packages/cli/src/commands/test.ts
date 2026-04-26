@@ -28,9 +28,9 @@ import type {
   InvocationResponse,
   Provider,
   ProviderCapabilities,
-} from '@relay/core';
-import { Orchestrator, ProviderRegistry, z } from '@relay/core';
-import { MockProvider } from '@relay/core/testing';
+} from '@ganderbite/relay-core';
+import { Orchestrator, ProviderRegistry, z } from '@ganderbite/relay-core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red } from '../color.js';
 import { EXIT_CODES, formatError } from '../exit-codes.js';

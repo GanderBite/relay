@@ -29,7 +29,7 @@ importers:
 
   examples/file-type-router:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../packages/core
       typescript:
@@ -38,7 +38,7 @@ importers:
 
   examples/git-log-summary:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../packages/core
       typescript:
@@ -47,7 +47,7 @@ importers:
 
   examples/hello-world:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../packages/core
       typescript:
@@ -56,7 +56,7 @@ importers:
 
   examples/hello-world-mocked:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../packages/core
       typescript:
@@ -65,7 +65,7 @@ importers:
 
   examples/multi-perspective-review:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../packages/core
       typescript:
@@ -74,10 +74,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:^
         version: link:../core
-      '@relay/generator':
+      '@ganderbite/relay-generator':
         specifier: workspace:^
         version: link:../generator
       chalk:
@@ -151,7 +151,7 @@ importers:
 
   packages/flows/codebase-discovery:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../core
       typescript:
@@ -160,7 +160,7 @@ importers:
 
   packages/flows/onboarding-guide:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../core
       typescript:
@@ -169,7 +169,7 @@ importers:
 
   packages/flows/release-notes:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../core
       typescript:
@@ -178,7 +178,7 @@ importers:
 
   packages/flows/spec-generator:
     devDependencies:
-      '@relay/core':
+      '@ganderbite/relay-core':
         specifier: workspace:*
         version: link:../../core
       typescript:

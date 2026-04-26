@@ -179,8 +179,8 @@ checkpoint  the saved state of a run after each step completes
 
 ```
 ●─▶●─▶●─▶●  relay 0.1.0
-            @relay/cli 0.1.0
-            @relay/core 0.1.0
+            @ganderbite/relay 0.1.0
+            @ganderbite/relay-core 0.1.0
             node 20.10.0 · claude 2.4.1
 ```
 

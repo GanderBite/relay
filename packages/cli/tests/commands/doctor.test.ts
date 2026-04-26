@@ -18,8 +18,8 @@ const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
 const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
 const mockResolveProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('@relay/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@relay/core')>();
+vi.mock('@ganderbite/relay-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
 
   const mockCli = {
     name: 'claude-cli',
@@ -94,7 +94,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-import { err, NoProviderConfiguredError, ok } from '@relay/core';
+import { err, NoProviderConfiguredError, ok } from '@ganderbite/relay-core';
 import doctorCommand from '../../src/commands/doctor.js';
 
 // ---------------------------------------------------------------------------

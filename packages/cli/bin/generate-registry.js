@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node bin/generate-registry.js --input packages.json --output catalog/registry.json
- *   node bin/generate-registry.js @relay/flows-codebase-discovery ./my-local-flow
+ *   node bin/generate-registry.js @ganderbite/flows-codebase-discovery ./my-local-flow
  *
  * --input <file>    JSON file containing an array of package names / local paths.
  *                   Merged with any positional arguments.
@@ -92,7 +92,7 @@ async function main() {
   } catch (importErr) {
     process.stderr.write(
       `generate-registry: failed to load registry module: ${importErr?.message ?? importErr}\n` +
-        'Make sure you have run "pnpm -F @relay/cli build" first.\n',
+        'Make sure you have run "pnpm -F @ganderbite/relay build" first.\n',
     );
     process.exit(1);
   }

@@ -13,8 +13,8 @@
 
 import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Result } from '@relay/core';
-import { err, ok } from '@relay/core';
+import type { Result } from '@ganderbite/relay-core';
+import { err, ok } from '@ganderbite/relay-core';
 import semver from 'semver';
 
 // ---------------------------------------------------------------------------

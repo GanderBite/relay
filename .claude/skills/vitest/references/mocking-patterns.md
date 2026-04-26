@@ -126,8 +126,8 @@ The SDK's `query()` returns an async iterator. Tests of the translator and the p
 If `vi.mock` factory hoisting causes problems, use `importActual` inside the factory:
 
 ```ts
-vi.mock('@relay/core', async () => {
-  const actual = await vi.importActual<typeof import('@relay/core')>('@relay/core');
+vi.mock('@ganderbite/relay-core', async () => {
+  const actual = await vi.importActual<typeof import('@ganderbite/relay-core')>('@ganderbite/relay-core');
   return {
     ...actual,
     Runner: class FakeRunner { /* ... */ },
@@ -150,6 +150,6 @@ The default in `vitest.config.ts` `clearMocks: true` runs `clearAllMocks` automa
 ## Anti-patterns
 
 - **Don't mock fs without a temp dir.** Real fs in a temp dir is more reliable than mock fs that doesn't capture all the edge cases.
-- **Don't mock @relay/core types.** Use the real types; mock only the runtime functions you don't want to invoke.
+- **Don't mock @ganderbite/relay-core types.** Use the real types; mock only the runtime functions you don't want to invoke.
 - **Don't forget to import the mocked function AFTER `vi.mock`.** Hoisting means the import runs after the mock, but humans read top-to-bottom.
 - **Don't leave `console.log` in mock implementations.** They run in tests; the noise pollutes CI output.

@@ -1,5 +1,5 @@
 {
-  "name": "@relay/flows-release-notes",
+  "name": "@ganderbite/flows-release-notes",
   "version": "0.1.0",
   "description": "Produces a technical changelog, user-facing what's new doc, and marketing highlights brief from a git commit range.",
   "type": "module",
@@ -23,10 +23,10 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

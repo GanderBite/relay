@@ -13,7 +13,7 @@ Execute exactly <TASK_ID> from `_work/sprint-<SPRINT_NUMBER>.json`. Pick the rig
 
 <context>
 - Sprint backlog: `_work/sprint-<SPRINT_NUMBER>.json` — read only the task block for <TASK_ID>.
-- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names are `@relay/*`).
+- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names are `@ganderbite/*`).
 - Product spec: `_specs/relay-product_spec.md` — wins on user-visible strings.
 - Working notes: `/Users/michalgasiorek/Projekty/ganderbite/relay/CLAUDE.md`.
 - Hard rules: no emojis, "simply" banned, ESM-only, one atomic commit per task referencing the task ID.

@@ -12,7 +12,7 @@
  * The `merge` step waits on the barrier and reads both branch handoffs.
  */
 
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: '{{pkgName}}',

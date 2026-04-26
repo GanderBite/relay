@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Hoist and install mocks before any module-under-test imports resolve.
 // ---------------------------------------------------------------------------
 
-// Mock @relay/core's ClaudeCliProvider authenticate() so we control what auth
+// Mock @ganderbite/relay-core's ClaudeCliProvider authenticate() so we control what auth
 // returns without spawning the real binary.
 const mockCliAuthenticate = vi.hoisted(() => vi.fn());
 const mockSpawnAttached = vi.hoisted(() => vi.fn());
@@ -32,8 +32,8 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-vi.mock('@relay/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@relay/core')>();
+vi.mock('@ganderbite/relay-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
   return {
     ...actual,
     ClaudeCliProvider: class MockCli {
@@ -68,7 +68,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-import { ClaudeAuthError, err, ok } from '@relay/core';
+import { ClaudeAuthError, err, ok } from '@ganderbite/relay-core';
 import initCommand from '../../src/commands/init.js';
 
 // ---------------------------------------------------------------------------

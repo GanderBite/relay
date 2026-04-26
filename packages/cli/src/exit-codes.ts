@@ -32,7 +32,7 @@ import {
   ProviderRateLimitError,
   StepFailureError,
   TimeoutError,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 import { CommanderError } from 'commander';
 import { gray, red } from './color.js';
 import { FlowLoadError } from './flow-loader.js';

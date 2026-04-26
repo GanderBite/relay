@@ -36,10 +36,10 @@ Do not open a public GitHub issue to report a security vulnerability.
 - Env-var leakage from ClaudeCliProvider — environment variables containing credentials passed through to subprocesses in unintended ways.
 - Arbitrary command execution via flow definitions — a malicious or malformed flow package that causes the runner to execute unintended shell commands.
 - Credential exposure in logs — auth tokens or API keys appearing in log output, state files, or run artifacts.
-- Supply-chain compromise of @relay/* packages — malicious code injected into the published npm packages.
+- Supply-chain compromise of @ganderbite/* packages — malicious code injected into the published npm packages.
 
 **Out of scope** — please report to the upstream maintainer instead:
 
 - Vulnerabilities in the claude CLI binary itself.
 - Vulnerabilities in Node.js or pnpm.
-- Issues in third-party dependencies not under the @relay/* scope.
+- Issues in third-party dependencies not under the @ganderbite/* scope.

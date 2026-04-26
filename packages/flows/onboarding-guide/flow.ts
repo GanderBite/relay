@@ -1,4 +1,4 @@
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 import { ExploreSchema } from './schemas/explore.js';
 import { GuideSectionsSchema } from './schemas/guide-sections.js';
 import { PracticesSchema } from './schemas/practices.js';

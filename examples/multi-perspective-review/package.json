@@ -1,5 +1,5 @@
 {
-  "name": "@relay/example-multi-perspective-review",
+  "name": "@ganderbite/example-multi-perspective-review",
   "version": "0.1.0",
   "description": "A five-step example flow that demonstrates step.parallel(): three reviewers read the same file in parallel (security, performance, readability), then an aggregation step synthesizes their handoffs into a single report.",
   "private": true,
@@ -19,10 +19,10 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

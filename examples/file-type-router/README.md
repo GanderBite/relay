@@ -30,7 +30,7 @@ This flow ships inside the Relay monorepo as a local example. There is no publis
 
 ```bash
 pnpm install
-pnpm --filter @relay/example-file-type-router build
+pnpm --filter @ganderbite/example-file-type-router build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads.

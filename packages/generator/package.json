@@ -1,5 +1,5 @@
 {
-  "name": "@relay/generator",
+  "name": "@ganderbite/relay-generator",
   "version": "0.1.0",
   "description": "Scaffold new Relay flow packages from templates.",
   "private": false,

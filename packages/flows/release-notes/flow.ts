@@ -1,4 +1,4 @@
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 const JSON_ONLY_SYSTEM_PROMPT =
   'Output only raw JSON. Your entire response must be a single valid JSON object — no preamble, no markdown fences, no explanatory text.';

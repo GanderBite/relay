@@ -22,7 +22,7 @@ This flow ships inside the Relay monorepo as a local example. There is no publis
 
 ```bash
 pnpm install
-pnpm --filter @relay/example-multi-perspective-review build
+pnpm --filter @ganderbite/example-multi-perspective-review build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads.

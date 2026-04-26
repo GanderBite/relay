@@ -22,8 +22,8 @@ const mockResolveProvider = vi.hoisted(() => vi.fn());
 const mockRenderStartBanner = vi.hoisted(() => vi.fn());
 const mockRenderSuccessBanner = vi.hoisted(() => vi.fn());
 
-vi.mock('@relay/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@relay/core')>();
+vi.mock('@ganderbite/relay-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
   return {
     ...actual,
     registerDefaultProviders: mockRegisterDefaultProviders,
@@ -78,7 +78,7 @@ vi.mock('../../src/exit-codes.js', async (importOriginal) => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-import { err, NoProviderConfiguredError, ok } from '@relay/core';
+import { err, NoProviderConfiguredError, ok } from '@ganderbite/relay-core';
 import { renderFailureBanner } from '../../src/banner.js';
 import runCommand from '../../src/commands/run.js';
 import { renderPausedBanner } from '../../src/paused-banner.js';

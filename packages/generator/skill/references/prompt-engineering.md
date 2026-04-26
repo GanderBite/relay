@@ -112,7 +112,7 @@ Schema field discipline:
 
 Schema file header (for extracted schemas):
 ```typescript
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 export const <Name>Schema = z.object({ ... });
 export type <Name> = z.infer<typeof <Name>Schema>;

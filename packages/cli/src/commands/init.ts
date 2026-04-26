@@ -20,7 +20,7 @@ import {
   ClaudeCliProvider,
   globalSettingsPath,
   loadGlobalSettings,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green } from '../color.js';

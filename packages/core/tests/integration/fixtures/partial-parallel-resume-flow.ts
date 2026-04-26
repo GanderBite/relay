@@ -10,7 +10,7 @@
  *
  * This fixture is imported dynamically by resume() via importFlow().
  */
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export const flow = defineFlow({
   name: 'partial-parallel-resume-flow',

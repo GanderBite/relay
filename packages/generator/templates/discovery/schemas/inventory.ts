@@ -1,4 +1,4 @@
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 /**
  * The shape of the `inventory` handoff written by the first step.

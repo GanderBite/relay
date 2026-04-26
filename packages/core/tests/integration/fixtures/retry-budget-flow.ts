@@ -6,7 +6,7 @@
  * whose step already records attempts:2 does not grant additional attempts
  * beyond what the budget allows.
  */
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export const flow = defineFlow({
   name: 'retry-budget-flow',

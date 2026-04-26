@@ -11,7 +11,7 @@
  * It must compile under --experimental-strip-types and must be importable
  * both from vitest (for the test step) and via pathToFileURL().
  */
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export const flow = defineFlow({
   name: 'branch-resume-flow',

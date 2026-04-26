@@ -25,7 +25,7 @@ This flow ships inside the Relay monorepo as a local example. There is no publis
 
 ```bash
 pnpm install
-pnpm --filter @relay/example-git-log-summary build
+pnpm --filter @ganderbite/example-git-log-summary build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads.

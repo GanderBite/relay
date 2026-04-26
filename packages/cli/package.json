@@ -1,5 +1,5 @@
 {
-  "name": "@relay/cli",
+  "name": "@ganderbite/relay",
   "version": "0.1.0",
   "description": "Run deterministic multi-step Claude Code workflows with checkpoint and resume.",
   "private": false,
@@ -29,8 +29,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@relay/core": "workspace:^",
-    "@relay/generator": "workspace:^",
+    "@ganderbite/relay-core": "workspace:^",
+    "@ganderbite/relay-generator": "workspace:^",
     "chalk": "^5.4.1",
     "chokidar": "^5.0.0",
     "commander": "13.1.0",

@@ -1,4 +1,4 @@
-# @relay/cli
+# @ganderbite/relay
 
 The `relay` command-line binary. Runs flows, manages runs, inspects auth,
 and scaffolds new flow packages.
@@ -7,7 +7,7 @@ and scaffolds new flow packages.
 
 ## What it does
 
-`@relay/cli` wraps `@relay/core` in a terminal-facing binary. It handles provider
+`@ganderbite/relay` wraps `@ganderbite/relay-core` in a terminal-facing binary. It handles provider
 selection, pre-run banners, TTY progress output, and error display. Every command
 exits with a documented exit code so CI scripts can distinguish billing
 misconfigurations from step failures.
@@ -17,7 +17,7 @@ misconfigurations from step failures.
 ## Install
 
 ```bash
-npm install -g @relay/cli
+npm install -g @ganderbite/relay
 ```
 
 Requires Node ≥ 20.10.

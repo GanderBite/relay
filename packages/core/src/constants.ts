@@ -1,5 +1,5 @@
 /**
- * Public constant values shared across @relay/core. This is the single
+ * Public constant values shared across @ganderbite/relay-core. This is the single
  * source for URLs, magic numbers, and any other configuration literal
  * that multiple modules would otherwise duplicate.
  */

@@ -20,10 +20,10 @@
     "run-mocked": "node dist/run-mocked.js"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

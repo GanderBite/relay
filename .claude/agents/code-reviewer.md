@@ -119,9 +119,9 @@ For transparency, one bullet per file summarizing what works. No per-finding sec
 - State writes must be serialized through one writer (atomic + ordered).
 
 ### Neverthrow discipline
-- Functions in `@relay/core` must not throw — fallible functions return `Result<T, E>` from neverthrow.
+- Functions in `@ganderbite/relay-core` must not throw — fallible functions return `Result<T, E>` from neverthrow.
 - `authenticate()` and `invoke()` are Result-returning. `stream()` is AsyncIterable; errors signal via iterator termination and MUST be caught at the `invoke()` boundary so no throw escapes into caller code.
-- Any bare `throw` inside `@relay/core/src/**` (outside `stream()` generator bodies) is at minimum a FLAG; a `throw` on a hot path is a BLOCK.
+- Any bare `throw` inside `@ganderbite/relay-core/src/**` (outside `stream()` generator bodies) is at minimum a FLAG; a `throw` on a hot path is a BLOCK.
 
 ### Test coverage hints (you don't write the tests, but you flag missing branches)
 - For each `if/else`, is there a test for both branches?

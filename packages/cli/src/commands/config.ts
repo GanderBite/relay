@@ -11,8 +11,8 @@
  *   telemetry.enabled boolean — accepts "true"/"false" strings
  *   color             "auto" | "always" | "never"
  *
- * Reads via loadGlobalSettings() from @relay/core.
- * Writes via atomicWriteJson() from @relay/core.
+ * Reads via loadGlobalSettings() from @ganderbite/relay-core.
+ * Writes via atomicWriteJson() from @ganderbite/relay-core.
  */
 
 import * as fs from 'node:fs/promises';
@@ -23,7 +23,7 @@ import {
   globalSettingsPath,
   loadGlobalSettings,
   type RelaySettings,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red } from '../color.js';

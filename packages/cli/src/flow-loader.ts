@@ -16,8 +16,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { Flow, Result } from '@relay/core';
-import { ERROR_CODES, err, ok, PipelineError, z } from '@relay/core';
+import type { Flow, Result } from '@ganderbite/relay-core';
+import { ERROR_CODES, err, ok, PipelineError, z } from '@ganderbite/relay-core';
 import { looksLikePath } from './util/path.js';
 
 // ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ import {
   ProviderRateLimitError,
   StepFailureError,
   TimeoutError,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 import { describe, expect, it } from 'vitest';
 import { EXIT_CODES, exitCodeFor } from '../src/exit-codes.js';
 

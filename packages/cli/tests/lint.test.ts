@@ -37,7 +37,7 @@ function validPackageJson(relayOverrides?: Record<string, unknown>): string {
 }
 
 /** A flow.ts stub with a default export — satisfies the entry-point check. */
-const FLOW_TS_STUB = `import { defineFlow } from '@relay/core';
+const FLOW_TS_STUB = `import { defineFlow } from '@ganderbite/relay-core';
 export default defineFlow({ id: 'test-flow', steps: [] });
 `;
 
@@ -45,7 +45,7 @@ export default defineFlow({ id: 'test-flow', steps: [] });
  * A flow.ts stub that references promptFile — triggers the prompts/ directory
  * check inside checkPromptsDirectory.
  */
-const FLOW_TS_PROMPT_FILE_STUB = `import { defineFlow } from '@relay/core';
+const FLOW_TS_PROMPT_FILE_STUB = `import { defineFlow } from '@ganderbite/relay-core';
 export default defineFlow({
   id: 'test-flow',
   steps: [{ id: 'step-1', promptFile: 'prompts/01_step.md' }],

@@ -26,8 +26,8 @@ import type {
   PipelineError,
   Provider,
   ProviderCapabilities,
-} from '@relay/core';
-import { createOrchestrator, ProviderRegistry } from '@relay/core';
+} from '@ganderbite/relay-core';
+import { createOrchestrator, ProviderRegistry } from '@ganderbite/relay-core';
 import { ok, type Result } from 'neverthrow';
 import { flow } from './crash-test-flow.ts';
 

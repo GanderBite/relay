@@ -12,8 +12,8 @@
  * stop() is called after each test to clean up timers defensively.
  */
 
-import type { Flow } from '@relay/core';
-import { z } from '@relay/core';
+import type { Flow } from '@ganderbite/relay-core';
+import { z } from '@ganderbite/relay-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthInfo } from '../src/progress.js';
 import { ProgressDisplay } from '../src/progress.js';

@@ -5,7 +5,7 @@
  * (which records version '0.1.0'). Resume must reject with
  * StateVersionMismatchError before invoking any provider.
  */
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export const flow = defineFlow({
   name: 'my-flow',

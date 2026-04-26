@@ -12,8 +12,8 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
-import type { Result } from '@relay/core';
-import { err, ok } from '@relay/core';
+import type { Result } from '@ganderbite/relay-core';
+import { err, ok } from '@ganderbite/relay-core';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +28,7 @@ const execFileAsync = promisify(execFile);
  * the catalog site (catalog/app.js) consume this exact shape.
  */
 export interface RegistryEntry {
-  /** npm package name, e.g. "@relay/flows-codebase-discovery". */
+  /** npm package name, e.g. "@ganderbite/flows-codebase-discovery". */
   name: string;
   /** Strict semver version string, e.g. "0.1.0". */
   version: string;
@@ -371,7 +371,7 @@ function isLocalPath(input: string): boolean {
  * Each input is either:
  *   - A local directory path (starts with `.` or `/`): read package.json and
  *     README.md from the directory.
- *   - An npm package name (e.g. "@relay/flows-codebase-discovery"): call
+ *   - An npm package name (e.g. "@ganderbite/flows-codebase-discovery"): call
  *     `npm view <pkg> --json` to get published metadata.
  *
  * Returns err() only if every input fails. When some inputs succeed and some

@@ -9,7 +9,7 @@ description: Zod v4 idioms for the Relay codebase — the v3 → v4 symbol table
 
 ## The single re-export
 
-All of `@relay/core` funnels Zod through one file:
+All of `@ganderbite/relay-core` funnels Zod through one file:
 
 ```ts
 // packages/core/src/zod.ts
@@ -19,11 +19,11 @@ export { z } from 'zod';
 Two patterns for importing it:
 
 ```ts
-// Inside @relay/core — import from the relative re-export
+// Inside @ganderbite/relay-core — import from the relative re-export
 import { z } from '../zod.js';
 
-// Outside @relay/core (future flow packages, examples) — import from the public entry
-import { z } from '@relay/core';
+// Outside @ganderbite/relay-core (future flow packages, examples) — import from the public entry
+import { z } from '@ganderbite/relay-core';
 ```
 
 Never import named type aliases from `'zod'` directly. Reach for them through `z.*`.
@@ -129,7 +129,7 @@ if (!(spec.input instanceof z.ZodType)) {
 }
 ```
 
-Do not invent alternatives (`._zod` property checks, duck-typing `.parse`) unless you genuinely need to interop with a mixed-version dependency tree — inside `@relay/core` we don't.
+Do not invent alternatives (`._zod` property checks, duck-typing `.parse`) unless you genuinely need to interop with a mixed-version dependency tree — inside `@ganderbite/relay-core` we don't.
 
 ## What changed from v3 that matters for small library code
 
@@ -151,5 +151,5 @@ Do not invent alternatives (`._zod` property checks, duck-typing `.parse`) unles
 
 - https://zod.dev/v4 — the v4 introduction
 - https://zod.dev/v4/changelog — the full migration guide
-- https://zod.dev/library-authors — why `@relay/core` should import types via `z.core.*` rather than the `zod/v4/core` subpath
+- https://zod.dev/library-authors — why `@ganderbite/relay-core` should import types via `z.core.*` rather than the `zod/v4/core` subpath
 - `../typescript/SKILL.md` — pair with this skill for strict-mode + Zod inference patterns

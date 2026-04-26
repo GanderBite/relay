@@ -28,7 +28,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 import { Chalk, type ChalkInstance } from 'chalk';
 
 // Validates only the `color` field; ignores all other settings fields.

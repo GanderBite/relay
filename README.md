@@ -12,7 +12,7 @@ Runs on your Pro/Max subscription — no surprise API bills.
 ## 60-second tour
 
 ```bash
-npm install -g @relay/cli
+npm install -g @ganderbite/relay
 relay init                                # choose claude-cli for subscription billing
 relay doctor                              # check your environment
 relay run codebase-discovery --repoPath=.  # ship a real artifact
@@ -67,4 +67,4 @@ Browse available flows with `relay list`.
 MIT — [full text](LICENSE)
 
 Made by [Ganderbite](https://ganderbite.com). Dogfooded on our own codebase-discovery
-and API-audit flows. Install with `npm install -g @relay/cli`.
+and API-audit flows. Install with `npm install -g @ganderbite/relay`.

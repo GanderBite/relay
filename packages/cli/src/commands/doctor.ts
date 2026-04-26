@@ -29,7 +29,7 @@ import {
   type RelaySettingsType,
   registerDefaultProviders,
   resolveProvider,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 import semver from 'semver';
 
 import { MARK, SYMBOLS } from '../brand.js';

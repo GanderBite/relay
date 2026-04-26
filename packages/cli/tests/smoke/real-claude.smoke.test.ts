@@ -2,7 +2,7 @@
  * Real-Claude end-to-end smoke test — audit recommendation #3.
  *
  * RUN MANUALLY on a dev machine with a Max subscription:
- *   RELAY_SMOKE_REAL=1 pnpm -F @relay/cli test packages/cli/tests/smoke/real-claude.smoke.test.ts
+ *   RELAY_SMOKE_REAL=1 pnpm -F @ganderbite/relay test packages/cli/tests/smoke/real-claude.smoke.test.ts
  *
  * NEVER run in CI until Anthropic provides CI-safe credentials.
  *
@@ -15,7 +15,7 @@
  *   npx tsc --outDir dist --module NodeNext --moduleResolution NodeNext \
  *     --target ES2022 --strict --skipLibCheck flow.ts
  *
- * The fixture imports from @relay/core. If tsc cannot resolve it, run
+ * The fixture imports from @ganderbite/relay-core. If tsc cannot resolve it, run
  * `pnpm install` from the workspace root first so node_modules is populated.
  */
 
@@ -45,7 +45,7 @@ const FIXTURE_DIR = resolve(THIS_DIR, 'fixtures/mini-flow');
  * Absolute path to the relay bin shim.
  *
  * bin/relay.js does `import('../dist/cli.js')` — it requires the CLI package
- * to be built. Run `pnpm -F @relay/cli build` before running this test.
+ * to be built. Run `pnpm -F @ganderbite/relay build` before running this test.
  */
 const RELAY_BIN = resolve(THIS_DIR, '../../../../bin/relay.js');
 

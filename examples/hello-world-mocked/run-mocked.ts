@@ -16,8 +16,12 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createOrchestrator, type InvocationResponse, ProviderRegistry } from '@relay/core';
-import { MockProvider } from '@relay/core/testing';
+import {
+  createOrchestrator,
+  type InvocationResponse,
+  ProviderRegistry,
+} from '@ganderbite/relay-core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
 
 import flow from './flow.js';
 

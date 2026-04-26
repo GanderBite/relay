@@ -17,7 +17,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "engines": {
     "node": ">=20.10"
@@ -48,7 +48,7 @@
 | `version` | npm + linter | Strict semver. See §7.5 bump rules. |
 | `type` | linter | Must be `"module"`. CJS not supported. |
 | `main` | linter | `./dist/flow.js` — what `relay run` imports. |
-| `peerDependencies` | runtime | Must include `@relay/core`. Use a major-version range (`^1.0.0`). |
+| `peerDependencies` | runtime | Must include `@ganderbite/relay-core`. Use a major-version range (`^1.0.0`). |
 | `relay` | linter + CLI | The metadata block below. |
 
 ### `relay` block
@@ -75,7 +75,7 @@
 
 ### Anti-patterns
 
-- **Don't put `dependencies` on `@relay/core`** — it's a peer dep, the user's project owns the version. The flow shouldn't pin an incompatible core.
+- **Don't put `dependencies` on `@ganderbite/relay-core`** — it's a peer dep, the user's project owns the version. The flow shouldn't pin an incompatible core.
 - **Don't include `tsconfig.json` in `files`** — it's a build artifact, not a runtime artifact.
 - **Don't use a plain `name` for catalog flows** — the CLI resolves bare `<name>` to `@ganderbite/relay-<name>`. If you publish under a different scope, document it in the README's install section.
 - **Don't ship `flow.ts` source** — only `dist/`. Catalog users get the compiled artifact.
@@ -93,9 +93,9 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@relay/core": "workspace:^"
+    "@ganderbite/relay-core": "workspace:^"
   }
 }
 ```
 
-For local examples, use `workspace:^` to bind to the in-repo version of `@relay/core`. The `relay` metadata block is optional for private examples (the CLI's banner falls back to defaults).
+For local examples, use `workspace:^` to bind to the in-repo version of `@ganderbite/relay-core`. The `relay` metadata block is optional for private examples (the CLI's banner falls back to defaults).

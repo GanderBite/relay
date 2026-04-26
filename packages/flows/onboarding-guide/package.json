@@ -1,5 +1,5 @@
 {
-  "name": "@relay/flows-onboarding-guide",
+  "name": "@ganderbite/flows-onboarding-guide",
   "version": "0.1.0",
   "description": "Scans a project directory and produces an audience-specific HTML onboarding guide.",
   "type": "module",
@@ -23,10 +23,10 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

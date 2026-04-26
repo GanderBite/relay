@@ -2,7 +2,7 @@
 
 Relay is a TypeScript monorepo (pnpm workspaces) that ships a CLI + library for running multi-step Claude Code workflows that resume after crashes, never bill the API by surprise, and produce the same artifact every time.
 
-> **Working name in older spec:** "PipelineKit." The product spec renames everything to "Relay" — package names are `@relay/core`, `@relay/cli`, `@relay/generator`. When the tech spec says `@pipelinekit/*`, mentally substitute `@relay/*`.
+> **Working name in older spec:** "PipelineKit." The product spec renames everything to "Relay" — package names are `@ganderbite/relay-core`, `@ganderbite/relay`, `@ganderbite/relay-generator`. When the tech spec says `@pipelinekit/*`, mentally substitute `@ganderbite/*`.
 
 ## Where to read first
 
@@ -15,9 +15,9 @@ Relay is a TypeScript monorepo (pnpm workspaces) that ships a CLI + library for 
 ```
 relay/
 ├── packages/
-│   ├── core/        # @relay/core — library (defineFlow, Step, Provider, ...)
-│   ├── cli/         # @relay/cli — the `relay` binary
-│   ├── generator/   # @relay/generator — Claude Code skill that scaffolds new flows
+│   ├── core/        # @ganderbite/relay-core — library (defineFlow, Step, Provider, ...)
+│   ├── cli/         # @ganderbite/relay — the `relay` binary
+│   ├── generator/   # @ganderbite/relay-generator — Claude Code skill that scaffolds new flows
 │   └── flows/       # reference flow packages (codebase-discovery)
 ├── examples/        # hello-world + hello-world-mocked
 ├── catalog/         # static catalog site (M4)

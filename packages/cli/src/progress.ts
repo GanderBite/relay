@@ -11,9 +11,9 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Flow, StepStatus } from '@relay/core';
-import { z } from '@relay/core';
-import type { LiveStatePartial } from '@relay/core/live-state';
+import type { Flow, StepStatus } from '@ganderbite/relay-core';
+import { z } from '@ganderbite/relay-core';
+import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
 import logUpdate from 'log-update';
@@ -23,7 +23,7 @@ import { fmtCostApprox, fmtK } from './format.js';
 import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
 
 // ---------------------------------------------------------------------------
-// Live state Zod schema — LiveStatePartial type is imported from @relay/core/live-state.
+// Live state Zod schema — LiveStatePartial type is imported from @ganderbite/relay-core/live-state.
 // ---------------------------------------------------------------------------
 
 const LiveStatePartialSchema = z.object({

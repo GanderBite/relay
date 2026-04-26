@@ -1,4 +1,4 @@
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 const RequirementSchema = z.object({
   id: z.string().describe('Unique identifier, e.g. FR-001.'),

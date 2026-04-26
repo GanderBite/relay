@@ -36,8 +36,8 @@ You implement a single task from a Relay sprint backlog. The user (the orchestra
 - **ESM only.** `"type": "module"` everywhere. No CJS dual-publish. No `require()`. Use `import.meta.url` when you need `__dirname`.
 - **Node ≥20.10, TypeScript 5.4+.** Top-level `await` is fine.
 - **No emojis.** Even in code comments. The product spec's symbol vocabulary is the only allowed special-character set.
-- **No new dependencies unless the task description names them.** Zod is the only mandatory runtime dep beyond Node built-ins for `@relay/core`.
-- **Atomic writes** for any file another process reads (state.json, batons, metrics, live state). Use the `atomicWriteJson` helper from `@relay/core` once it exists.
+- **No new dependencies unless the task description names them.** Zod is the only mandatory runtime dep beyond Node built-ins for `@ganderbite/relay-core`.
+- **Atomic writes** for any file another process reads (state.json, batons, metrics, live state). Use the `atomicWriteJson` helper from `@ganderbite/relay-core` once it exists.
 - **Re-export from `src/index.ts`** when the task says to. Public API surface is defined by what `index.ts` exports.
 
 ## When you're stuck

@@ -71,7 +71,7 @@ any public copy not in this file is wrong — refer here first.
 Run deterministic multi-step Claude Code flows with checkpoint and resume.
 ```
 
-Use this exact string in the `description` field of `@relay/core` and `@relay/cli`.
+Use this exact string in the `description` field of `@ganderbite/relay-core` and `@ganderbite/relay`.
 
 ---
 
@@ -80,7 +80,7 @@ Use this exact string in the `description` field of `@relay/core` and `@relay/cl
 > Relay is an open-source CLI and TypeScript library for building
 > deterministic multi-step flows on top of Claude Code. Made by
 > Ganderbite, dogfooded on our own codebase-discovery and API-audit
-> flows. MIT licensed. Install with `npm install -g @relay/cli`.
+> flows. MIT licensed. Install with `npm install -g @ganderbite/relay`.
 
 ---
 

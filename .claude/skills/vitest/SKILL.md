@@ -1,11 +1,11 @@
 ---
 name: vitest
-description: Vitest testing patterns for the Relay codebase — describe/it structure, async/await tests, the MockProvider pattern (no live Claude calls), env stubbing for the auth guard tests, child_process mocking, snapshot testing for CLI banner output, fake timers for time-dependent code, and the temp-dir fixture for filesystem tests. Trigger this skill when writing or maintaining any `tests/**/*.test.ts` file across `@relay/core`, `@relay/cli`, `@relay/generator`, or any race package. Pair with the `relay-monorepo` skill for the per-package vitest config.
+description: Vitest testing patterns for the Relay codebase — describe/it structure, async/await tests, the MockProvider pattern (no live Claude calls), env stubbing for the auth guard tests, child_process mocking, snapshot testing for CLI banner output, fake timers for time-dependent code, and the temp-dir fixture for filesystem tests. Trigger this skill when writing or maintaining any `tests/**/*.test.ts` file across `@ganderbite/relay-core`, `@ganderbite/relay`, `@ganderbite/relay-generator`, or any race package. Pair with the `relay-monorepo` skill for the per-package vitest config.
 ---
 
 # Vitest Testing Patterns
 
-Every Relay package uses Vitest. Tests live in `tests/` next to `src/`. Coverage target on `@relay/core` is **80% lines** (M1 acceptance).
+Every Relay package uses Vitest. Tests live in `tests/` next to `src/`. Coverage target on `@ganderbite/relay-core` is **80% lines** (M1 acceptance).
 
 ## File layout
 
@@ -51,11 +51,11 @@ describe('Runner', () => {
 
 ## The MockProvider pattern (the most important pattern)
 
-**Never call the real Claude SDK from a test.** Use `MockProvider` from `@relay/core/testing`.
+**Never call the real Claude SDK from a test.** Use `MockProvider` from `@ganderbite/relay-core/testing`.
 
 ```ts
-import { MockProvider } from '@relay/core/testing';
-import { ProviderRegistry, createOrchestrator, defineFlow, step, z } from '@relay/core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
+import { ProviderRegistry, createOrchestrator, defineFlow, step, z } from '@ganderbite/relay-core';
 
 const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
 

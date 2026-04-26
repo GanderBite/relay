@@ -133,7 +133,7 @@ Edit `prompts/01_first.md` to produce output that does not match what a downstre
 Open `flow.ts` and add a Zod schema to the first step:
 
 ```ts
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'my-flow',
@@ -271,7 +271,7 @@ For the full checkpoint and state machine details, read [`docs/resume-semantics.
 Open `flow.ts` and add a second step that consumes the `result` handoff from the first step:
 
 ```ts
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'my-flow',

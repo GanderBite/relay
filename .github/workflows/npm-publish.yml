@@ -1,22 +1,23 @@
 # npm-publish.yml
 #
-# Publishes @relay/core, @relay/cli, and @relay/generator to npm on every
+# Publishes @ganderbite/relay-core, @ganderbite/relay, and @ganderbite/relay-generator to npm on every
 # push to main that bumps one or more package versions. The step is
 # idempotent: packages whose local version already exists on npm are
 # silently skipped.
 #
-# Required secret
-# ───────────────
-# NPM_TOKEN  — a granular npm access token with "Publish" permission for
-#              each @relay/* package. Set it under:
-#              Settings -> Secrets and variables -> Actions -> New repository secret
-#              Name:  NPM_TOKEN
-#              Value: <your npm automation token>
+# Authentication — Trusted Publishing (no secrets required)
+# ──────────────────────────────────────────────────────────
+# This workflow uses npm Trusted Publishing (OIDC). No NPM_TOKEN secret is
+# needed. Before this workflow can publish, each package must have a Trusted
+# Publisher configured on npmjs.com:
 #
-# Provenance attestation is enabled via the --provenance flag on the
-# publish command, which requires the id-token: write permission granted
-# below. npm >=9.5 is required; the node setup step brings a compatible
-# version.
+#   https://www.npmjs.com/package/<pkg-name> -> Settings -> Trusted Publishing
+#     Repository owner : ganderbite
+#     Repository name  : relay
+#     Workflow filename: npm-publish.yml
+#
+# The id-token: write permission below is required for the OIDC handshake.
+# npm >=9.5 is required; the node setup step brings a compatible version.
 #
 # Partial-publish recovery
 # ────────────────────────
@@ -86,8 +87,6 @@ jobs:
       # pre-releases). If it is, the package is skipped. This makes the
       # workflow safe to re-run without hitting EPUBLISHCONFLICT.
       - name: Publish packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 

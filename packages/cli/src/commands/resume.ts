@@ -20,7 +20,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { AuthState, RunState, StepState } from '@relay/core';
+import type { AuthState, RunState, StepState } from '@ganderbite/relay-core';
 import {
   ClaudeAuthError,
   CostTracker,
@@ -32,7 +32,7 @@ import {
   registerDefaultProviders,
   resolveProvider,
   StateNotFoundError,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 import {
   type FailureStepRow,
   renderFailureBanner,

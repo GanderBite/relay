@@ -4,11 +4,11 @@
 return `Result<T, E>` (sync) or `ResultAsync<T, E>` (async). Every failure mode is encoded in
 the return type — callers cannot accidentally ignore errors.
 
-`@relay/core` re-exports neverthrow primitives so race authors and CLI code import from
+`@ganderbite/relay-core` re-exports neverthrow primitives so race authors and CLI code import from
 one place:
 
 ```ts
-import { ok, err, type Result, type ResultAsync } from '@relay/core';
+import { ok, err, type Result, type ResultAsync } from '@ganderbite/relay-core';
 ```
 
 ---
@@ -36,7 +36,7 @@ ResultAsync<void, Error>
 ## Creating Results
 
 ```ts
-import { ok, err, okAsync, errAsync } from '@relay/core';
+import { ok, err, okAsync, errAsync } from '@ganderbite/relay-core';
 
 // Sync
 function parse(raw: unknown): Result<Config, RaceDefinitionError> {
@@ -62,7 +62,7 @@ Use `fromThrowable` (sync) or `fromPromise` (async) at integration boundaries �
 your own Result-returning functions:
 
 ```ts
-import { fromThrowable, fromPromise } from '@relay/core';
+import { fromThrowable, fromPromise } from '@ganderbite/relay-core';
 
 // Sync — wraps JSON.parse which throws
 const safeParse = fromThrowable(JSON.parse, (e) => new Error(`JSON parse failed: ${e}`));
@@ -227,7 +227,7 @@ defineRace(spec).match(
 Converts a Zod `$ZodError` into a `RaceDefinitionError` value (does not throw):
 
 ```ts
-import { toRaceDefError } from '@relay/core';
+import { toRaceDefError } from '@ganderbite/relay-core';
 
 const r = mySchema.safeParse(input);
 if (!r.success) return err(toRaceDefError(r.error, 'invalid runner spec'));

@@ -1,4 +1,4 @@
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 /**
  * The shape of the `entities` handoff written by the `entities` branch.

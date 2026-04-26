@@ -18,8 +18,8 @@ const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
 const mockAtomicWriteJson = vi.hoisted(() => vi.fn());
 const mockGlobalSettingsPath = vi.hoisted(() => vi.fn());
 
-vi.mock('@relay/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@relay/core')>();
+vi.mock('@ganderbite/relay-core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
   return {
     ...actual,
     loadGlobalSettings: () => mockLoadGlobalSettings(),
@@ -42,7 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 // Imports after mocks are registered.
 // ---------------------------------------------------------------------------
 
-import { ok, okAsync } from '@relay/core';
+import { ok, okAsync } from '@ganderbite/relay-core';
 import { setAction } from '../../src/commands/config.js';
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ describe('[TC-017] config set — partial update preserves unrelated keys', () =
     // Cast to RelaySettings — the real function would return the Zod-validated
     // subset, but here we inject richer state to verify the spread logic.
     mockLoadGlobalSettings.mockResolvedValue(
-      ok(existingSettings as unknown as import('@relay/core').RelaySettings),
+      ok(existingSettings as unknown as import('@ganderbite/relay-core').RelaySettings),
     );
 
     await setAction('provider', 'claude-cli', {});
@@ -115,7 +115,7 @@ describe('[TC-017] config set — partial update preserves unrelated keys', () =
   it('updating color leaves provider intact in the written object', async () => {
     const existingSettings = { provider: 'claude-cli' };
     mockLoadGlobalSettings.mockResolvedValue(
-      ok(existingSettings as import('@relay/core').RelaySettings),
+      ok(existingSettings as import('@ganderbite/relay-core').RelaySettings),
     );
 
     await setAction('color', 'never', {});
@@ -133,7 +133,7 @@ describe('[TC-017] config set — partial update preserves unrelated keys', () =
   it('updating telemetry.enabled leaves provider and color intact', async () => {
     const existingSettings = { provider: 'claude-cli', color: 'auto' };
     mockLoadGlobalSettings.mockResolvedValue(
-      ok(existingSettings as unknown as import('@relay/core').RelaySettings),
+      ok(existingSettings as unknown as import('@ganderbite/relay-core').RelaySettings),
     );
 
     await setAction('telemetry.enabled', 'false', {});

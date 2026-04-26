@@ -1,4 +1,4 @@
-// @relay/core -- library entry.
+// @ganderbite/relay-core -- library entry.
 
 // Result types — use these to handle errors returned by defineFlow, step.*, atomicWrite*
 export {

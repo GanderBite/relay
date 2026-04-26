@@ -68,6 +68,6 @@ jobs:
       - name: Test
         run: pnpm --filter './packages/**' test
 
-      # ── 8. Coverage threshold — @relay/core ──────────────────────────────────
-      - name: Coverage (@relay/core)
-        run: pnpm -F @relay/core test:coverage
+      # ── 8. Coverage threshold — @ganderbite/relay-core ──────────────────────────────────
+      - name: Coverage (@ganderbite/relay-core)
+        run: pnpm -F @ganderbite/relay-core test:coverage

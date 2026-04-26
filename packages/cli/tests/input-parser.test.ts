@@ -5,7 +5,7 @@
  * TC-013: Named --key=value flags take precedence over positional assignment.
  */
 
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 import { describe, expect, it } from 'vitest';
 
 import { parseInputFromArgv } from '../src/input-parser.js';

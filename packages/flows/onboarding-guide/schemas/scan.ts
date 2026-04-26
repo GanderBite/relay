@@ -1,4 +1,4 @@
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 export const ScanSchema = z.object({
   projectName: z.string().describe('The name declared in the root manifest.'),

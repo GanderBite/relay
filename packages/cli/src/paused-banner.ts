@@ -25,8 +25,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { StepState, StepStatus } from '@relay/core';
-import { z } from '@relay/core';
+import type { StepState, StepStatus } from '@ganderbite/relay-core';
+import { z } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from './brand.js';
 import { gray, green, red } from './color.js';
 import { fmtCost, fmtDuration } from './format.js';

@@ -1,12 +1,12 @@
 # Zod Patterns
 
-Zod is the only mandatory runtime dep beyond Node built-ins for `@relay/core`. It's used for:
+Zod is the only mandatory runtime dep beyond Node built-ins for `@ganderbite/relay-core`. It's used for:
 
 - Race `input` schemas (parsed by the CLI from positional args / flags).
 - Baton schemas (validated on read AND write).
 - Runner-level prompt output schemas (forwarded as JSON Schema to the Claude SDK).
 
-The library re-exports `z` so race authors don't pin a mismatched version: `import { z } from '@relay/core'`.
+The library re-exports `z` so race authors don't pin a mismatched version: `import { z } from '@ganderbite/relay-core'`.
 
 ## Schema + inferred type, always paired
 

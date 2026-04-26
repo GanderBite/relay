@@ -1,5 +1,5 @@
 {
-  "name": "@relay/example-git-log-summary",
+  "name": "@ganderbite/example-git-log-summary",
   "version": "0.1.0",
   "description": "A two-step example flow that demonstrates step.script(): capture 20 recent git commits, then ask Claude to write a short changelog entry.",
   "private": true,
@@ -19,10 +19,10 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

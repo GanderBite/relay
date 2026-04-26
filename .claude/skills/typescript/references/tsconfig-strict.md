@@ -74,7 +74,7 @@ A `case` body must end with `break`, `return`, `throw`, or fall-through is a com
 
 ## Per-package overrides
 
-Library packages that emit (`@relay/core`, `@relay/cli`, etc.):
+Library packages that emit (`@ganderbite/relay-core`, `@ganderbite/relay`, etc.):
 
 ```json
 {

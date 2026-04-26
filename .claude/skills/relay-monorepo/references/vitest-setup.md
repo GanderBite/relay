@@ -5,7 +5,7 @@ Vitest is the test runner across all Relay packages. Vitest is Vite-based, ESM-n
 ## Install (already in dev deps if you used the canonical package.json)
 
 ```bash
-pnpm -F @relay/core add -D vitest @vitest/coverage-v8
+pnpm -F @ganderbite/relay-core add -D vitest @vitest/coverage-v8
 ```
 
 ## `vitest.config.ts`
@@ -42,7 +42,7 @@ export default defineConfig({
 });
 ```
 
-The 80% threshold matches the M1 acceptance for `@relay/core`. Other packages can relax this.
+The 80% threshold matches the M1 acceptance for `@ganderbite/relay-core`. Other packages can relax this.
 
 ## Test layout
 
@@ -134,8 +134,8 @@ vi.mocked(childProcess.spawn).mockReturnValue({
 ### MockProvider in runner tests
 
 ```ts
-import { MockProvider } from '@relay/core/testing';
-import { ProviderRegistry, createRunner, defineRace, runner, z } from '@relay/core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
+import { ProviderRegistry, createRunner, defineRace, runner, z } from '@ganderbite/relay-core';
 
 it('runs a 2-runner race against MockProvider', async () => {
   const provider = new MockProvider({

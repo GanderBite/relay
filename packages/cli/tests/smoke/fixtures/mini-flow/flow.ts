@@ -9,7 +9,7 @@
  *     --target ES2022 --strict --skipLibCheck flow.ts
  */
 
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'smoke-mini',

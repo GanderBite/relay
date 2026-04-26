@@ -11,7 +11,7 @@ A flow is a self-contained directory that can be installed, versioned, forked, a
 
 ```
 <flow-name>/
-├── package.json         # name, version, deps on @relay/core
+├── package.json         # name, version, deps on @ganderbite/relay-core
 ├── flow.ts              # the defineFlow() entry point — default export
 ├── prompts/
 │   ├── 01_<step>.md
@@ -24,7 +24,7 @@ A flow is a self-contained directory that can be installed, versioned, forked, a
 ├── examples/            # optional: sample outputs for the README
 │   └── sample-output.<ext>
 ├── README.md            # user-facing docs (see §7.4)
-└── tsconfig.json        # extends @relay/core/tsconfig
+└── tsconfig.json        # extends @ganderbite/relay-core/tsconfig
 ```
 
 ## package.json (§7.2 — required fields)
@@ -42,7 +42,7 @@ A flow is a self-contained directory that can be installed, versioned, forked, a
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "displayName": "Codebase Discovery",
@@ -61,7 +61,7 @@ A flow is a self-contained directory that can be installed, versioned, forked, a
 ## flow.ts entry point (§7.3)
 
 ```ts
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'codebase-discovery',

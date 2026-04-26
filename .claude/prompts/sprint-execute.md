@@ -12,7 +12,7 @@ Execute sprint <SPRINT_NUMBER> end-to-end using the Relay wave protocol. For eve
 
 <context>
 - Sprint backlog: `_work/sprint-<SPRINT_NUMBER>.json` — read it in full before any dispatch.
-- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names in this older spec say `@pipelinekit/*`; the real names are `@relay/*`).
+- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names in this older spec say `@pipelinekit/*`; the real names are `@ganderbite/*`).
 - Product spec: `_specs/relay-product_spec.md` — wins on every user-visible string.
 - Working notes: `/Users/michalgasiorek/Projekty/ganderbite/relay/CLAUDE.md`.
 - Hard rules from CLAUDE.md apply: no emojis anywhere, the word "simply" is banned in user copy, subscription billing is the default, ESM-only.
@@ -54,9 +54,9 @@ Example:
 ```
 chore(core): scaffold workspace packages
 
-- task_2: @relay/core package skeleton with tsup + zod
-- task_3: @relay/cli package skeleton with commander + bin shim
-- task_4: @relay/generator package skeleton with template placeholders
+- task_2: @ganderbite/relay-core package skeleton with tsup + zod
+- task_3: @ganderbite/relay package skeleton with commander + bin shim
+- task_4: @ganderbite/relay-generator package skeleton with template placeholders
 - task_5: examples/ directory with hello-world placeholders
 
 Closes task_2, task_3, task_4, task_5 from _work/sprint-0.json

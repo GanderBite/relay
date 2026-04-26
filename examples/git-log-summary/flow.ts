@@ -1,4 +1,4 @@
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'git-log-summary',

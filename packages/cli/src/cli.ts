@@ -37,21 +37,21 @@ function resolveClaudeVersion(): string {
 }
 
 function printVersion(): void {
-  const cliVer = resolveVersion('@relay/cli');
-  const coreVer = resolveVersion('@relay/core');
+  const cliVer = resolveVersion('@ganderbite/relay');
+  const coreVer = resolveVersion('@ganderbite/relay-core');
   const nodeVer = process.version.replace(/^v/, '');
   const claudeVer = resolveClaudeVersion();
 
   // --version — four lines:
   //   ●─▶●─▶●─▶●  relay <ver>
-  //              @relay/cli <ver>
-  //              @relay/core <ver>
+  //              @ganderbite/relay <ver>
+  //              @ganderbite/relay-core <ver>
   //              node <ver> · claude <ver>
   process.stdout.write(
     [
       `${MARK}  relay ${cliVer}`,
-      `${VERSION_INDENT}@relay/cli ${cliVer}`,
-      `${VERSION_INDENT}@relay/core ${coreVer}`,
+      `${VERSION_INDENT}@ganderbite/relay ${cliVer}`,
+      `${VERSION_INDENT}@ganderbite/relay-core ${coreVer}`,
       `${VERSION_INDENT}node ${nodeVer} · claude ${claudeVer}`,
     ].join('\n') + '\n',
   );

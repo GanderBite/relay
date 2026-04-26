@@ -14,7 +14,7 @@ Resume sprint <SPRINT_NUMBER> from wave <START_WAVE> onward. First verify that w
 <context>
 - Sprint backlog: `_work/sprint-<SPRINT_NUMBER>.json` — read it in full.
 - Working notes: `/Users/michalgasiorek/Projekty/ganderbite/relay/CLAUDE.md`.
-- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names are `@relay/*` not `@pipelinekit/*`).
+- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names are `@ganderbite/*` not `@pipelinekit/*`).
 - Product spec: `_specs/relay-product_spec.md` — wins on every user-visible string.
 - Hard rules from CLAUDE.md apply: no emojis, "simply" banned, subscription billing default, ESM-only, atomic commits.
 - A sprint may be resumed because an earlier session ran out of context, a wave blocked on a reviewer finding, or the user manually fixed something and wants to keep going.

@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-#### @relay/core
+#### @ganderbite/relay-core
 - `defineFlow` / `step.*` DSL for declaring deterministic multi-step flows
 - `Orchestrator` with checkpoint/resume, DAG scheduling, and parallel step execution
 - \`ClaudeCliProvider\` — subscription-safe Claude backend with env allowlist suppression
@@ -21,7 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `withRetry` — configurable retry with exponential backoff and rate-limit awareness
 - Full error hierarchy: `PipelineError`, `StepFailureError`, `FlowDefinitionError`, `ClaudeAuthError`, `ProviderRateLimitError`, `AuthTimeoutError`, `TimeoutError`, `HandoffSchemaError`, `NoProviderConfiguredError`, and more
 
-#### @relay/cli
+#### @ganderbite/relay
 - `relay run <flow> [input]` — run a flow with live TTY progress display
 - `relay resume <runId>` — resume a paused or crashed run from its checkpoint
 - `relay runs` — list recent runs with status, flow name, and duration
@@ -33,5 +33,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Structured exit codes (0-8) with remediation hints for every error class
 - Telemetry opt-in via `~/.relay/config.json`
 
-#### @relay/generator
+#### @ganderbite/relay-generator
 - Claude Code skill that scaffolds new flow packages from a Handlebars template

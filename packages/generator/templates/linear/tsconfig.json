@@ -1,5 +1,5 @@
 {
-  "extends": "@relay/core/tsconfig.json",
+  "extends": "@ganderbite/relay-core/tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./"

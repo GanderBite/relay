@@ -19,8 +19,8 @@
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { FlowStatus, RunState } from '@relay/core';
-import { z } from '@relay/core';
+import type { FlowStatus, RunState } from '@ganderbite/relay-core';
+import { z } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
 

@@ -86,13 +86,13 @@ strict-peer-dependencies=false
 auto-install-peers=true
 ```
 
-`strict-peer-dependencies=false` because flow packages declare `@relay/core` as a peer, and we don't want pnpm to refuse install when a user's node_modules predates the publish.
+`strict-peer-dependencies=false` because flow packages declare `@ganderbite/relay-core` as a peer, and we don't want pnpm to refuse install when a user's node_modules predates the publish.
 
 ## Per-package package.json (library)
 
 ```json
 {
-  "name": "@relay/core",
+  "name": "@ganderbite/relay-core",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -130,7 +130,7 @@ auto-install-peers=true
 }
 ```
 
-The `exports` map gates the public surface. `./testing` is a subpath export so race authors can `import { MockProvider } from '@relay/core/testing'` without polluting the main entry.
+The `exports` map gates the public surface. `./testing` is a subpath export so race authors can `import { MockProvider } from '@ganderbite/relay-core/testing'` without polluting the main entry.
 
 ## Per-package tsconfig.json
 
@@ -187,7 +187,7 @@ export default defineConfig({
 });
 ```
 
-Coverage target for `@relay/core` is 80% line coverage per M1 acceptance.
+Coverage target for `@ganderbite/relay-core` is 80% line coverage per M1 acceptance.
 
 ## Workspace dependency syntax
 
@@ -195,7 +195,7 @@ Use `workspace:^` for in-repo deps:
 
 ```json
 "dependencies": {
-  "@relay/core": "workspace:^"
+  "@ganderbite/relay-core": "workspace:^"
 }
 ```
 
@@ -205,7 +205,7 @@ pnpm rewrites this to a real version range at publish time.
 
 ```json
 {
-  "name": "@relay/cli",
+  "name": "@ganderbite/relay",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/cli.js",
@@ -214,7 +214,7 @@ pnpm rewrites this to a real version range at publish time.
   },
   "files": ["dist", "bin"],
   "dependencies": {
-    "@relay/core": "workspace:^",
+    "@ganderbite/relay-core": "workspace:^",
     "commander": "^12.0.0",
     "chalk": "^5.3.0"
   }
@@ -232,11 +232,11 @@ import('../dist/cli.js').then(m => m.main(process.argv));
 
 ```bash
 pnpm install                     # install all workspace deps
-pnpm -F @relay/core build        # build one package
-pnpm -F @relay/core typecheck    # typecheck one package
-pnpm -F @relay/core test         # test one package
+pnpm -F @ganderbite/relay-core build        # build one package
+pnpm -F @ganderbite/relay-core typecheck    # typecheck one package
+pnpm -F @ganderbite/relay-core test         # test one package
 pnpm -r --parallel build         # build everything
-pnpm -F @relay/cli exec relay --version  # run the binary from a package
+pnpm -F @ganderbite/relay exec relay --version  # run the binary from a package
 ```
 
 ## Anti-patterns

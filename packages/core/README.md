@@ -1,4 +1,4 @@
-# @relay/core
+# @ganderbite/relay-core
 
 The TypeScript library that powers Relay. Defines flows, validates step DAGs,
 manages run state, and invokes Claude through pluggable providers.
@@ -7,7 +7,7 @@ manages run state, and invokes Claude through pluggable providers.
 
 ## What it does
 
-`@relay/core` gives you two things: a compiler (`defineFlow`) that turns a typed
+`@ganderbite/relay-core` gives you two things: a compiler (`defineFlow`) that turns a typed
 TypeScript object into a validated flow graph, and an `Orchestrator` that executes
 that graph with checkpoint/resume, cost tracking, and billing-safe provider dispatch.
 
@@ -22,7 +22,7 @@ checkpoint with `relay resume <runId>`.
 ## Install
 
 ```bash
-npm install @relay/core
+npm install @ganderbite/relay-core
 ```
 
 Requires Node ≥ 20.10 and TypeScript 5.4+ (`"module": "NodeNext"` in tsconfig).
@@ -32,7 +32,7 @@ Requires Node ≥ 20.10 and TypeScript 5.4+ (`"module": "NodeNext"` in tsconfig)
 ## Quick start
 
 ```ts
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: 'hello-world',
@@ -77,7 +77,7 @@ Executes a flow given input. Returns a `RunResult` with status, cost, artifacts,
 and duration.
 
 ```ts
-import { createOrchestrator } from '@relay/core';
+import { createOrchestrator } from '@ganderbite/relay-core';
 
 const orchestrator = createOrchestrator({ runDir: '.relay/runs' });
 const result = await orchestrator.run(flow, { topic: 'relay flows' }, { flowDir, flowPath });
@@ -103,7 +103,7 @@ checkpoint  the saved state of a run after each step completes
 
 ## Testing your flow
 
-`@relay/core/testing` exports `MockProvider`, a zero-network, zero-cost provider
+`@ganderbite/relay-core/testing` exports `MockProvider`, a zero-network, zero-cost provider
 you can drop into any Vitest suite. You describe exactly what each step should
 return; the provider replays those responses without spawning a subprocess or
 reaching the Anthropic API.
@@ -111,7 +111,7 @@ reaching the Anthropic API.
 Import path:
 
 ```ts
-import { MockProvider } from '@relay/core/testing';
+import { MockProvider } from '@ganderbite/relay-core/testing';
 ```
 
 ### Minimal working example
@@ -121,9 +121,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createOrchestrator, defineFlow, ProviderRegistry, step, z } from '@relay/core';
-import type { InvocationResponse } from '@relay/core';
-import { MockProvider } from '@relay/core/testing';
+import { createOrchestrator, defineFlow, ProviderRegistry, step, z } from '@ganderbite/relay-core';
+import type { InvocationResponse } from '@ganderbite/relay-core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
 
 const canned: InvocationResponse = {
   text: '{}',

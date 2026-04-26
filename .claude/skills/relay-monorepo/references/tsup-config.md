@@ -2,7 +2,7 @@
 
 We bundle each package with `tsup` (esbuild under the hood) instead of running raw `tsc` for emit. tsup is faster, generates `.d.ts` in one pass, and handles subpath exports cleanly.
 
-## Canonical config (library — `@relay/core`)
+## Canonical config (library — `@ganderbite/relay-core`)
 
 ```ts
 // packages/core/tsup.config.ts
@@ -90,15 +90,15 @@ The subpath (`./testing`) maps to the second tsup entry. If you add a third entr
 ## Build commands
 
 ```bash
-pnpm -F @relay/core build         # one-shot build
-pnpm -F @relay/core build --watch # watch mode (dev)
+pnpm -F @ganderbite/relay-core build         # one-shot build
+pnpm -F @ganderbite/relay-core build --watch # watch mode (dev)
 ```
 
 Watch mode is fast — esbuild rebuilds in milliseconds.
 
 ## Common gotchas
 
-- **`@relay/core` is a peer dep of flow packages**, but during local dev you want the workspace version. `workspace:^` handles this — pnpm symlinks the workspace package and tsup resolves it normally.
+- **`@ganderbite/relay-core` is a peer dep of flow packages**, but during local dev you want the workspace version. `workspace:^` handles this — pnpm symlinks the workspace package and tsup resolves it normally.
 - **dts generation can fail on circular type imports.** If you hit this, usually means you re-exported from a module that imports back. Break the cycle by extracting types to a dedicated `types.ts`.
 - **tsup doesn't typecheck.** Run `pnpm -F <pkg> typecheck` separately for `tsc --noEmit`. The `build` script doesn't catch type errors — only the `typecheck` script does.
 - **Don't run tsup and tsc in the same script.** Pick one for emit. We use tsup.

@@ -11,7 +11,7 @@
  * Returns ok(parsed) on success or err(FlowDefinitionError) on failure.
  */
 
-import { err, FlowDefinitionError, ok, type Result, z } from '@relay/core';
+import { err, FlowDefinitionError, ok, type Result, z } from '@ganderbite/relay-core';
 
 // ---------------------------------------------------------------------------
 // Internal type helpers

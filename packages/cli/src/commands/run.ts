@@ -33,7 +33,7 @@ import {
   registerDefaultProviders,
   resolveProvider,
   z,
-} from '@relay/core';
+} from '@ganderbite/relay-core';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
@@ -296,7 +296,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const _require = createRequire(import.meta.url);
   let relayVersion = 'unknown';
   try {
-    const meta: unknown = _require('@relay/cli/package.json');
+    const meta: unknown = _require('@ganderbite/relay/package.json');
     if (
       meta !== null &&
       typeof meta === 'object' &&

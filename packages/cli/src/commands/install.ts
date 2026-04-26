@@ -337,7 +337,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   }
 
   process.stdout.write(
-    green(` ${SYMBOLS.ok} validated flow definition against @relay/core`) + '\n',
+    green(` ${SYMBOLS.ok} validated flow definition against @ganderbite/relay-core`) + '\n',
   );
 
   // ---------------------------------------------------------------------------

@@ -61,7 +61,7 @@ Centered HTML block with `<code>●─▶●─▶●─▶●  relay</code>`, t
 
 The copy kit (`docs/copy-kit.md`) is the canonical source for every public string. If you find drift between the README and the copy kit, the copy kit wins — and you fix the README.
 
-The package.json `description` field on `@relay/core` and `@relay/cli` must match the §18.3 string exactly.
+The package.json `description` field on `@ganderbite/relay-core` and `@ganderbite/relay` must match the §18.3 string exactly.
 
 ## Hard rules
 

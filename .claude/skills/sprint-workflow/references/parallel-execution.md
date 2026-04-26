@@ -67,7 +67,7 @@ All five depend only on task_2 (which shipped in sprint 0). They share no files.
 → Dispatch all 5 in one message.
 
 After the wave returns:
-- pnpm -F @relay/core typecheck
+- pnpm -F @ganderbite/relay-core typecheck
 - All five files exist? Re-exports in src/index.ts visible?
 - code-reviewer pass on src/errors.ts and src/providers/types.ts
   (foundation types — drift here cascades).

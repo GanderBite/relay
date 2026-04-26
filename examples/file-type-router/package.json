@@ -1,5 +1,5 @@
 {
-  "name": "@relay/example-file-type-router",
+  "name": "@ganderbite/example-file-type-router",
   "version": "0.1.0",
   "description": "A branch-step example flow that routes a file path to one of three review prompts based on its extension — .ts, .js, or other.",
   "private": true,
@@ -19,10 +19,10 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "devDependencies": {
-    "@relay/core": "workspace:*",
+    "@ganderbite/relay-core": "workspace:*",
     "typescript": "6.0.3"
   },
   "relay": {

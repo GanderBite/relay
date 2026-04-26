@@ -3,7 +3,7 @@
   "generatedAt": "2026-04-23T12:00:00.000Z",
   "flows": [
     {
-      "name": "@relay/flows-codebase-discovery",
+      "name": "@ganderbite/flows-codebase-discovery",
       "version": "0.1.0",
       "displayName": "Codebase Discovery",
       "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
@@ -17,11 +17,11 @@
         "min": 5,
         "max": 20
       },
-      "npmPackage": "@relay/flows-codebase-discovery",
+      "npmPackage": "@ganderbite/flows-codebase-discovery",
       "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par"
     },
     {
-      "name": "@relay/example-git-log-summary",
+      "name": "@ganderbite/example-git-log-summary",
       "version": "0.1.0",
       "displayName": "Git Log Summary",
       "description": "A two-step example flow that demonstrates step.script(): capture 20 recent git commits, then ask Claude to write a short changelog entry.",
@@ -35,11 +35,11 @@
         "min": 1,
         "max": 3
       },
-      "npmPackage": "@relay/example-git-log-summary",
+      "npmPackage": "@ganderbite/example-git-log-summary",
       "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a "
     },
     {
-      "name": "@relay/example-multi-perspective-review",
+      "name": "@ganderbite/example-multi-perspective-review",
       "version": "0.1.0",
       "displayName": "Multi-Perspective Review",
       "description": "A five-step example flow that demonstrates step.parallel(): three reviewers read the same file in parallel (security, performance, readability), then an aggregation step synthesizes their handoffs into a single report.",
@@ -53,7 +53,7 @@
         "min": 2,
         "max": 8
       },
-      "npmPackage": "@relay/example-multi-perspective-review",
+      "npmPackage": "@ganderbite/example-multi-perspective-review",
       "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd"
     }
   ]

@@ -1,6 +1,6 @@
 ---
 name: cli-ux-engineer
-description: Implements CLI commands and visual output for `@relay/cli` — banners, progress display, command dispatcher, the visual identity module, and every `relay <verb>` command. Use this agent for any task in `packages/cli/src/commands/`, `packages/cli/src/visual.ts`, `packages/cli/src/banner.ts`, `packages/cli/src/progress.ts`, `packages/cli/src/help.ts`, the splash help, glossary, and error-formatting module. CLI output strings must match the product spec verbatim — this agent is the one that knows the brand grammar inside-out.
+description: Implements CLI commands and visual output for `@ganderbite/relay` — banners, progress display, command dispatcher, the visual identity module, and every `relay <verb>` command. Use this agent for any task in `packages/cli/src/commands/`, `packages/cli/src/visual.ts`, `packages/cli/src/banner.ts`, `packages/cli/src/progress.ts`, `packages/cli/src/help.ts`, the splash help, glossary, and error-formatting module. CLI output strings must match the product spec verbatim — this agent is the one that knows the brand grammar inside-out.
 model: sonnet
 color: cyan
 ---

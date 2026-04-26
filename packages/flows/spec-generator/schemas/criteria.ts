@@ -1,4 +1,4 @@
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 export const CriteriaSchema = z.object({
   acceptanceCriteria: z

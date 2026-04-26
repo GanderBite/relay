@@ -2,7 +2,7 @@
 
 ## §1 — Public API
 
-All exports come from `'@relay/core'`.
+All exports come from `'@ganderbite/relay-core'`.
 
 | Export | What it is |
 |---|---|
@@ -143,7 +143,7 @@ Handoffs referenced in `contextFrom` appear as `<c name="handoffId">` blocks. Re
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",            // optional; inferred from defineFlow name
@@ -223,7 +223,7 @@ Note on nested tokens in linear prompt files: `{{{{stepNames[0]}}.result}}` is i
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -247,7 +247,7 @@ Note on nested tokens in linear prompt files: `{{{{stepNames[0]}}.result}}` is i
 **tsconfig.json**
 ```json
 {
-  "extends": "@relay/core/tsconfig.json",
+  "extends": "@ganderbite/relay-core/tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
@@ -259,7 +259,7 @@ Note on nested tokens in linear prompt files: `{{{{stepNames[0]}}.result}}` is i
 
 **flow.ts**
 ```typescript
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: '{{pkgName}}',
@@ -352,7 +352,7 @@ MIT
 {
   "name": "{{pkgName}}",
   "version": "0.1.0",
-  "description": "Three-step linear flow scaffolded from @relay/generator.",
+  "description": "Three-step linear flow scaffolded from @ganderbite/relay-generator.",
   "type": "module",
   "main": "./dist/flow.js",
   "files": [
@@ -368,7 +368,7 @@ MIT
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -395,7 +395,7 @@ MIT
 **tsconfig.json**
 ```json
 {
-  "extends": "@relay/core/tsconfig.json",
+  "extends": "@ganderbite/relay-core/tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./"
@@ -407,7 +407,7 @@ MIT
 
 **flow.ts**
 ```typescript
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: '{{pkgName}}',
@@ -583,7 +583,7 @@ MIT. Copyright Ganderbite.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -635,7 +635,7 @@ MIT. Copyright Ganderbite.
 
 **flow.ts**
 ```typescript
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export default defineFlow({
   name: '{{pkgName}}',
@@ -830,7 +830,7 @@ MIT.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@relay/core": "^1.0.0"
+    "@ganderbite/relay-core": "^1.0.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -859,7 +859,7 @@ MIT.
 **tsconfig.json**
 ```json
 {
-  "extends": "@relay/core/tsconfig.json",
+  "extends": "@ganderbite/relay-core/tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
@@ -871,7 +871,7 @@ MIT.
 
 **flow.ts**
 ```typescript
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 import { EntitiesSchema } from './schemas/entities.js';
 import { InventorySchema } from './schemas/inventory.js';
 
@@ -987,7 +987,7 @@ Return the full HTML document. No commentary, no backticks.
 
 **schemas/inventory.ts**
 ```typescript
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 export const InventorySchema = z.object({
   packages: z.array(
@@ -1007,7 +1007,7 @@ export type Inventory = z.infer<typeof InventorySchema>;
 
 **schemas/entities.ts**
 ```typescript
-import { z } from '@relay/core';
+import { z } from '@ganderbite/relay-core';
 
 export const EntitiesSchema = z.object({
   entities: z.array(

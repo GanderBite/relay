@@ -31,7 +31,7 @@ node-linker=isolated
 ```
 
 - `save-exact`: reproducible installs.
-- `strict-peer-dependencies=false`: flow packages declare `@relay/core` as a peer; we don't want install to fail when versions are within range but not strictly equal.
+- `strict-peer-dependencies=false`: flow packages declare `@ganderbite/relay-core` as a peer; we don't want install to fail when versions are within range but not strictly equal.
 - `auto-install-peers=true`: convenience for users installing single flow packages.
 - `shamefully-hoist=false`: keep the strict pnpm graph.
 - `node-linker=isolated`: each package gets its own `node_modules`. Slower install, much fewer cross-package surprises.
@@ -61,13 +61,13 @@ node-linker=isolated
 | Goal | Command |
 |---|---|
 | Install everything | `pnpm install` |
-| Add dep to one package | `pnpm -F @relay/core add zod` |
+| Add dep to one package | `pnpm -F @ganderbite/relay-core add zod` |
 | Add dev dep to root | `pnpm add -D -w typescript` |
-| Run script in one package | `pnpm -F @relay/core build` |
+| Run script in one package | `pnpm -F @ganderbite/relay-core build` |
 | Run script everywhere | `pnpm -r --parallel build` |
-| Run script in package + dependents | `pnpm -F @relay/core... build` |
-| Run script in package + dependencies | `pnpm -F ...@relay/cli build` |
-| Execute a binary | `pnpm -F @relay/cli exec relay --version` |
+| Run script in package + dependents | `pnpm -F @ganderbite/relay-core... build` |
+| Run script in package + dependencies | `pnpm -F ...@ganderbite/relay build` |
+| Execute a binary | `pnpm -F @ganderbite/relay exec relay --version` |
 | Lockfile-only update | `pnpm install --lockfile-only` |
 | Outdated check | `pnpm outdated -r` |
 
@@ -75,10 +75,10 @@ node-linker=isolated
 
 ```json
 "dependencies": {
-  "@relay/core": "workspace:^",      // any version satisfying current major
-  "@relay/core": "workspace:~",      // any version satisfying current minor
-  "@relay/core": "workspace:*",      // any version (use sparingly)
-  "@relay/core": "workspace:0.1.0"   // exact in workspace, rewritten on publish
+  "@ganderbite/relay-core": "workspace:^",      // any version satisfying current major
+  "@ganderbite/relay-core": "workspace:~",      // any version satisfying current minor
+  "@ganderbite/relay-core": "workspace:*",      // any version (use sparingly)
+  "@ganderbite/relay-core": "workspace:0.1.0"   // exact in workspace, rewritten on publish
 }
 ```
 

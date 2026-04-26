@@ -1,5 +1,5 @@
 /**
- * @relay/core — Provider and invocation interface types
+ * @ganderbite/relay-core — Provider and invocation interface types
  *
  * The full set of provider abstraction types: capabilities, auth state,
  * invocation request/response/context, streaming events, and the Provider

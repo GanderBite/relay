@@ -13,7 +13,7 @@ Read `_work/sprint-<SPRINT_NUMBER>.code_review.md` end-to-end. Validate every BL
 <context>
 - Review artifact: `_work/sprint-<SPRINT_NUMBER>.code_review.md` — read it in full before any dispatch. The user has filled `Decision:` on every BLOCK and FLAG before invoking this prompt.
 - Source sprint backlog (for cross-reference only): `_work/sprint-<SPRINT_NUMBER>.json`. Do NOT edit it.
-- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names in this older spec say `@pipelinekit/*`; the real names are `@relay/*`).
+- Technical spec: `_specs/pipelinekit-tech_spec.md` (package names in this older spec say `@pipelinekit/*`; the real names are `@ganderbite/*`).
 - Product spec: `_specs/relay-product_spec.md` — wins on every user-visible string.
 - Working notes: `/Users/michalgasiorek/Projekty/ganderbite/relay/CLAUDE.md`.
 - Hard rules from CLAUDE.md apply: no emojis anywhere, the word "simply" is banned in user copy, subscription billing is the default, ESM-only.

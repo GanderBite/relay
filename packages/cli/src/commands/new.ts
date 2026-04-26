@@ -3,7 +3,11 @@ import { stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { type ScaffoldReport, scaffoldFlow, type TemplateId } from '@relay/generator/scaffold';
+import {
+  type ScaffoldReport,
+  scaffoldFlow,
+  type TemplateId,
+} from '@ganderbite/relay-generator/scaffold';
 import { MARK, SYMBOLS } from '../brand.js';
 import { green, red } from '../color.js';
 import { EXIT_CODES } from '../exit-codes.js';

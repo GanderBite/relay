@@ -12,7 +12,7 @@ Audit sprint <SPRINT_NUMBER> after the fact. Verify every task committed atomica
 
 <context>
 - Sprint backlog: `_work/sprint-<SPRINT_NUMBER>.json`.
-- Technical spec: `_specs/pipelinekit-tech_spec.md` (real package names are `@relay/*`).
+- Technical spec: `_specs/pipelinekit-tech_spec.md` (real package names are `@ganderbite/*`).
 - Product spec: `_specs/relay-product_spec.md` — wins on user-visible strings; the reviewer checks against it.
 - Working notes: `/Users/michalgasiorek/Projekty/ganderbite/relay/CLAUDE.md`.
 - Use this template when: the sprint finished in a previous session, the user rebased or resolved conflicts, or the user wants a fresh external audit before moving to the next sprint.

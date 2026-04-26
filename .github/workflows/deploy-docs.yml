@@ -28,7 +28,7 @@ jobs:
           cache: pnpm
       - uses: actions/configure-pages@v5
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @relay/docs build
+      - run: pnpm --filter @ganderbite/docs build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/docs/dist

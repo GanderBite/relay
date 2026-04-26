@@ -1,4 +1,4 @@
-# @relay/generator
+# @ganderbite/relay-generator
 
 The Claude Code skill and scaffold engine that generates new flow packages.
 
@@ -6,7 +6,7 @@ The Claude Code skill and scaffold engine that generates new flow packages.
 
 ## What it does
 
-`@relay/generator` creates a well-formed flow package directory from a layout name
+`@ganderbite/relay-generator` creates a well-formed flow package directory from a layout name
 and a flow name. It produces `flow.ts`, a `prompts/` directory, a `package.json`
 with the `relay` metadata block, a `tsconfig.json`, and a `README.md` that matches
 the mandatory sections in `docs/flow-package-format.md`.
@@ -18,10 +18,10 @@ The generator runs as a Claude Code skill (invocable from within the CLI via
 
 ## Install
 
-`@relay/generator` is included when you install `@relay/cli`:
+`@ganderbite/relay-generator` is included when you install `@ganderbite/relay`:
 
 ```bash
-npm install -g @relay/cli
+npm install -g @ganderbite/relay
 ```
 
 ---
@@ -71,7 +71,7 @@ The generator writes a directory that passes catalog lint:
 ├── prompts/          # one .md file per step
 ├── schemas/          # placeholder for Zod schema files
 ├── README.md         # mandatory sections pre-filled
-└── tsconfig.json     # extends @relay/core/tsconfig
+└── tsconfig.json     # extends @ganderbite/relay-core/tsconfig
 ```
 
 See `docs/flow-package-format.md` for the full format reference.

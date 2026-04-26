@@ -25,10 +25,10 @@ pnpm -r test
 
 ```bash
 # Run tests for one package
-pnpm -F @relay/core test
+pnpm -F @ganderbite/relay-core test
 
 # Typecheck one package without running tests
-pnpm -F @relay/cli typecheck
+pnpm -F @ganderbite/relay typecheck
 ```
 
 ---
@@ -51,8 +51,8 @@ Full rules live in [`docs/naming-conventions.md`](docs/naming-conventions.md). T
 
 **TypeScript** — strict mode throughout. ESM only (`"type": "module"`). Node >= 20.10. TypeScript 5.4+. No `any`, no `as` casts, no `// @ts-ignore`. Import extensions must be explicit (`.js` for compiled output).
 
-**Error handling** — all fallible functions return `Result<T, E>` via [neverthrow](https://github.com/supermacro/neverthrow). Throwing is forbidden across `@relay/core`. Callers pattern-match on `result.isOk()` / `result.isErr()`.
+**Error handling** — all fallible functions return `Result<T, E>` via [neverthrow](https://github.com/supermacro/neverthrow). Throwing is forbidden across `@ganderbite/relay-core`. Callers pattern-match on `result.isOk()` / `result.isErr()`.
 
-**File writes** — any file another process might read (`state.json`, handoffs, metrics) must use the `atomicWriteJson` helper from `@relay/core`. No direct `fs.writeFile` on shared state.
+**File writes** — any file another process might read (`state.json`, handoffs, metrics) must use the `atomicWriteJson` helper from `@ganderbite/relay-core`. No direct `fs.writeFile` on shared state.
 
 **Naming** — the canonical nouns are Flow, Step, and Handoff. See `docs/naming-conventions.md` for the full words-to-avoid list.

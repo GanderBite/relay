@@ -5,7 +5,7 @@
  * imported from brand.ts, color.ts, and layout.ts — never defined here.
  */
 
-import type { AuthState, CostEstimate } from '@relay/core';
+import type { AuthState, CostEstimate } from '@ganderbite/relay-core';
 import { flowHeader, SYMBOLS, WORDMARK } from './brand.js';
 import { gray, green, red } from './color.js';
 import { fmtCost, fmtDuration } from './format.js';

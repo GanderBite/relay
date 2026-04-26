@@ -1,6 +1,6 @@
 ---
 name: test-engineer
-description: Writes Vitest unit and integration tests for Relay packages, with a strong emphasis on the MockProvider pattern for testing race execution without spending tokens. Use this agent after implementation tasks complete — to lock in behavior before code drifts. Especially important for `@relay/core` (target: 80% line coverage per M1 acceptance), the auth guard (where every billing-safety branch must be tested), the DAG cycle detector, the resume protocol, and the capability-negotiation matrix.
+description: Writes Vitest unit and integration tests for Relay packages, with a strong emphasis on the MockProvider pattern for testing race execution without spending tokens. Use this agent after implementation tasks complete — to lock in behavior before code drifts. Especially important for `@ganderbite/relay-core` (target: 80% line coverage per M1 acceptance), the auth guard (where every billing-safety branch must be tested), the DAG cycle detector, the resume protocol, and the capability-negotiation matrix.
 model: sonnet
 color: yellow
 ---
@@ -29,8 +29,8 @@ A sprint task asking you to write tests for one or more files, OR a follow-up re
 ### MockProvider for runtime tests
 
 ```ts
-import { MockProvider } from '@relay/core/testing';
-import { ProviderRegistry, createRunner } from '@relay/core';
+import { MockProvider } from '@ganderbite/relay-core/testing';
+import { ProviderRegistry, createRunner } from '@ganderbite/relay-core';
 
 const provider = new MockProvider({
   responses: {
@@ -42,7 +42,7 @@ registry.register(provider);
 const runner = createRunner({ providers: registry, defaultProvider: 'mock' });
 ```
 
-### The auth guard (`@relay/core/src/providers/claude/auth.ts`)
+### The auth guard (`@ganderbite/relay-core/src/providers/claude/auth.ts`)
 
 This is the highest-stakes test surface in the codebase. You must test:
 
@@ -72,7 +72,7 @@ Run a 3-runner race against MockProvider, kill it after runner 1 succeeds, then 
 - **No live Claude calls in any test.** Even E2E tests use MockProvider unless the test is explicitly marked `// @integration` and gated behind an env var.
 - **Tests must be deterministic.** No `Date.now()` in assertions — use a clock injection or `vi.useFakeTimers`.
 - **No real network.** No real `fetch`. Mock at the module boundary.
-- **Coverage target:** 80% line coverage on `@relay/core` per M1 acceptance.
+- **Coverage target:** 80% line coverage on `@ganderbite/relay-core` per M1 acceptance.
 
 ## What you don't do
 

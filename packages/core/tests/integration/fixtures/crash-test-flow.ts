@@ -8,10 +8,10 @@
  *   - The child harness (via --experimental-strip-types) at run start
  *   - The parent test (via Vitest's module step) inside Orchestrator.resume()()
  *
- * Both import paths resolve @relay/core to the compiled dist because this
- * file lives under packages/core, which is the @relay/core package root.
+ * Both import paths resolve @ganderbite/relay-core to the compiled dist because this
+ * file lives under packages/core, which is the @ganderbite/relay-core package root.
  */
-import { defineFlow, step, z } from '@relay/core';
+import { defineFlow, step, z } from '@ganderbite/relay-core';
 
 export const flow = defineFlow({
   name: 'crash-test-flow',

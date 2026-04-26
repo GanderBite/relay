@@ -120,7 +120,7 @@ After writing all files, run these checks. Fix any failures before printing the 
 
 1. Run `grep -r '{{pkgName}}' ./<flow-name>/` — must return no matches. If any remain, the substitution missed a file; fix it.
 2. Run `grep -r '{{stepNames' ./<flow-name>/` — must return no matches. If any remain, fix the substitution.
-3. Confirm `flow.ts` contains `import { defineFlow, step, z } from '@relay/core'` — if missing, the file is incorrect.
+3. Confirm `flow.ts` contains `import { defineFlow, step, z } from '@ganderbite/relay-core'` — if missing, the file is incorrect.
 4. Confirm `package.json` is valid JSON — run `node -e "JSON.parse(require('fs').readFileSync('./<flow-name>/package.json','utf8'))"` — exit code must be 0.
 5. Confirm no reserved step name (`input`, `output`, `run`, `state`) appears as a key in the `steps` object in flow.ts.
 
@@ -156,8 +156,8 @@ Every flow package the scaffolder emits has this shape (§7.1):
 
 ```
 <flow-name>/
-├── package.json         # name, version, dep on @relay/core, relay metadata block
-├── tsconfig.json        # extends @relay/core/tsconfig (or full compilerOptions for fan-out)
+├── package.json         # name, version, dep on @ganderbite/relay-core, relay metadata block
+├── tsconfig.json        # extends @ganderbite/relay-core/tsconfig (or full compilerOptions for fan-out)
 ├── flow.ts              # defineFlow() — default export
 ├── prompts/
 │   ├── 01_<step>.md
@@ -171,8 +171,8 @@ Every flow package the scaffolder emits has this shape (§7.1):
 </output_contract>
 
 <not_in_scope>
-- Does not build or modify `@relay/core`. It only emits flow packages.
-- Does not run the flow. That is the `relay run` command in `@relay/cli`.
+- Does not build or modify `@ganderbite/relay-core`. It only emits flow packages.
+- Does not run the flow. That is the `relay run` command in `@ganderbite/relay`.
 - Does not install dependencies. The user runs `pnpm install` (or `npm install`) inside the new directory after scaffolding.
 - Does not edit existing flow packages. Use `Read`/`Write` directly for that.
 - Does not publish to npm. That is the `relay publish` command.
