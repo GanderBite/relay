@@ -15,13 +15,13 @@ Runs on your Pro/Max subscription — no surprise API bills.
 npm install -g @relay/cli
 relay init                                # choose claude-cli for subscription billing
 relay doctor                              # check your environment
-relay run codebase-discovery .            # ship a real artifact
+relay run codebase-discovery --repoPath=.  # ship a real artifact
 ```
 
 Running `relay init` writes your provider choice to `~/.relay/settings.json`. Without
 it the CLI exits with `NoProviderConfiguredError` before any step executes.
 
-`relay doctor` tells you if your environment is safe to run. `relay run codebase-discovery .`
+`relay doctor` tells you if your environment is safe to run. `relay run codebase-discovery --repoPath=.`
 produces an HTML report describing this repo — in about 12 minutes,
 for about $0.40 (estimated API equivalent; billed to your subscription).
 
@@ -54,6 +54,13 @@ for about $0.40 (estimated API equivalent; billed to your subscription).
 
 The catalog at `packages/flows/` contains reference flows. Install any flow with `relay install <name>`.
 Browse available flows with `relay list`.
+
+| Flow | What it produces | Time | Cost (est.) |
+|---|---|---|---|
+| `codebase-discovery` | HTML report of packages, entities, and services | 5–20 min | $0.20–$0.80 |
+| `onboarding-guide` | Audience-specific HTML onboarding guide (developer/pm/qa/client) | 10–30 min | $0.30–$1.20 |
+| `release-notes` | Changelog, what's-new, and marketing highlights from a git ref range | 5–15 min | $0.10–$0.50 |
+| `spec-generator` | Structured Markdown specification from a plain-language description | 2–10 min | $0.05–$0.30 |
 
 ## License
 
