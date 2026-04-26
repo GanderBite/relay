@@ -31,7 +31,7 @@ relay init      # write provider choice to ~/.relay/settings.json
 relay doctor    # confirm Node, claude binary, auth state, and .relay dir
 ```
 
-Without `relay init` the CLI exits with `NoProviderConfiguredError` (exit 2)
+Without `relay init` the CLI exits with `NoProviderConfiguredError` (exit 6)
 before any step executes.
 
 ---
@@ -100,18 +100,21 @@ checkpoint  the saved state of a run after each step completes
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | General error |
-| 2 | `NoProviderConfiguredError` — run `relay init` |
-| 3 | `ClaudeAuthError` — API key guard; see `docs/billing-safety.md` |
-| 4 | `FlowDefinitionError` — malformed flow package |
-| 5 | Step failure |
+| 1 | Runner failure — step error or unexpected exception |
+| 2 | `FlowDefinitionError` or `ProviderCapabilityError` — malformed flow package |
+| 3 | Auth error — `SubscriptionAuthError` or `ProviderAuthError`; see `docs/billing-safety.md` |
+| 4 | `HandoffSchemaError` — handoff data did not match the declared schema |
+| 5 | Timeout — `TimeoutError` or `AuthTimeoutError` |
+| 6 | `NoProviderConfiguredError` — run `relay init` |
+| 7 | I/O error — `AtomicWriteError` writing checkpoint or state |
+| 8 | Rate limited — `ProviderRateLimitError` |
 
 ---
 
 ## Billing safety
 
 Relay runs on your Claude subscription. Run `claude /login` once to authenticate.
-The CLI exits with code 3 (`ClaudeAuthError`) if subscription credentials are
+The CLI exits with code 3 (auth error) if subscription credentials are
 not found before any step executes. See `docs/billing-safety.md` for CI guidance.
 
 ---
