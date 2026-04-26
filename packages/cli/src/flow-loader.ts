@@ -188,7 +188,7 @@ export async function loadFlow(
   // ---- (1) Path-like: resolve to absolute and import directly ----
   if (looksLikePath(nameOrPath)) {
     const absPath = resolve(cwd, nameOrPath);
-    const dir = absPath.endsWith('.js') ? resolve(absPath, '..', '..') : absPath;
+    const dir = /\.(c|m)?js$/.test(absPath) ? resolve(absPath, '..', '..') : absPath;
     return importFlow(dir, 'path');
   }
 
