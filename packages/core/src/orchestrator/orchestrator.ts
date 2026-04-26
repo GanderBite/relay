@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { CostTracker } from '../cost.js';
 import {
@@ -739,10 +739,20 @@ export class Orchestrator {
     // root. The flow package is still read from its original flowDir — only
     // the subprocess cwd is rebased.
     const rel = relative(gitRoot, probeDir);
-    const worktreeCwd =
+    const candidate =
       rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
         ? join(worktreePath, rel)
         : worktreePath;
+
+    // Untracked flow directories won't exist inside the worktree — fall back to
+    // the worktree root so the subprocess cwd is always a real path.
+    let worktreeCwd: string;
+    try {
+      await access(candidate);
+      worktreeCwd = candidate;
+    } catch {
+      worktreeCwd = worktreePath;
+    }
 
     return { worktreePath, gitRoot, worktreeCwd };
   }

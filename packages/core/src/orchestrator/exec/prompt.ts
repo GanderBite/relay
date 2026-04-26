@@ -202,6 +202,8 @@ async function runProviderInvocation(args: {
           capturedCostUsd = event.costUsd;
           capturedSessionId = event.sessionId;
           break;
+        case 'stream.error':
+          throw event.error;
         default:
           break;
       }

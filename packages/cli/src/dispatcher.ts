@@ -118,6 +118,7 @@ export function buildProgram(): Command {
   program
     .command('run <flow> [input...]')
     .description('run a flow')
+    .allowUnknownOption(true)
     .option('--provider <name>', 'provider to use (overrides settings)')
     .option('--fresh', 'start a new run, ignoring any cached state')
     .option('--no-worktree', 'disable per-run git worktree isolation')
