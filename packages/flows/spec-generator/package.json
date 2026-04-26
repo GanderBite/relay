@@ -1,0 +1,54 @@
+{
+  "name": "@relay/flows-spec-generator",
+  "version": "0.1.0",
+  "description": "Generates a structured feature specification from a plain-language description.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "exports": {
+    ".": {
+      "import": "./dist/flow.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no unit tests — run relay test . with relay installed'"
+  },
+  "peerDependencies": {
+    "@relay/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "typescript": "6.0.3"
+  },
+  "relay": {
+    "flowName": "spec-generator",
+    "displayName": "spec-generator",
+    "tags": [
+      "linear",
+      "pipeline",
+      "spec",
+      "documentation"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.05,
+      "max": 0.3
+    },
+    "estimatedDurationMin": {
+      "min": 2,
+      "max": 10
+    },
+    "audience": [
+      "dev",
+      "pm"
+    ]
+  }
+}
