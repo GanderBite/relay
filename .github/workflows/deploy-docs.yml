@@ -26,6 +26,7 @@ jobs:
         uses: withastro/action@v6
         with:
           path: apps/docs
+          package-manager: pnpm@10.7.0
           # Copy catalog/registry.json into the Astro output so it is served
           # at https://ganderbite.github.io/relay/registry.json
           build-cmd: pnpm run build && cp ../../catalog/registry.json dist/registry.json
