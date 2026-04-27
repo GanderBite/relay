@@ -1,23 +1,28 @@
 # npm-publish.yml
 #
-# Publishes @ganderbite/relay-core, @ganderbite/relay, and @ganderbite/relay-generator to npm on every
-# push to main that bumps one or more package versions. The step is
-# idempotent: packages whose local version already exists on npm are
-# silently skipped.
+# Publishes all packages to npm on every push to main that bumps one or more
+# package versions. The step is idempotent: packages whose local version
+# already exists on npm are silently skipped.
 #
-# Authentication — Trusted Publishing (no secrets required)
-# ──────────────────────────────────────────────────────────
-# This workflow uses npm Trusted Publishing (OIDC). No NPM_TOKEN secret is
-# needed. Before this workflow can publish, each package must have a Trusted
-# Publisher configured on npmjs.com:
+# Authentication — two-phase
+# ──────────────────────────
+# Phase 1 (bootstrap — new packages only):
+#   A new npm package cannot use OIDC until a Trusted Publisher grant exists
+#   for it on npmjs.com, and that grant can only be created after the package
+#   first exists in the registry. To break this chicken-and-egg: add an npm
+#   Automation token as the NPM_TOKEN repository secret, trigger the workflow
+#   once, then configure Trusted Publishing for the new packages and delete
+#   the secret. When NPM_TOKEN is set it overrides OIDC for all publishes in
+#   that run; when it is absent or empty npm falls back to OIDC.
 #
-#   https://www.npmjs.com/package/<pkg-name> -> Settings -> Trusted Publishing
-#     Repository owner : ganderbite
-#     Repository name  : relay
-#     Workflow filename: npm-publish.yml
-#
-# The id-token: write permission below is required for the OIDC handshake.
-# npm >=9.5 is required; the node setup step brings a compatible version.
+# Phase 2 (steady state — no secrets required):
+#   Each package must have a Trusted Publisher configured on npmjs.com:
+#     https://www.npmjs.com/package/<pkg-name> -> Settings -> Trusted Publishing
+#       Repository owner : ganderbite
+#       Repository name  : relay
+#       Workflow filename: npm-publish.yml
+#   The id-token: write permission below is required for the OIDC handshake.
+#   npm >=9.5 is required; the node setup step brings a compatible version.
 #
 # Partial-publish recovery
 # ────────────────────────
@@ -83,6 +88,10 @@ jobs:
       # pre-releases). If it is, the package is skipped. This makes the
       # workflow safe to re-run without hitting EPUBLISHCONFLICT.
       - name: Publish packages
+        env:
+          # Set by the NPM_TOKEN secret during the bootstrap phase.
+          # When empty (secret absent or deleted), npm uses OIDC instead.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
