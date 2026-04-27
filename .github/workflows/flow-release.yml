@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: flow-release-${{ github.ref }}
+  group: flow-release-registry
   cancel-in-progress: false
 
 jobs:
