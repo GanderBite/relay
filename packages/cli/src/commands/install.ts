@@ -343,6 +343,29 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   process.stdout.write(green(` ${SYMBOLS.ok} unpacked to ./.relay/flows/${name}/`) + '\n');
 
   // ---------------------------------------------------------------------------
+  // Step 2b — install peer dependencies
+  // ---------------------------------------------------------------------------
+  // The flow's dist/flow.js imports @ganderbite/relay-core at runtime. Installing
+  // peer deps locally makes the flow self-contained so it can be imported from
+  // any directory, not only from projects that already have relay-core installed.
+  try {
+    const peerPkgRaw = await fs.readFile(path.join(flowDir, 'package.json'), 'utf8');
+    const peerPkgObj = JSON.parse(peerPkgRaw) as Record<string, unknown>;
+    const peers = peerPkgObj['peerDependencies'];
+    if (peers !== null && typeof peers === 'object' && !Array.isArray(peers)) {
+      const peerArgs = Object.entries(peers as Record<string, string>).map(
+        ([dep, ver]) => `${dep}@${ver}`,
+      );
+      if (peerArgs.length > 0) {
+        await execFileAsync('npm', ['install', '--prefix', flowDir, '--no-save', ...peerArgs]);
+        process.stdout.write(green(` ${SYMBOLS.ok} installed peer dependencies`) + '\n');
+      }
+    }
+  } catch {
+    // Non-fatal — peer deps may be satisfied by the host project's node_modules.
+  }
+
+  // ---------------------------------------------------------------------------
   // Step 3 — compile flow.ts if needed
   // ---------------------------------------------------------------------------
   // A pre-compiled package will already have dist/flow.js.
