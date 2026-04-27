@@ -1,56 +1,26 @@
 import { defineConfig } from 'tsup';
 
-// cli.ts uses a dynamic import() with a template literal to load commands at
-// runtime (`import(\`./commands/${name}.js\`)`). tsup's bundler transforms this
-// into an empty __glob({}) map, which fails at runtime.
+// dispatcher.ts uses static () => import('./commands/X.js') entries so esbuild
+// can analyze each path and emit them as lazy split-chunks. This replaces the
+// previous bundle: false approach (which required transpiling every source file
+// individually to preserve template-literal dynamic imports).
 //
-// The fix: transpile all CLI source files without bundling them (bundle: false).
-// Each file is emitted as its own .js in dist/ mirroring the src/ layout.
-// Node.js resolves the dynamic import() natively against the emitted files.
-// The commands are listed as separate entries so they appear in dist/commands/.
+// relay-core is inlined (noExternal) to eliminate the external npm dependency.
+// Its CJS dependencies — pino, pino-pretty, handlebars — are kept external so
+// Node.js loads them natively, avoiding the ESM-in-CJS dynamic-require issue
+// (esbuild cannot inject a createRequire shim into a shared split-chunk).
+// Those packages are declared directly in CLI's dependencies.
 
 export default defineConfig({
-  entry: [
-    'src/cli.ts',
-    'src/brand.ts',
-    'src/color.ts',
-    'src/format.ts',
-    'src/layout.ts',
-    'src/util/path.ts',
-    'src/banner.ts',
-    'src/dispatcher.ts',
-    'src/exit-codes.ts',
-    'src/flow-loader.ts',
-    'src/input-parser.ts',
-    'src/lint.ts',
-    'src/progress.ts',
-    'src/registry.ts',
-    'src/telemetry.ts',
-    'src/visual.ts',
-    'src/help.ts',
-    'src/paused-banner.ts',
-    'src/commands/doctor.ts',
-    'src/commands/init.ts',
-    'src/commands/install.ts',
-    'src/commands/list.ts',
-    'src/commands/new.ts',
-    'src/commands/publish.ts',
-    'src/commands/resume.ts',
-    'src/commands/run.ts',
-    'src/commands/runs.ts',
-    'src/commands/search.ts',
-    'src/commands/test.ts',
-    'src/commands/upgrade.ts',
-    'src/commands/logs.ts',
-    'src/commands/glossary.ts',
-    'src/commands/config.ts',
-  ],
+  entry: ['src/cli.ts'],
   format: ['esm'],
   dts: true,
   clean: true,
   sourcemap: true,
   target: 'es2022',
-  shims: false,
-  bundle: false,
+  splitting: true,
+  bundle: true,
+  noExternal: ['@ganderbite/relay-core'],
+  external: ['pino', 'pino-pretty', 'handlebars'],
   outDir: 'dist',
 });

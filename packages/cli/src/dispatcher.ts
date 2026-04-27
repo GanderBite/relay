@@ -29,16 +29,36 @@ function looksLikeFlowRef(arg: string): boolean {
   return arg.length > 0 && !arg.startsWith('-');
 }
 
-/**
- * Dynamically import a command handler module from `./commands/<name>.js`.
- * Real handlers are wired in later sprints; the directory holds stubs until then.
- */
+// Static map so esbuild can analyze each path and emit them as lazy split-chunks.
+// A template-literal import(`./commands/${name}.js`) would be transformed into an
+// empty __glob({}) map by the bundler, breaking runtime dispatch.
+const COMMAND_LOADERS: Record<
+  string,
+  () => Promise<{ default: (args: unknown[], opts: unknown) => Promise<void> }>
+> = {
+  init: () => import('./commands/init.js'),
+  list: () => import('./commands/list.js'),
+  search: () => import('./commands/search.js'),
+  install: () => import('./commands/install.js'),
+  run: () => import('./commands/run.js'),
+  resume: () => import('./commands/resume.js'),
+  runs: () => import('./commands/runs.js'),
+  upgrade: () => import('./commands/upgrade.js'),
+  doctor: () => import('./commands/doctor.js'),
+  new: () => import('./commands/new.js'),
+  publish: () => import('./commands/publish.js'),
+  test: () => import('./commands/test.js'),
+  logs: () => import('./commands/logs.js'),
+  glossary: () => import('./commands/glossary.js'),
+  config: () => import('./commands/config.js'),
+};
+
 async function loadCommand(
   name: string,
 ): Promise<(args: unknown[], opts: unknown) => Promise<void>> {
-  const mod = (await import(`./commands/${name}.js`)) as {
-    default: (args: unknown[], opts: unknown) => Promise<void>;
-  };
+  const loader = COMMAND_LOADERS[name];
+  if (!loader) throw new Error(`Unknown command: ${name}`);
+  const mod = await loader();
   return mod.default;
 }
 
