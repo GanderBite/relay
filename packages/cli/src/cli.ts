@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { CommanderError } from 'commander';
 import { z } from 'zod';
 import { MARK } from './brand.js';
@@ -14,10 +15,13 @@ export { generateRegistryJson } from './registry.js';
 // Indent for --version continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
 
-function resolveVersion(pkg: string): string {
+// Read version from the package.json sitting one level above dist/cli.js.
+// createRequire('@ganderbite/relay/package.json') cannot resolve the package by
+// its own scoped name from within its own dist directory.
+function resolveVersion(): string {
   try {
-    const req = createRequire(import.meta.url);
-    const meta: unknown = req(`${pkg}/package.json`);
+    const pkgPath = fileURLToPath(new URL('../package.json', import.meta.url));
+    const meta: unknown = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const parsed = z.object({ version: z.string() }).passthrough().safeParse(meta);
     return parsed.success ? parsed.data.version : 'unknown';
   } catch {
@@ -37,8 +41,9 @@ function resolveClaudeVersion(): string {
 }
 
 function printVersion(): void {
-  const cliVer = resolveVersion('@ganderbite/relay');
-  const coreVer = resolveVersion('@ganderbite/relay-core');
+  const cliVer = resolveVersion();
+  // relay-core is bundled inline — its version always matches the CLI.
+  const coreVer = cliVer;
   const nodeVer = process.version.replace(/^v/, '');
   const claudeVer = resolveClaudeVersion();
 
