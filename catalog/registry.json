@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-26T00:00:00.000Z",
+  "generatedAt": "2026-04-27T18:10:00.000Z",
   "flows": [
     {
       "name": "@ganderbite/flow-codebase-discovery",
@@ -18,7 +18,73 @@
         "max": 20
       },
       "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par",
-      "dist": { "tarball": "", "shasum": "" }
+      "dist": {
+        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-codebase-discovery-v0.1.0/ganderbite-flow-codebase-discovery-0.1.0.tgz",
+        "shasum": "d4d56ac4eab20524b1cd572b419a4b2ce16ded1fed7004e38b8eb7a7dcc5314a"
+      }
+    },
+    {
+      "name": "@ganderbite/flow-onboarding-guide",
+      "version": "0.1.0",
+      "displayName": "Onboarding Guide",
+      "description": "Scans a project directory and produces an audience-specific HTML onboarding guide.",
+      "tags": ["discovery", "documentation", "onboarding"],
+      "audience": ["pm", "dev"],
+      "estimatedCostUsd": {
+        "min": 0.3,
+        "max": 1.2
+      },
+      "estimatedDurationMin": {
+        "min": 10,
+        "max": 30
+      },
+      "readmeExcerpt": "onboarding-guide\n\nScans a project directory and produces an audience-specific HTML onboarding guide.",
+      "dist": {
+        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-onboarding-guide-v0.1.0/ganderbite-flow-onboarding-guide-0.1.0.tgz",
+        "shasum": "a52ff8a553c5ff389aa93de701a568e66bd063b033f9cb102ef6424e0400e1e1"
+      }
+    },
+    {
+      "name": "@ganderbite/flow-release-notes",
+      "version": "0.1.0",
+      "displayName": "Release Notes Generator",
+      "description": "Produces a technical changelog, user-facing what's new doc, and marketing highlights brief from a git commit range.",
+      "tags": ["fan-out", "parallel", "git", "changelog", "release"],
+      "audience": ["dev", "pm"],
+      "estimatedCostUsd": {
+        "min": 0.1,
+        "max": 0.5
+      },
+      "estimatedDurationMin": {
+        "min": 5,
+        "max": 15
+      },
+      "readmeExcerpt": "release-notes\n\nTakes a git ref range and produces three parallel release artifacts in one run: a developer changelog, a user-facing what's new document, and a marketing highlights brief. A final cross-check step verifies consistency across all three outputs.",
+      "dist": {
+        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-release-notes-v0.1.0/ganderbite-flow-release-notes-0.1.0.tgz",
+        "shasum": "553a89fcaf246ea723f3c6c68d1a7a7feb61297217c015274f4979004c08ed67"
+      }
+    },
+    {
+      "name": "@ganderbite/flow-spec-generator",
+      "version": "0.1.0",
+      "displayName": "Spec Generator",
+      "description": "Generates a structured feature specification from a plain-language description.",
+      "tags": ["linear", "pipeline", "spec", "documentation"],
+      "audience": ["dev", "pm"],
+      "estimatedCostUsd": {
+        "min": 0.05,
+        "max": 0.3
+      },
+      "estimatedDurationMin": {
+        "min": 2,
+        "max": 10
+      },
+      "readmeExcerpt": "spec-generator\n\nGenerates a structured feature specification from a plain-language description.",
+      "dist": {
+        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-spec-generator-v0.1.0/ganderbite-flow-spec-generator-0.1.0.tgz",
+        "shasum": "999858524a3e653cca535dc57839671afa87c33c781bcb34f5390b7ef37bfb8e"
+      }
     },
     {
       "name": "@ganderbite/example-git-log-summary",
