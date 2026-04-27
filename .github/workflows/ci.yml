@@ -8,9 +8,8 @@
 #
 # Node version note
 # -----------------
-# The root package.json specifies engines.node ">=20.10". This workflow uses
-# node-version: '22' — the current LTS as of 2026. Update this value when a
-# newer LTS becomes available.
+# The root package.json specifies engines.node ">=25.8.0". This workflow uses
+# node-version: '25'. Update this value when the minimum version changes.
 
 name: CI
 
@@ -44,10 +43,10 @@ jobs:
         uses: pnpm/action-setup@v4
 
       # ── 3. Node setup ────────────────────────────────────────────────────
-      - name: Set up Node 22
+      - name: Set up Node 25
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           cache: 'pnpm'
 
       # ── 4. Install workspace dependencies ────────────────────────────────

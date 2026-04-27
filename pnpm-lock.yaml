@@ -12,8 +12,8 @@ importers:
         specifier: 2.4.12
         version: 2.4.12
       '@types/node':
-        specifier: ^20.10.0
-        version: 20.19.39
+        specifier: ^25.0.0
+        version: 25.6.0
       lefthook:
         specifier: ^2.1.6
         version: 2.1.6
@@ -3130,7 +3130,6 @@ snapshots:
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
-    optional: true
 
   '@types/semver@7.7.1': {}
 
@@ -4793,8 +4792,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.19.2:
-    optional: true
+  undici-types@7.19.2: {}
 
   unified@11.0.5:
     dependencies:

@@ -62,11 +62,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          # packages/*/package.json require node>=25.8, but GitHub Actions
-          # hosted runners do not yet ship Node 25. Node 22 (LTS) is used
-          # here for CI purposes; the published dist targets the engines
-          # constraint declared in each package.json.
-          node-version: '22'
+          node-version: '25'
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
