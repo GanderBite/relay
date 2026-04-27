@@ -38,13 +38,13 @@
     "commander": "13.1.0",
     "log-update": "^7.2.0",
     "semver": "^7.7.4",
-    "tar": "^6.2.0",
+    "tar": "^7.5.13",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@ganderbite/relay-core": "workspace:^",
     "@types/semver": "^7.5.8",
-    "@types/tar": "^6.1.13",
+    "@types/tar": "^7.0.87",
     "@vitest/coverage-v8": "4.1.4",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
