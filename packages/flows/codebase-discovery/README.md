@@ -35,7 +35,7 @@ From a clone of the Relay monorepo:
 
 ```bash
 pnpm install
-pnpm --filter @ganderbite/flows-codebase-discovery build
+pnpm --filter @ganderbite/flow-codebase-discovery build
 ```
 
 The build step compiles `flow.ts` to `dist/flow.js`, which is the artifact the CLI loads. When this flow is published to the catalog, users will instead run:

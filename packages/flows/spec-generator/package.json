@@ -1,5 +1,5 @@
 {
-  "name": "@ganderbite/flows-spec-generator",
+  "name": "@ganderbite/flow-spec-generator",
   "version": "0.1.0",
   "description": "Generates a structured feature specification from a plain-language description.",
   "type": "module",

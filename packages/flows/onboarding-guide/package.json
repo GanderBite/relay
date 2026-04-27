@@ -1,5 +1,5 @@
 {
-  "name": "@ganderbite/flows-onboarding-guide",
+  "name": "@ganderbite/flow-onboarding-guide",
   "version": "0.1.0",
   "description": "Scans a project directory and produces an audience-specific HTML onboarding guide.",
   "type": "module",

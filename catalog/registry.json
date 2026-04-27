@@ -3,7 +3,7 @@
   "generatedAt": "2026-04-23T12:00:00.000Z",
   "flows": [
     {
-      "name": "@ganderbite/flows-codebase-discovery",
+      "name": "@ganderbite/flow-codebase-discovery",
       "version": "0.1.0",
       "displayName": "Codebase Discovery",
       "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
@@ -17,7 +17,7 @@
         "min": 5,
         "max": 20
       },
-      "npmPackage": "@ganderbite/flows-codebase-discovery",
+      "npmPackage": "@ganderbite/flow-codebase-discovery",
       "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par"
     },
     {

@@ -1,5 +1,5 @@
 {
-  "name": "@ganderbite/flows-release-notes",
+  "name": "@ganderbite/flow-release-notes",
   "version": "0.1.0",
   "description": "Produces a technical changelog, user-facing what's new doc, and marketing highlights brief from a git commit range.",
   "type": "module",

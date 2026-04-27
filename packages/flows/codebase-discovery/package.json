@@ -1,5 +1,5 @@
 {
-  "name": "@ganderbite/flows-codebase-discovery",
+  "name": "@ganderbite/flow-codebase-discovery",
   "version": "0.1.0",
   "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
   "type": "module",
