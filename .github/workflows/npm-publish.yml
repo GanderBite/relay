@@ -106,7 +106,13 @@ jobs:
             pkg_name=$(jq -r .name "$pkg_dir/package.json")
             local_version=$(jq -r .version "$pkg_dir/package.json")
 
-            if npm view "$pkg_name" versions --json 2>/dev/null | grep -Fq "\"$local_version\""; then
+            # Query the exact version directly. npm view pkg@ver version exits 0
+            # and prints the version string if it exists; exits non-zero if not.
+            # This avoids the single-version edge case where `versions --json`
+            # returns a bare string instead of an array, which caused grep to
+            # miss the match and attempt a duplicate publish.
+            existing=$(npm view "${pkg_name}@${local_version}" version 2>/dev/null || true)
+            if [ "$existing" = "$local_version" ]; then
               echo "  skip  $pkg_name@$local_version (already on npm)"
               skipped="$skipped $pkg_name@$local_version"
             else
