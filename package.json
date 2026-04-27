@@ -14,7 +14,10 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "prepare": "lefthook install",
-    "docs:api": "typedoc"
+    "docs:api": "typedoc",
+    "release": "node scripts/bump-version.mjs patch",
+    "release:minor": "node scripts/bump-version.mjs minor",
+    "release:major": "node scripts/bump-version.mjs major"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
