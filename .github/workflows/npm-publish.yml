@@ -34,7 +34,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 # Do not cancel in-progress publish runs — a half-published set of packages
@@ -113,3 +113,27 @@ jobs:
           echo "publish summary"
           echo "  published:${published:- (none)}"
           echo "  skipped:${skipped:- (none)}"
+
+          # Expose published list for the release step.
+          echo "published=${published}" >> "$GITHUB_OUTPUT"
+        id: publish
+
+      # ── 6. GitHub Release (only when something was actually published) ────
+      - name: Create GitHub Release
+        if: steps.publish.outputs.published != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CLI_VERSION=$(jq -r .version packages/cli/package.json)
+          TAG="v${CLI_VERSION}"
+
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            echo "  release ${TAG} already exists — skipping"
+          else
+            gh release create "${TAG}" \
+              --title "relay ${CLI_VERSION}" \
+              --generate-notes \
+              --target main
+            echo "  created release ${TAG}"
+          fi
