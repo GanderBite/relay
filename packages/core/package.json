@@ -41,10 +41,10 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "4.1.4",
+    "@vitest/coverage-v8": "4.1.5",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
-    "vitest": "4.1.4"
+    "vitest": "4.1.5"
   },
   "engines": {
     "node": ">=20.10"
