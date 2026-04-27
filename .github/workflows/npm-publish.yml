@@ -70,7 +70,7 @@ jobs:
 
       # ── 3. Install workspace dependencies ────────────────────────────────
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: LEFTHOOK=0 pnpm install --frozen-lockfile
 
       # ── 4. Build all packages ─────────────────────────────────────────────
       - name: Build

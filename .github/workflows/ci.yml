@@ -53,7 +53,7 @@ jobs:
 
       # ── 4. Install workspace dependencies ────────────────────────────────
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: LEFTHOOK=0 pnpm install --frozen-lockfile
 
       # ── 5. Typecheck all packages ─────────────────────────────────────────
       - name: Typecheck
