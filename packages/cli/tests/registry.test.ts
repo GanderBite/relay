@@ -126,8 +126,8 @@ describe('generateRegistryJson', () => {
     expect(entry.audience).toEqual(['developer']);
     expect(entry.estimatedCostUsd).toEqual({ min: 0.01, max: 0.05 });
     expect(entry.estimatedDurationMin).toEqual({ min: 1, max: 5 });
-    // npmPackage mirrors name
-    expect(entry.npmPackage).toBe('flow-fields');
+    // dist is populated by the GHA release workflow, not by local dir processing
+    expect(entry.dist).toBeUndefined();
   });
 
   it('[TC-019] missing relay block causes that entry to be skipped while others succeed', async () => {
