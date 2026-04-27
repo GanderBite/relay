@@ -49,6 +49,9 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "pkg=@ganderbite/flow-${FLOW_NAME}" >> "$GITHUB_OUTPUT"
 
+      - name: Build relay-core
+        run: pnpm --filter @ganderbite/relay-core build
+
       - name: Build
         run: pnpm --filter "${{ steps.tag.outputs.pkg }}" build
 
