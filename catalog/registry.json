@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-23T12:00:00.000Z",
+  "generatedAt": "2026-04-26T00:00:00.000Z",
   "flows": [
     {
       "name": "@ganderbite/flow-codebase-discovery",
@@ -17,8 +17,8 @@
         "min": 5,
         "max": 20
       },
-      "npmPackage": "@ganderbite/flow-codebase-discovery",
-      "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par"
+      "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par",
+      "dist": { "tarball": "", "shasum": "" }
     },
     {
       "name": "@ganderbite/example-git-log-summary",
@@ -35,8 +35,8 @@
         "min": 1,
         "max": 3
       },
-      "npmPackage": "@ganderbite/example-git-log-summary",
-      "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a "
+      "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a ",
+      "dist": { "tarball": "", "shasum": "" }
     },
     {
       "name": "@ganderbite/example-multi-perspective-review",
@@ -53,8 +53,8 @@
         "min": 2,
         "max": 8
       },
-      "npmPackage": "@ganderbite/example-multi-perspective-review",
-      "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd"
+      "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd",
+      "dist": { "tarball": "", "shasum": "" }
     }
   ]
 }
