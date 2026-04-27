@@ -1,5 +1,5 @@
 /**
- * Tests for `relay install` command — tarball-fetch install flow.
+ * Tests for `relay install` command — npm registry install flow.
  *
  * All I/O (filesystem, network fetch, tar extraction) is mocked. No live
  * network calls, no real npm invocations, no real disk writes.
@@ -65,24 +65,6 @@ const successRegistry = JSON.stringify({
     {
       name: '@ganderbite/flow-my-flow',
       version: '0.2.0',
-      dist: {
-        tarball: 'https://example.com/my-flow-0.2.0.tgz',
-        shasum: 'abc123',
-      },
-    },
-  ],
-});
-
-const emptyTarballRegistry = JSON.stringify({
-  version: 1,
-  flows: [
-    {
-      name: '@ganderbite/flow-my-flow',
-      version: '0.2.0',
-      dist: {
-        tarball: '',
-        shasum: '',
-      },
     },
   ],
 });
@@ -229,29 +211,11 @@ describe('relay install — registry entry not found', () => {
   });
 });
 
-describe('relay install — registry entry has empty tarball', () => {
-  it('[INSTALL-005] flow with empty dist.tarball exits with code 1 and stderr contains "no published release yet"', async () => {
-    mockReadFile.mockImplementation((filePath: unknown) => {
-      const p = String(filePath);
-      if (p.includes('.relay/registry.json')) {
-        return Promise.resolve(emptyTarballRegistry);
-      }
-      return Promise.reject(new Error(`ENOENT: unexpected readFile call for ${p}`));
-    });
-
-    await expect(installCommand(['my-flow'], {})).rejects.toThrow('exit:1');
-
-    const stderr = captureWrites(process.stderr.write as ReturnType<typeof vi.spyOn>);
-    expect(stderr).toContain('no published release yet');
-    expect(process.exit).toHaveBeenCalledWith(1);
-  });
-});
-
-describe('relay install — tarball fetch failure', () => {
-  it('[INSTALL-006] HTTP 404 exits with code 1 and stderr contains "failed to download"', async () => {
+describe('relay install — npm registry fetch failure', () => {
+  it('[INSTALL-006] HTTP 404 from npm registry fetch exits with code 1 and stderr contains "failed to download"', async () => {
     const fetchMock = vi.fn();
     // First call: registry refresh → returns registry JSON ok response.
-    // Second call: tarball fetch → returns 404.
+    // Second call: npm registry fetch → returns 404.
     const registryRefreshResponse = {
       ok: true,
       status: 200,
@@ -270,10 +234,10 @@ describe('relay install — tarball fetch failure', () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  it('[INSTALL-007] network error throws exits with code 1 and stderr contains "failed to download"', async () => {
+  it('[INSTALL-007] network error on npm registry fetch exits with code 1 and stderr contains "failed to download"', async () => {
     const fetchMock = vi.fn();
     // First call: registry refresh → ok.
-    // Second call: tarball fetch → throws network error.
+    // Second call: npm registry fetch → throws network error.
     const registryRefreshResponse = {
       ok: true,
       status: 200,
@@ -294,8 +258,9 @@ describe('relay install — tarball fetch failure', () => {
 });
 
 describe('relay install — successful install', () => {
-  it('[INSTALL-008] fetch called with tarball URL, extract called with strip:1, stdout has resolved and unpacked lines', async () => {
-    const tarballUrl = 'https://example.com/my-flow-0.2.0.tgz';
+  it('[INSTALL-008] fetch called with npm registry tarball URL, extract called with strip:1, stdout has resolved and unpacked lines', async () => {
+    const tarballUrl =
+      'https://registry.npmjs.org/@ganderbite/flow-my-flow/-/flow-my-flow-0.2.0.tgz';
 
     const fetchMock = vi.fn();
     // First call: registry refresh response.
@@ -334,7 +299,7 @@ describe('relay install — successful install', () => {
     expect(mockExtract).toHaveBeenCalledWith(expect.objectContaining({ strip: 1 }));
 
     const stdout = captureWrites(process.stdout.write as ReturnType<typeof vi.spyOn>);
-    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from registry');
+    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from npm');
     expect(stdout).toContain('unpacked to ./.relay/flows/my-flow/');
 
     // Either process exited or completed — in both cases the above assertions hold.
@@ -346,7 +311,8 @@ describe('relay install — successful install', () => {
   });
 
   it('[INSTALL-009] scoped package name is parsed and the correct bare name is used', async () => {
-    const tarballUrl = 'https://example.com/my-flow-0.2.0.tgz';
+    const tarballUrl =
+      'https://registry.npmjs.org/@ganderbite/flow-my-flow/-/flow-my-flow-0.2.0.tgz';
 
     const fetchMock = vi.fn();
     const registryRefreshResponse = {
@@ -369,7 +335,7 @@ describe('relay install — successful install', () => {
     expect(fetchMock).toHaveBeenCalledWith(tarballUrl, expect.any(Object));
 
     const stdout = captureWrites(process.stdout.write as ReturnType<typeof vi.spyOn>);
-    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from registry');
+    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from npm');
     expect(stdout).toContain('unpacked to ./.relay/flows/my-flow/');
   });
 
@@ -393,7 +359,7 @@ describe('relay install — successful install', () => {
     expect(registryFetchCalls).toHaveLength(0);
 
     const stdout = captureWrites(process.stdout.write as ReturnType<typeof vi.spyOn>);
-    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from registry');
+    expect(stdout).toContain('resolved @ganderbite/flow-my-flow@0.2.0 from npm');
   });
 });
 
