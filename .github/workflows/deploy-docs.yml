@@ -20,20 +20,15 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and upload site
+        uses: withastro/action@v6
         with:
-          node-version: 25
-          cache: pnpm
-      - uses: actions/configure-pages@v5
-      - run: LEFTHOOK=0 pnpm install --frozen-lockfile
-      - run: pnpm --filter @ganderbite/docs build
-      - name: Copy registry.json to pages output
-        run: cp catalog/registry.json apps/docs/dist/registry.json
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: apps/docs/dist
+          path: apps/docs
+          # Copy catalog/registry.json into the Astro output so it is served
+          # at https://ganderbite.github.io/relay/registry.json
+          build-cmd: pnpm run build && cp ../../catalog/registry.json dist/registry.json
 
   deploy:
     needs: build
@@ -42,5 +37,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
