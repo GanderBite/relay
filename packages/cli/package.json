@@ -45,10 +45,10 @@
     "@ganderbite/relay-core": "workspace:^",
     "@types/semver": "^7.5.8",
     "@types/tar": "^7.0.87",
-    "@vitest/coverage-v8": "4.1.4",
+    "@vitest/coverage-v8": "4.1.5",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
-    "vitest": "4.1.4"
+    "vitest": "4.1.5"
   },
   "engines": {
     "node": ">=25.8.0"

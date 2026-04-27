@@ -20,7 +20,7 @@
     "release:major": "node scripts/bump-version.mjs major"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.12",
+    "@biomejs/biome": "2.4.13",
     "@types/node": "^25.0.0",
     "lefthook": "^2.1.6",
     "typedoc": "0.28.19"
