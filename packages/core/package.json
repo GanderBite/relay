@@ -1,6 +1,6 @@
 {
   "name": "@ganderbite/relay-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run deterministic multi-step Claude Code workflows with checkpoint and resume.",
   "private": false,
   "type": "module",

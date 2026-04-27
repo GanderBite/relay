@@ -23,7 +23,7 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.1.0"
+    "@ganderbite/relay-core": "^0.2.0"
   },
   "devDependencies": {
     "@ganderbite/relay-core": "workspace:*",
