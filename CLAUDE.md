@@ -75,6 +75,19 @@ The harness runs four hook events to keep the loop tight:
 5. **Atomic writes for any file other processes might read** (state.json, batons/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.
 
+## Commit message convention
+
+All commits follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <subject>`.
+
+Valid types: `feat`, `fix`, `refactor`, `test`, `chore`, `ci`, `docs`, `build`.
+
+Commit subjects and bodies MUST NOT contain sprint-internal identifiers:
+- `task_N` — use only in sprint JSON and code review artifacts
+- `FLAG-N` — use only in code review `.code_review.md` files
+- `BLOCK-N` — use only in code review `.code_review.md` files
+
+The hard rule that 'each task ends with one atomic commit' means the commit is the unit of delivery. The message describes *what changed and why* — it does not identify which sprint task produced the change.
+
 ## Spec section references
 
 Tasks reference spec sections like `§4.6.8` (tech spec) and `§6.5` (product spec). When a task says "MUST match product spec §6.3 verbatim," it means byte-for-byte — copy from the spec, don't paraphrase.
