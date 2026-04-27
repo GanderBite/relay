@@ -314,15 +314,12 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   // ---------------------------------------------------------------------------
   // Step 2 — fetch and extract tarball
   // ---------------------------------------------------------------------------
-  await fs.mkdir(flowDir, { recursive: true });
-
   const controller = new AbortController();
   const fetchTimer = setTimeout(() => controller.abort(), 60_000);
 
   let res: Response;
   try {
     res = await fetch(found.tarball, { signal: controller.signal });
-    clearTimeout(fetchTimer);
   } catch (fetchErr: unknown) {
     clearTimeout(fetchTimer);
     const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
@@ -331,20 +328,28 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   }
 
   if (!res.ok || res.body === null) {
+    clearTimeout(fetchTimer);
     process.stderr.write(red(`✕ failed to download flow package: ${res.status}`) + '\n');
     process.exit(1);
   }
+
+  // Wipe any previous install so stale files from older versions do not linger.
+  await fs.rm(flowDir, { recursive: true, force: true });
+  await fs.mkdir(flowDir, { recursive: true });
 
   try {
     await pipeline(
       Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]),
       createGunzip(),
       extract({ strip: 1, cwd: flowDir }),
+      { signal: controller.signal },
     );
   } catch (extractErr: unknown) {
     const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
-    process.stderr.write(red(`✕ failed to download flow package: ${msg}`) + '\n');
+    process.stderr.write(red(`✕ failed to extract flow package: ${msg}`) + '\n');
     process.exit(1);
+  } finally {
+    clearTimeout(fetchTimer);
   }
 
   process.stdout.write(

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockReadFile = vi.hoisted(() => vi.fn<() => Promise<string>>());
 const mockWriteFile = vi.hoisted(() => vi.fn<() => Promise<void>>());
 const mockMkdir = vi.hoisted(() => vi.fn<() => Promise<void>>());
+const mockRm = vi.hoisted(() => vi.fn<() => Promise<void>>());
 const mockStat = vi.hoisted(() => vi.fn<() => Promise<{ mtimeMs: number }>>());
 const mockAccess = vi.hoisted(() => vi.fn<() => Promise<void>>());
 const mockExtract = vi.hoisted(() => vi.fn());
@@ -26,6 +27,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     readFile: (...args: unknown[]) => mockReadFile(...args),
     writeFile: (...args: unknown[]) => mockWriteFile(...args),
     mkdir: (...args: unknown[]) => mockMkdir(...args),
+    rm: (...args: unknown[]) => mockRm(...args),
     stat: (...args: unknown[]) => mockStat(...args),
     access: (...args: unknown[]) => mockAccess(...args),
   };
@@ -154,8 +156,9 @@ beforeEach(() => {
     return Promise.reject(new Error(`ENOENT: unexpected readFile call for ${p}`));
   });
 
-  // Default: mkdir and writeFile succeed.
+  // Default: mkdir, rm, and writeFile succeed.
   mockMkdir.mockResolvedValue(undefined);
+  mockRm.mockResolvedValue(undefined);
   mockWriteFile.mockResolvedValue(undefined);
 
   // Default: pipeline resolves immediately (extraction succeeds).
@@ -395,7 +398,7 @@ describe('relay install — successful install', () => {
 });
 
 describe('relay install — pipeline/extract failure', () => {
-  it('[INSTALL-011] pipeline throw exits with code 1 and stderr contains "failed to download"', async () => {
+  it('[INSTALL-011] pipeline throw exits with code 1 and stderr contains "failed to extract"', async () => {
     const fetchMock = vi.fn();
     const registryRefreshResponse = {
       ok: true,
@@ -413,7 +416,7 @@ describe('relay install — pipeline/extract failure', () => {
     await expect(installCommand(['my-flow'], {})).rejects.toThrow('exit:1');
 
     const stderr = captureWrites(process.stderr.write as ReturnType<typeof vi.spyOn>);
-    expect(stderr).toContain('failed to download');
+    expect(stderr).toContain('failed to extract');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 });
