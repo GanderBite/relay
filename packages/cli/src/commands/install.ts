@@ -1,14 +1,14 @@
 /**
- * relay install — download and install a flow package from npm.
+ * relay install — download and install a flow package from a GitHub Release tarball.
  *
- * Resolves bare names to the @ganderbite/flow-<name> npm scope,
- * installs via npm, flattens the nested package directory, optionally
- * compiles flow.ts, validates the flow definition, then prints the
+ * Resolves bare names against the registry at ~/.relay/registry.json,
+ * fetches the published tarball, extracts it directly into the flow directory,
+ * optionally compiles flow.ts, validates the flow definition, then prints the
  * product-spec §6.8 banner.
  *
  * Exit codes:
  *   0 — installed successfully
- *   1 — npm install failed
+ *   1 — flow not found, tarball fetch failed, or extraction failed
  *   2 — validation failed (flow definition is malformed)
  */
 
@@ -16,7 +16,12 @@ import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
+import { createGunzip } from 'node:zlib';
+
+import { extract } from 'tar';
 
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red } from '../color.js';
@@ -24,20 +29,18 @@ import { gray, green, red } from '../color.js';
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
-// Name resolution
+// Name parsing
 // ---------------------------------------------------------------------------
 
-interface ResolvedPackage {
+interface ParsedFlowArg {
   /** Short bare name, e.g. "codebase-discovery". */
   name: string;
-  /** Full scoped package name, e.g. "@ganderbite/flow-codebase-discovery". */
-  packageName: string;
-  /** Full package spec for npm install, e.g. "@ganderbite/flow-codebase-discovery@0.1.0". */
-  packageSpec: string;
+  /** Requested version, if specified. */
+  version?: string | undefined;
 }
 
 /**
- * Parse the <flow>[@<version>] argument and resolve to a full package spec.
+ * Parse the <flow>[@<version>] argument into a bare name and optional version.
  *
  * Accepts:
  *   "codebase-discovery"
@@ -45,23 +48,18 @@ interface ResolvedPackage {
  *   "@ganderbite/flow-codebase-discovery"
  *   "@ganderbite/flow-codebase-discovery@0.1.0"
  */
-function resolvePackage(arg: string): ResolvedPackage {
-  // Strip a leading "@" for splitting — handle scoped names carefully.
-  // A scoped package looks like "@scope/name[@version]".
-  // A bare name looks like "name[@version]".
-
+function parseFlowArg(arg: string): ParsedFlowArg {
   let rawName: string;
   let version: string | undefined;
 
   if (arg.startsWith('@')) {
     // Scoped: "@ganderbite/flow-name@version" or "@ganderbite/flow-name"
-    // Find the version separator after the slash.
     const slashIndex = arg.indexOf('/');
     const afterSlash = arg.slice(slashIndex + 1); // "flow-name@version"
     const atIndex = afterSlash.indexOf('@');
     if (atIndex !== -1) {
       rawName = arg.slice(0, slashIndex + 1 + atIndex); // "@scope/flow-name"
-      version = afterSlash.slice(atIndex + 1); // "version"
+      version = afterSlash.slice(atIndex + 1);
     } else {
       rawName = arg;
     }
@@ -76,62 +74,10 @@ function resolvePackage(arg: string): ResolvedPackage {
     }
   }
 
-  // Determine the full scoped package name.
-  let packageName: string;
-  if (rawName.startsWith('@ganderbite/flow-')) {
-    packageName = rawName;
-  } else {
-    packageName = `@ganderbite/flow-${rawName}`;
-  }
+  // Normalise to the bare short name (strip scope if present).
+  const name = rawName.replace(/^@ganderbite\/flow-/, '');
 
-  // Extract the bare short name (e.g. "codebase-discovery").
-  const name = packageName.replace(/^@ganderbite\/flow-/, '');
-
-  const packageSpec = version !== undefined ? `${packageName}@${version}` : packageName;
-
-  return { name, packageName, packageSpec };
-}
-
-// ---------------------------------------------------------------------------
-// Duck-type validation (mirrors flow-loader.ts)
-// ---------------------------------------------------------------------------
-
-function isMapLike(value: unknown): boolean {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    typeof (value as Record<string, unknown>)['get'] === 'function' &&
-    typeof (value as Record<string, unknown>)['has'] === 'function'
-  );
-}
-
-function validateFlowExport(value: unknown): string | null {
-  if (value === null || typeof value !== 'object') {
-    return 'default export is not an object';
-  }
-  const candidate = value as Record<string, unknown>;
-
-  if (typeof candidate['name'] !== 'string') {
-    return 'missing or non-string "name" field';
-  }
-  if (candidate['steps'] === null || typeof candidate['steps'] !== 'object') {
-    return 'missing or non-object "steps" field';
-  }
-  const graph = candidate['graph'];
-  if (graph === null || typeof graph !== 'object') {
-    return 'missing or non-object "graph" field';
-  }
-  const g = graph as Record<string, unknown>;
-  if (!isMapLike(g['successors'])) {
-    return 'graph.successors is not a Map-like object';
-  }
-  if (!isMapLike(g['predecessors'])) {
-    return 'graph.predecessors is not a Map-like object';
-  }
-  if (!Array.isArray(g['topoOrder'])) {
-    return 'graph.topoOrder is not an array';
-  }
-  return null;
+  return { name, version };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +132,143 @@ async function refreshRegistryCache(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Registry lookup
+// ---------------------------------------------------------------------------
+
+interface RegistryEntryRaw {
+  name?: unknown;
+  version?: unknown;
+  dist?: unknown;
+}
+
+interface FoundEntry {
+  tarball: string;
+  entryVersion: string;
+}
+
+/**
+ * Populate the local registry cache if absent, then find the entry matching
+ * the requested flow name and optional version.
+ *
+ * Handles both the versioned document shape `{ version: 1, flows: [] }` and
+ * a legacy flat array shape.
+ *
+ * Returns null if no matching entry is found.
+ */
+async function findRegistryEntry(
+  name: string,
+  version?: string | undefined,
+): Promise<FoundEntry | null> {
+  // Ensure the cache exists before reading.
+  await refreshRegistryCache();
+
+  const cachePath = path.join(os.homedir(), '.relay', 'registry.json');
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(cachePath, 'utf8');
+  } catch {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  // Normalise to an array of entries regardless of document shape.
+  let entries: unknown[];
+  if (
+    parsed !== null &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    'flows' in (parsed as Record<string, unknown>) &&
+    Array.isArray((parsed as Record<string, unknown>)['flows'])
+  ) {
+    entries = (parsed as Record<string, unknown>)['flows'] as unknown[];
+  } else if (Array.isArray(parsed)) {
+    entries = parsed;
+  } else {
+    return null;
+  }
+
+  for (const entry of entries) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue;
+
+    const e = entry as RegistryEntryRaw;
+
+    // The registry name field is e.g. "@ganderbite/flow-codebase-discovery".
+    const entryName = typeof e.name === 'string' ? e.name : '';
+    const bareName = entryName.replace(/^@ganderbite\/flow-/, '');
+
+    if (bareName !== name) continue;
+
+    const entryVersion = typeof e.version === 'string' ? e.version : '';
+
+    // If a version was requested, it must match.
+    if (version !== undefined && entryVersion !== version) continue;
+
+    // Extract tarball from dist.
+    const dist = e.dist;
+    const tarball =
+      dist !== null &&
+      typeof dist === 'object' &&
+      !Array.isArray(dist) &&
+      typeof (dist as Record<string, unknown>)['tarball'] === 'string'
+        ? ((dist as Record<string, unknown>)['tarball'] as string)
+        : '';
+
+    return { tarball, entryVersion };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Duck-type validation (mirrors flow-loader.ts)
+// ---------------------------------------------------------------------------
+
+function isMapLike(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as Record<string, unknown>)['get'] === 'function' &&
+    typeof (value as Record<string, unknown>)['has'] === 'function'
+  );
+}
+
+function validateFlowExport(value: unknown): string | null {
+  if (value === null || typeof value !== 'object') {
+    return 'default export is not an object';
+  }
+  const candidate = value as Record<string, unknown>;
+
+  if (typeof candidate['name'] !== 'string') {
+    return 'missing or non-string "name" field';
+  }
+  if (candidate['steps'] === null || typeof candidate['steps'] !== 'object') {
+    return 'missing or non-object "steps" field';
+  }
+  const graph = candidate['graph'];
+  if (graph === null || typeof graph !== 'object') {
+    return 'missing or non-object "graph" field';
+  }
+  const g = graph as Record<string, unknown>;
+  if (!isMapLike(g['successors'])) {
+    return 'graph.successors is not a Map-like object';
+  }
+  if (!isMapLike(g['predecessors'])) {
+    return 'graph.predecessors is not a Map-like object';
+  }
+  if (!Array.isArray(g['topoOrder'])) {
+    return 'graph.topoOrder is not an array';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // installCommand
 // ---------------------------------------------------------------------------
 
@@ -202,7 +285,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
     process.exit(1);
   }
 
-  const { name, packageName, packageSpec } = resolvePackage(rawArg);
+  const { name, version } = parseFlowArg(rawArg);
   const cwd = process.cwd();
   const flowDir = path.join(cwd, '.relay', 'flows', name);
 
@@ -214,55 +297,60 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   process.stdout.write('\n');
 
   // ---------------------------------------------------------------------------
-  // Step 1 — npm install
+  // Step 1 — resolve registry entry
   // ---------------------------------------------------------------------------
-  try {
-    await execFileAsync('npm', ['install', '--no-save', '--prefix', flowDir, packageSpec]);
-  } catch (installErr: unknown) {
-    const stderr =
-      installErr instanceof Error && 'stderr' in installErr
-        ? String((installErr as Record<string, unknown>)['stderr'])
-        : installErr instanceof Error
-          ? installErr.message
-          : String(installErr);
+  const found = await findRegistryEntry(name, version);
 
-    process.stderr.write(red(` ${SYMBOLS.fail} npm install failed: ${stderr.trim()}`) + '\n');
+  if (found === null) {
+    process.stderr.write(red(`✕ flow "${name}" not found in registry. run: relay search`) + '\n');
     process.exit(1);
   }
 
-  // Read the actual installed version from the package's package.json.
-  let installedVersion = '';
-  try {
-    const pkgJsonPath = path.join(flowDir, 'node_modules', packageName, 'package.json');
-    const raw = await fs.readFile(pkgJsonPath, 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    installedVersion = typeof parsed['version'] === 'string' ? parsed['version'] : '';
-  } catch {
-    // Version display falls back to empty — not a fatal error.
-  }
-
-  const resolvedLabel =
-    installedVersion.length > 0 ? `${packageName}@${installedVersion}` : packageName;
-
-  process.stdout.write(green(` ${SYMBOLS.ok} resolved ${resolvedLabel} from npm`) + '\n');
-
-  // ---------------------------------------------------------------------------
-  // Step 2 — flatten: move inner package to flowDir, delete node_modules
-  // ---------------------------------------------------------------------------
-  const innerPackageDir = path.join(flowDir, 'node_modules', packageName);
-
-  try {
-    // Copy the inner package contents to flowDir (overwrite matching files).
-    await fs.cp(innerPackageDir, flowDir, { recursive: true, force: true });
-
-    // Remove the now-redundant node_modules directory.
-    await fs.rm(path.join(flowDir, 'node_modules'), { recursive: true, force: true });
-  } catch (flattenErr: unknown) {
-    const msg = flattenErr instanceof Error ? flattenErr.message : String(flattenErr);
-    process.stderr.write(red(` ${SYMBOLS.fail} failed to unpack flow package: ${msg}`) + '\n');
+  if (found.tarball === '') {
+    process.stderr.write(red(`✕ flow "${name}" has no published release yet.`) + '\n');
     process.exit(1);
   }
 
+  // ---------------------------------------------------------------------------
+  // Step 2 — fetch and extract tarball
+  // ---------------------------------------------------------------------------
+  await fs.mkdir(flowDir, { recursive: true });
+
+  const controller = new AbortController();
+  const fetchTimer = setTimeout(() => controller.abort(), 60_000);
+
+  let res: Response;
+  try {
+    res = await fetch(found.tarball, { signal: controller.signal });
+    clearTimeout(fetchTimer);
+  } catch (fetchErr: unknown) {
+    clearTimeout(fetchTimer);
+    const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+    process.stderr.write(red(`✕ failed to download flow package: ${msg}`) + '\n');
+    process.exit(1);
+  }
+
+  if (!res.ok || res.body === null) {
+    process.stderr.write(red(`✕ failed to download flow package: ${res.status}`) + '\n');
+    process.exit(1);
+  }
+
+  try {
+    await pipeline(
+      Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]),
+      createGunzip(),
+      extract({ strip: 1, cwd: flowDir }),
+    );
+  } catch (extractErr: unknown) {
+    const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+    process.stderr.write(red(`✕ failed to download flow package: ${msg}`) + '\n');
+    process.exit(1);
+  }
+
+  process.stdout.write(
+    green(` ${SYMBOLS.ok} resolved @ganderbite/flow-${name}@${found.entryVersion} from registry`) +
+      '\n',
+  );
   process.stdout.write(green(` ${SYMBOLS.ok} unpacked to ./.relay/flows/${name}/`) + '\n');
 
   // ---------------------------------------------------------------------------
@@ -352,9 +440,4 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   // Try it block — verbatim from product spec §6.8
   process.stdout.write('try it:\n');
   process.stdout.write(gray(`    relay run ${name} .`) + '\n');
-
-  // ---------------------------------------------------------------------------
-  // Best-effort registry cache refresh (non-blocking)
-  // ---------------------------------------------------------------------------
-  void refreshRegistryCache();
 }
