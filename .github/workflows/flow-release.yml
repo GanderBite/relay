@@ -1,0 +1,109 @@
+name: flow release
+
+on:
+  push:
+    tags:
+      - 'flow-*-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flow-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Pack and release flow tarball
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Parse tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          WITHOUT_PREFIX="${TAG#flow-}"
+          VERSION="${WITHOUT_PREFIX##*-v}"
+          FLOW_NAME="${WITHOUT_PREFIX%-v*}"
+          echo "name=${FLOW_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "pkg=@ganderbite/flow-${FLOW_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: pnpm --filter "${{ steps.tag.outputs.pkg }}" build
+
+      - name: Pack
+        id: pack
+        run: |
+          set -euo pipefail
+          mkdir -p dist-tarballs
+          FLOW_DIR="packages/flows/${{ steps.tag.outputs.name }}"
+          cd "${FLOW_DIR}"
+          TGZ=$(npm pack --pack-destination "$(pwd)/../../dist-tarballs" 2>/dev/null | tail -1)
+          cd -
+          TGZ_PATH="dist-tarballs/${TGZ}"
+          SHA256=$(sha256sum "${TGZ_PATH}" | awk '{print $1}')
+          echo "tgz=${TGZ}" >> "$GITHUB_OUTPUT"
+          echo "shasum=${SHA256}" >> "$GITHUB_OUTPUT"
+
+      - name: Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          FLOW_NAME="${{ steps.tag.outputs.name }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+          TITLE="${FLOW_NAME} v${VERSION}"
+          if ! gh release view "${TAG}" > /dev/null 2>&1; then
+            gh release create "${TAG}" --title "${TITLE}" --notes "Flow package ${FLOW_NAME} v${VERSION}" --target main
+          fi
+          gh release upload "${TAG}" "dist-tarballs/${{ steps.pack.outputs.tgz }}" --clobber
+          TGZ_NAME="${{ steps.pack.outputs.tgz }}"
+          TARBALL_URL=$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name==\"${TGZ_NAME}\") | .browserDownloadUrl")
+          echo "tarball_url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update registry
+        run: |
+          node --input-type=module <<'JSEOF'
+          import { readFileSync, writeFileSync } from 'fs';
+          const reg = JSON.parse(readFileSync('catalog/registry.json', 'utf8'));
+          const entry = reg.flows.find(f => f.name === process.env.PKG);
+          if (!entry) throw new Error('entry for ' + process.env.PKG + ' not found in catalog/registry.json');
+          entry.dist = { tarball: process.env.TARBALL_URL, shasum: process.env.SHASUM };
+          writeFileSync('catalog/registry.json', JSON.stringify(reg, null, 2) + '\n', 'utf8');
+          console.log('updated dist for ' + process.env.PKG);
+          JSEOF
+        env:
+          PKG: "@ganderbite/flow-${{ steps.tag.outputs.name }}"
+          TARBALL_URL: "${{ steps.release.outputs.tarball_url }}"
+          SHASUM: "${{ steps.pack.outputs.shasum }}"
+
+      - name: Commit registry
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add catalog/registry.json
+          git diff --cached --quiet || git commit -m "chore: update registry dist for ${{ steps.tag.outputs.name }} v${{ steps.tag.outputs.version }}"
+          git push origin HEAD:main

@@ -51,9 +51,6 @@
       "pm"
     ]
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/ganderbite/relay.git",

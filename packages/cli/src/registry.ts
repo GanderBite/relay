@@ -1,5 +1,5 @@
 /**
- * Registry generator — reads race package metadata from local directories or
+ * Registry generator — reads flow package metadata from local directories or
  * npm package names and emits a RegistryDoc suitable for serving at
  * relay.dev/registry.json.
  *
@@ -22,13 +22,13 @@ const execFileAsync = promisify(execFile);
 // ---------------------------------------------------------------------------
 
 /**
- * A single entry in the registry, describing one published race package.
+ * A single entry in the registry, describing one published flow package.
  *
  * This type is the canonical declaration — both the CLI (relay search) and
  * the catalog site (catalog/app.js) consume this exact shape.
  */
 export interface RegistryEntry {
-  /** npm package name, e.g. "@ganderbite/flows-codebase-discovery". */
+  /** npm package name, e.g. "@ganderbite/flow-codebase-discovery". */
   name: string;
   /** Strict semver version string, e.g. "0.1.0". */
   version: string;
@@ -46,8 +46,8 @@ export interface RegistryEntry {
   estimatedDurationMin: { min: number; max: number };
   /** Repository URL from package.json#repository.url, if present. */
   repoUrl?: string | undefined;
-  /** The npm package name — same as `name`; explicit field for catalog queries. */
-  npmPackage: string;
+  /** Published tarball location and integrity hash, when available. */
+  dist?: { tarball: string; shasum: string } | undefined;
   /** First 500 characters of the README, plain text (no markdown). */
   readmeExcerpt: string;
 }
@@ -230,7 +230,6 @@ async function processLocalDir(dir: string): Promise<Result<RegistryEntry, Regis
     estimatedCostUsd: relayMeta.estimatedCostUsd,
     estimatedDurationMin: relayMeta.estimatedDurationMin,
     repoUrl: extractRepoUrl(rawPkg),
-    npmPackage: rawPkg.name,
     readmeExcerpt,
   };
 
@@ -253,9 +252,6 @@ interface NpmViewOutput {
   repository?: string | { url?: string };
   relay?: RelayMetaBlock;
   readme?: string;
-  dist?: {
-    tarball?: string;
-  };
 }
 
 function isNpmViewOutput(v: unknown): v is NpmViewOutput {
@@ -338,7 +334,6 @@ async function processNpmPackage(pkg: string): Promise<Result<RegistryEntry, Reg
     estimatedCostUsd: relayMeta.estimatedCostUsd,
     estimatedDurationMin: relayMeta.estimatedDurationMin,
     repoUrl,
-    npmPackage: name,
     readmeExcerpt,
   };
 
@@ -371,7 +366,7 @@ function isLocalPath(input: string): boolean {
  * Each input is either:
  *   - A local directory path (starts with `.` or `/`): read package.json and
  *     README.md from the directory.
- *   - An npm package name (e.g. "@ganderbite/flows-codebase-discovery"): call
+ *   - An npm package name (e.g. "@ganderbite/flow-codebase-discovery"): call
  *     `npm view <pkg> --json` to get published metadata.
  *
  * Returns err() only if every input fails. When some inputs succeed and some
