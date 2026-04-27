@@ -31,6 +31,8 @@ jobs:
       - uses: actions/configure-pages@v5
       - run: LEFTHOOK=0 pnpm install --frozen-lockfile
       - run: pnpm --filter @ganderbite/docs build
+      - name: Copy registry.json to pages output
+        run: cp catalog/registry.json apps/docs/dist/registry.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/docs/dist

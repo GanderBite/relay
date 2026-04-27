@@ -13,7 +13,7 @@
  * Sources scanned (in order, deduped by display name):
  *   1. <cwd>/.relay/flows/{name}/package.json      - local installed flows
  *   2. <cwd>/node_modules/@ganderbite/flow-{name}/package.json  - workspace flows
- *   3. https://relay.dev/registry.json              - remote catalog (5s timeout; skipped on failure)
+ *   3. https://ganderbite.github.io/relay/registry.json - remote catalog (5s timeout; skipped on failure)
  */
 
 import { readdir, readFile } from 'node:fs/promises';
@@ -196,7 +196,7 @@ interface CatalogEntry {
 }
 
 /**
- * Fetch the remote catalog at https://relay.dev/registry.json with a 5s timeout.
+ * Fetch the remote catalog at https://ganderbite.github.io/relay/registry.json with a 5s timeout.
  * Returns an array of FlowEntry on success, or null on any failure (network,
  * timeout, parse error). The caller handles the null → gray note.
  */
@@ -206,7 +206,7 @@ async function fetchRemoteCatalog(): Promise<FlowEntry[] | null> {
 
   let json: unknown;
   try {
-    const res = await fetch('https://relay.dev/registry.json', {
+    const res = await fetch('https://ganderbite.github.io/relay/registry.json', {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });

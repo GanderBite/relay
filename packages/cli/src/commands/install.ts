@@ -84,7 +84,7 @@ function parseFlowArg(arg: string): ParsedFlowArg {
 // Registry cache
 // ---------------------------------------------------------------------------
 
-const REGISTRY_URL = 'https://relay.dev/registry.json';
+const REGISTRY_URL = 'https://ganderbite.github.io/relay/registry.json';
 const REGISTRY_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 /**

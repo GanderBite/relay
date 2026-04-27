@@ -15,7 +15,7 @@
  *   ⚠ unable to reach catalog; retry later.
  *
  * Registry cache: ~/.relay/registry.json, 1-hour TTL.
- * Fetch endpoint: https://relay.dev/registry.json, 5-second timeout.
+ * Fetch endpoint: https://ganderbite.github.io/relay/registry.json, 5-second timeout.
  */
 
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -62,7 +62,7 @@ interface RegistryEntry {
 
 const CACHE_TTL_MS = 3_600_000; // 1 hour
 const CACHE_PATH = join(homedir(), '.relay', 'registry.json');
-const REGISTRY_URL = 'https://relay.dev/registry.json';
+const REGISTRY_URL = 'https://ganderbite.github.io/relay/registry.json';
 const FETCH_TIMEOUT_MS = 5_000;
 
 /**
