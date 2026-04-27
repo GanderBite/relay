@@ -1,10 +1,10 @@
 /**
- * relay install — download and install a flow package from a GitHub Release tarball.
+ * relay install — download and install a flow package from an npm registry tarball.
  *
  * Resolves bare names against the registry at ~/.relay/registry.json,
- * fetches the published tarball, extracts it directly into the flow directory,
+ * constructs the npm registry tarball URL, fetches and extracts the package,
  * optionally compiles flow.ts, validates the flow definition, then prints the
- * product-spec §6.8 banner.
+ * install banner.
  *
  * Exit codes:
  *   0 — installed successfully
@@ -138,11 +138,9 @@ async function refreshRegistryCache(): Promise<void> {
 interface RegistryEntryRaw {
   name?: unknown;
   version?: unknown;
-  dist?: unknown;
 }
 
 interface FoundEntry {
-  tarball: string;
   entryVersion: string;
 }
 
@@ -210,17 +208,7 @@ async function findRegistryEntry(
     // If a version was requested, it must match.
     if (version !== undefined && entryVersion !== version) continue;
 
-    // Extract tarball from dist.
-    const dist = e.dist;
-    const tarball =
-      dist !== null &&
-      typeof dist === 'object' &&
-      !Array.isArray(dist) &&
-      typeof (dist as Record<string, unknown>)['tarball'] === 'string'
-        ? ((dist as Record<string, unknown>)['tarball'] as string)
-        : '';
-
-    return { tarball, entryVersion };
+    return { entryVersion };
   }
 
   return null;
@@ -306,20 +294,17 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
     process.exit(1);
   }
 
-  if (found.tarball === '') {
-    process.stderr.write(red(`✕ flow "${name}" has no published release yet.`) + '\n');
-    process.exit(1);
-  }
-
   // ---------------------------------------------------------------------------
   // Step 2 — fetch and extract tarball
   // ---------------------------------------------------------------------------
+  const npmTarball = `https://registry.npmjs.org/@ganderbite/flow-${name}/-/flow-${name}-${found.entryVersion}.tgz`;
+
   const controller = new AbortController();
   const fetchTimer = setTimeout(() => controller.abort(), 60_000);
 
   let res: Response;
   try {
-    res = await fetch(found.tarball, { signal: controller.signal });
+    res = await fetch(npmTarball, { signal: controller.signal });
   } catch (fetchErr: unknown) {
     clearTimeout(fetchTimer);
     const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
@@ -353,8 +338,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   }
 
   process.stdout.write(
-    green(` ${SYMBOLS.ok} resolved @ganderbite/flow-${name}@${found.entryVersion} from registry`) +
-      '\n',
+    green(` ${SYMBOLS.ok} resolved @ganderbite/flow-${name}@${found.entryVersion} from npm`) + '\n',
   );
   process.stdout.write(green(` ${SYMBOLS.ok} unpacked to ./.relay/flows/${name}/`) + '\n');
 

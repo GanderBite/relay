@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-27T18:10:00.000Z",
+  "generatedAt": "2026-04-27T00:00:00.000Z",
   "flows": [
     {
       "name": "@ganderbite/flow-codebase-discovery",
@@ -17,11 +17,7 @@
         "min": 5,
         "max": 20
       },
-      "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par",
-      "dist": {
-        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-codebase-discovery-v0.1.0/ganderbite-flow-codebase-discovery-0.1.0.tgz",
-        "shasum": "d4d56ac4eab20524b1cd572b419a4b2ce16ded1fed7004e38b8eb7a7dcc5314a"
-      }
+      "readmeExcerpt": "codebase-discovery\n\nThe canonical reference flow. Point it at any repository and it produces a single self-contained HTML report describing the code that lives there — which packages exist, which entities and services they expose, and how the pieces fit together.\n\nWhat it does\n\nFour prompt steps, arranged as a fan-out over a shared inventory. The first step () walks the repository and emits a JSON handoff listing every package, its language, and its top-level structure. Two steps then run in par"
     },
     {
       "name": "@ganderbite/flow-onboarding-guide",
@@ -38,11 +34,7 @@
         "min": 10,
         "max": 30
       },
-      "readmeExcerpt": "onboarding-guide\n\nScans a project directory and produces an audience-specific HTML onboarding guide.",
-      "dist": {
-        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-onboarding-guide-v0.1.0/ganderbite-flow-onboarding-guide-0.1.0.tgz",
-        "shasum": "a52ff8a553c5ff389aa93de701a568e66bd063b033f9cb102ef6424e0400e1e1"
-      }
+      "readmeExcerpt": "onboarding-guide\n\nScans a project directory and produces an audience-specific HTML onboarding guide."
     },
     {
       "name": "@ganderbite/flow-release-notes",
@@ -59,11 +51,7 @@
         "min": 5,
         "max": 15
       },
-      "readmeExcerpt": "release-notes\n\nTakes a git ref range and produces three parallel release artifacts in one run: a developer changelog, a user-facing what's new document, and a marketing highlights brief. A final cross-check step verifies consistency across all three outputs.",
-      "dist": {
-        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-release-notes-v0.1.0/ganderbite-flow-release-notes-0.1.0.tgz",
-        "shasum": "553a89fcaf246ea723f3c6c68d1a7a7feb61297217c015274f4979004c08ed67"
-      }
+      "readmeExcerpt": "release-notes\n\nTakes a git ref range and produces three parallel release artifacts in one run: a developer changelog, a user-facing what's new document, and a marketing highlights brief. A final cross-check step verifies consistency across all three outputs."
     },
     {
       "name": "@ganderbite/flow-spec-generator",
@@ -80,11 +68,7 @@
         "min": 2,
         "max": 10
       },
-      "readmeExcerpt": "spec-generator\n\nGenerates a structured feature specification from a plain-language description.",
-      "dist": {
-        "tarball": "https://github.com/GanderBite/relay/releases/download/flow-spec-generator-v0.1.0/ganderbite-flow-spec-generator-0.1.0.tgz",
-        "shasum": "999858524a3e653cca535dc57839671afa87c33c781bcb34f5390b7ef37bfb8e"
-      }
+      "readmeExcerpt": "spec-generator\n\nGenerates a structured feature specification from a plain-language description."
     },
     {
       "name": "@ganderbite/example-git-log-summary",
@@ -101,8 +85,7 @@
         "min": 1,
         "max": 3
       },
-      "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a ",
-      "dist": { "tarball": "", "shasum": "" }
+      "readmeExcerpt": "git-log-summary\n\nA minimal script-then-prompt example. Use it to see how  acts as a gate — it runs a shell command and fails the whole flow if the command fails — before a prompt step takes over and produces a markdown document.\n\nWhat it does\n\nThe first step runs  as a gate: if  is missing, or the directory is not a git working tree, the run aborts before any tokens are spent. It writes the captured output to an artifact () so you have a record of exactly what the gate saw. The second step is a "
     },
     {
       "name": "@ganderbite/example-multi-perspective-review",
@@ -119,8 +102,7 @@
         "min": 2,
         "max": 8
       },
-      "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd",
-      "dist": { "tarball": "", "shasum": "" }
+      "readmeExcerpt": "multi-perspective-review\n\nA five-step fan-out / fan-in example. Use it to see how  dispatches three independent reviewers against the same input and how a downstream step collects their handoffs into a single report.\n\nWhat it does\n\nThree reviewers read the same source file at the same time — one looks for security issues, one for performance issues, one for readability issues. Each reviewer writes a typed JSON handoff. A final aggregation step reads all three handoffs and produces a single markd"
     }
   ]
 }
