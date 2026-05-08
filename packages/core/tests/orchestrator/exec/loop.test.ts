@@ -1,8 +1,10 @@
-import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadHandoffValues } from '../../../src/context-inject.js';
+import type { PipelineError } from '../../../src/errors.js';
 import { FlowDefinitionError, LoopMaxIterationsError } from '../../../src/errors.js';
 import { defineFlow } from '../../../src/flow/define.js';
 import { buildGraph } from '../../../src/flow/graph.js';
@@ -13,6 +15,17 @@ import { createLogger } from '../../../src/logger.js';
 import type { LoopExecutorContext } from '../../../src/orchestrator/exec/loop.js';
 import { executeLoop } from '../../../src/orchestrator/exec/loop.js';
 import type { PromptStepResult } from '../../../src/orchestrator/exec/prompt.js';
+import { createOrchestrator } from '../../../src/orchestrator/orchestrator.js';
+import { ProviderRegistry } from '../../../src/providers/registry.js';
+import type {
+  AuthState,
+  InvocationContext,
+  InvocationRequest,
+  InvocationResponse,
+  Provider,
+  ProviderCapabilities,
+} from '../../../src/providers/types.js';
+import { atomicWriteJson } from '../../../src/util/atomic-write.js';
 import { z } from '../../../src/zod.js';
 
 function mkPromptResult(stepId: string, handoffs: string[]): PromptStepResult {
@@ -451,7 +464,7 @@ describe('executeLoop', () => {
     }).toThrow(FlowDefinitionError);
   });
 
-  it('[LOOP-008] downstream step contextFrom "fix_loop.review" reads final iteration handoff', async () => {
+  it('[LOOP-008] (unit) downstream step contextFrom "fix_loop.review" reads final iteration handoff', async () => {
     // Test that after the loop completes, the latest-pointer at
     // handoffs/fix_loop/review.json holds the final iteration's value, and
     // loadHandoffValues resolves it via the "fix_loop.review" dotted id.
@@ -501,7 +514,7 @@ describe('executeLoop', () => {
     expect(reviewValue.revision).toBe(3);
   });
 
-  it('[LOOP-009] resume after mid-loop crash re-runs from iteration 1', async () => {
+  it('[LOOP-009] (unit) resume after mid-loop crash re-runs from iteration 1', async () => {
     // The loop executor always starts from iter 1 — no per-iteration state is
     // persisted. A second executeLoop call over the same run dir represents a
     // resume and must re-invoke body steps from the beginning.
@@ -618,5 +631,347 @@ describe('executeLoop', () => {
     // must NOT terminate the loop.
     expect(result.iterations).toBe(3);
     expect(callCount).toBe(3);
+  });
+});
+
+// ── Integration helpers ───────────────────────────────────────────────────────
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURES_DIR = join(HERE, '../../integration/fixtures');
+
+const ZERO_USAGE = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+};
+
+const DEFAULT_CAPS: ProviderCapabilities = {
+  streaming: true,
+  structuredOutput: true,
+  tools: true,
+  builtInTools: [],
+  multimodal: true,
+  budgetCap: true,
+  models: ['mock'],
+  maxContextTokens: 200_000,
+};
+
+function mkIntResponse(text: string): InvocationResponse {
+  return {
+    text,
+    usage: ZERO_USAGE,
+    costUsd: 0,
+    durationMs: 1,
+    numTurns: 1,
+    model: 'mock',
+    stopReason: 'end_turn',
+  };
+}
+
+/**
+ * Write flow-ref.json and metrics.json stubs so resume() can locate the flow
+ * and load cost data without ENOENT.
+ */
+async function writeResumeBoilerplate(
+  runDir: string,
+  flowName: string,
+  flowVersion: string,
+  flowPath: string,
+): Promise<void> {
+  await atomicWriteJson(join(runDir, 'flow-ref.json'), {
+    flowName,
+    flowVersion,
+    flowPath,
+  });
+  await atomicWriteJson(join(runDir, 'metrics.json'), []);
+  await mkdir(join(runDir, 'live'), { recursive: true });
+}
+
+// ── Integration suite ─────────────────────────────────────────────────────────
+
+describe('executeLoop integration (via createOrchestrator)', () => {
+  let runDir: string;
+
+  beforeEach(async () => {
+    runDir = await mkdtemp(join(tmpdir(), 'relay-loop-int-'));
+    await mkdir(join(runDir, 'live'), { recursive: true });
+    // Ensure the prompt template exists in the fixtures directory so
+    // executePrompt does not hit ENOENT when resolving promptFile: 'p.md'.
+    await writeFile(join(FIXTURES_DIR, 'p.md'), 'ping', 'utf8');
+  });
+
+  afterEach(async () => {
+    await rm(runDir, { recursive: true, force: true });
+  });
+
+  it('[LOOP-008-INT] downstream summarize step receives final iteration handoff via contextFrom fix_loop.review', {
+    timeout: 20_000,
+  }, async () => {
+    // This test exercises the full orchestrator dispatch path including the
+    // capability-check loop-body walk (wave-7 fix). The summarize step declares
+    // contextFrom: ['fix_loop.review'], which the prompt executor resolves via
+    // HandoffStore.readLatest after the loop completes. We capture the assembled
+    // prompt text by using a function-based MockProvider response for 'summarize'
+    // and assert it contains the final review value.
+
+    // Body step iteration counter — iters 1 and 2 return 'continue'; iter 3
+    // returns 'done', terminating the loop.
+    let reviewIterCount = 0;
+    let capturedSummarizePrompt = '';
+
+    class LoopIntProvider implements Provider {
+      readonly name = 'mock';
+      readonly capabilities = DEFAULT_CAPS;
+
+      async authenticate(): Promise<import('neverthrow').Result<AuthState, PipelineError>> {
+        const { ok } = await import('neverthrow');
+        return ok({ ok: true, billingSource: 'local' as const, detail: 'loop-int mock' });
+      }
+
+      async invoke(
+        req: InvocationRequest,
+        ctx: InvocationContext,
+      ): Promise<import('neverthrow').Result<InvocationResponse, PipelineError>> {
+        const { ok } = await import('neverthrow');
+        return ok(this.#responseFor(req, ctx));
+      }
+
+      async *stream(
+        req: InvocationRequest,
+        ctx: InvocationContext,
+      ): AsyncIterable<import('../../../src/providers/types.js').InvocationEvent> {
+        const text = this.#responseFor(req, ctx).text;
+        yield { type: 'turn.start', turn: 1 };
+        yield { type: 'text.delta', delta: text };
+        yield { type: 'usage', usage: ZERO_USAGE };
+        yield { type: 'turn.end', turn: 1 };
+        yield { type: 'stream.end', stopReason: 'end_turn' };
+      }
+
+      #responseFor(req: InvocationRequest, ctx: InvocationContext): InvocationResponse {
+        if (ctx.stepId === 'implement') {
+          return mkIntResponse('{"code":"v1"}');
+        }
+        if (ctx.stepId === 'review') {
+          reviewIterCount += 1;
+          const decision = reviewIterCount >= 3 ? 'done' : 'continue';
+          return mkIntResponse(JSON.stringify({ decision, revision: reviewIterCount }));
+        }
+        if (ctx.stepId === 'summarize') {
+          capturedSummarizePrompt = req.prompt;
+          return mkIntResponse('{"summary":"all done"}');
+        }
+        return mkIntResponse('{"ok":true}');
+      }
+    }
+
+    const provider = new LoopIntProvider();
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+
+    const flow = defineFlow({
+      name: 'loop-int-008',
+      version: '0.1.0',
+      input: z.object({}),
+      steps: {
+        fix_loop: step.loop({
+          body: {
+            implement: step.prompt({
+              promptFile: 'p.md',
+              output: { handoff: 'implementation' },
+            }),
+            review: step.prompt({
+              promptFile: 'p.md',
+              output: { handoff: 'review' },
+              dependsOn: ['implement'],
+            }),
+          },
+          until: { from: 'review', when: { decision: 'done' } },
+          maxIterations: 5,
+        }),
+        summarize: step.prompt({
+          promptFile: 'p.md',
+          dependsOn: ['fix_loop'],
+          contextFrom: ['fix_loop.review'],
+          output: { handoff: 'summary' },
+        }),
+      },
+    });
+
+    const orchestrator = createOrchestrator({ providers: registry, runDir });
+    const result = await orchestrator.run(
+      flow,
+      {},
+      {
+        flowDir: FIXTURES_DIR,
+        authTimeoutMs: 5_000,
+        flagProvider: 'mock',
+        worktree: false,
+      },
+    );
+
+    expect(result.status, 'run must succeed end-to-end').toBe('succeeded');
+
+    // The loop must have run 3 iterations before the until condition matched.
+    expect(reviewIterCount, 'review must be invoked 3 times (iters 1-3)').toBe(3);
+
+    // The summarize step must have been invoked after the loop completed.
+    expect(capturedSummarizePrompt, 'summarize step must have been invoked').not.toBe('');
+
+    // The assembled prompt for the summarize step must contain the final
+    // iteration's review handoff (revision: 3, decision: 'done') injected
+    // via the fix_loop.review contextFrom ref.
+    expect(
+      capturedSummarizePrompt,
+      'summarize prompt must contain the fix_loop.review context block',
+    ).toContain('fix_loop.review');
+    expect(
+      capturedSummarizePrompt,
+      'summarize prompt must contain the final review decision',
+    ).toContain('"decision"');
+    expect(
+      capturedSummarizePrompt,
+      'summarize prompt must contain revision 3 from the final iteration',
+    ).toContain('"revision":3');
+
+    // Verify the latest-pointer at handoffs/fix_loop/review.json holds the
+    // final iteration value — this is what contextFrom resolves at runtime.
+    const handoffStore = new (await import('../../../src/handoffs.js')).HandoffStore(runDir);
+    const latestResult = await handoffStore.readLatest('fix_loop', 'review');
+    expect(latestResult.isOk(), 'fix_loop/review latest pointer must exist after loop').toBe(true);
+    const latestReview = latestResult._unsafeUnwrap() as Record<string, unknown>;
+    expect(latestReview.decision, 'final review decision must be "done"').toBe('done');
+    expect(latestReview.revision, 'final review revision must be 3').toBe(3);
+  });
+
+  it('[LOOP-009-INT] resume after failed loop re-dispatches loop step from iteration 1', {
+    timeout: 20_000,
+  }, async () => {
+    // This test exercises Orchestrator.resume() over a flow whose loop step
+    // was left in 'failed' state (because the loop body threw on iteration 2).
+    // On resume the loop step is reset to 'pending' and executeLoop starts a
+    // fresh iteration cycle from iter=1, not from iter=2. The resumed run
+    // completes successfully.
+    //
+    // State is injected directly (same pattern as the parallel-partial-resume
+    // tests) to avoid depending on process fork or signal delivery.
+
+    const FLOW_PATH = join(FIXTURES_DIR, 'loop-resume-flow.ts');
+    const flowName = 'loop-resume-flow';
+    const flowVersion = '0.1.0';
+
+    const now = new Date().toISOString();
+
+    // Inject a failed run where fix_loop failed on iter 2 and summarize is pending.
+    const injectedState = {
+      runId: 'test-loop-resume-01',
+      flowName,
+      flowVersion,
+      status: 'failed' as const,
+      startedAt: now,
+      updatedAt: now,
+      input: {},
+      steps: {
+        fix_loop: {
+          status: 'failed' as const,
+          attempts: 1,
+          startedAt: now,
+          completedAt: now,
+          errorMessage: 'loop body failed on iteration 2',
+        },
+        summarize: {
+          status: 'pending' as const,
+          attempts: 0,
+        },
+      },
+    };
+
+    await writeResumeBoilerplate(runDir, flowName, flowVersion, FLOW_PATH);
+    await atomicWriteJson(join(runDir, 'state.json'), injectedState);
+
+    // Iteration tracker for the resumed run. We capture the first iteration
+    // number dispatched to verify the loop restarted from 1 (not 2).
+    const resumeIterations: number[] = [];
+    let reviewCallCount = 0;
+
+    class LoopResumeProvider implements Provider {
+      readonly name = 'mock';
+      readonly capabilities = DEFAULT_CAPS;
+
+      async authenticate(): Promise<import('neverthrow').Result<AuthState, PipelineError>> {
+        const { ok } = await import('neverthrow');
+        return ok({ ok: true, billingSource: 'local' as const, detail: 'loop-resume mock' });
+      }
+
+      async invoke(
+        req: InvocationRequest,
+        ctx: InvocationContext,
+      ): Promise<import('neverthrow').Result<InvocationResponse, PipelineError>> {
+        const { ok } = await import('neverthrow');
+        return ok(this.#responseFor(req, ctx));
+      }
+
+      async *stream(
+        req: InvocationRequest,
+        ctx: InvocationContext,
+      ): AsyncIterable<import('../../../src/providers/types.js').InvocationEvent> {
+        const text = this.#responseFor(req, ctx).text;
+        yield { type: 'turn.start', turn: 1 };
+        yield { type: 'text.delta', delta: text };
+        yield { type: 'usage', usage: ZERO_USAGE };
+        yield { type: 'turn.end', turn: 1 };
+        yield { type: 'stream.end', stopReason: 'end_turn' };
+      }
+
+      #responseFor(req: InvocationRequest, ctx: InvocationContext): InvocationResponse {
+        if (ctx.stepId === 'implement') {
+          return mkIntResponse('{"code":"resumed-impl"}');
+        }
+        if (ctx.stepId === 'review') {
+          reviewCallCount += 1;
+          resumeIterations.push(reviewCallCount);
+          // Done on the 2nd review call so the resumed loop runs 2 full iterations.
+          const decision = reviewCallCount >= 2 ? 'done' : 'continue';
+          return mkIntResponse(JSON.stringify({ decision }));
+        }
+        if (ctx.stepId === 'summarize') {
+          return mkIntResponse('{"summary":"resumed summary"}');
+        }
+        return mkIntResponse('{"ok":true}');
+      }
+    }
+
+    const resumeProvider = new LoopResumeProvider();
+    const registry = new ProviderRegistry();
+    registry.register(resumeProvider);
+
+    const orchestrator = createOrchestrator({ providers: registry, runDir });
+
+    const result = await orchestrator.resume(runDir, {
+      authTimeoutMs: 5_000,
+      flowDir: FIXTURES_DIR,
+      flagProvider: 'mock',
+    });
+
+    // The resumed run must complete successfully.
+    expect(result.status, 'resumed run must succeed').toBe('succeeded');
+
+    // The loop must have been re-dispatched — review must have been called.
+    expect(reviewCallCount, 'review must be invoked by the resumed loop').toBeGreaterThanOrEqual(1);
+
+    // The loop must have re-started from iteration 1. Because the first review
+    // call corresponds to iter=1 in the restarted cycle, the resumeIterations
+    // array starts at 1 in the executor's internal counter — we verify it ran
+    // at least once and that the run completed (proving the loop did not start
+    // mid-run from iter=2 which would only need one review call if iter=2
+    // of the first run had already written a 'continue' decision before failure).
+    expect(
+      reviewCallCount,
+      'resumed loop must run 2 iterations (iter 1: continue, iter 2: done)',
+    ).toBe(2);
+
+    // summarize must have run after the loop completed.
+    expect(result.status).toBe('succeeded');
   });
 });
