@@ -11,7 +11,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Flow, StepStatus } from '@ganderbite/relay-core';
+import type { EventRecord, Flow, StepStatus } from '@ganderbite/relay-core';
 import { z } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import type { FSWatcher } from 'chokidar';
@@ -21,6 +21,7 @@ import { flowHeader, SYMBOLS } from './brand.js';
 import { gray, green, red, yellow } from './color.js';
 import { fmtCostApprox, fmtK } from './format.js';
 import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
+import { renderStepSummary, renderStreamingLine, renderVerboseEvent } from './verboseStream.js';
 
 // ---------------------------------------------------------------------------
 // Live state Zod schema — LiveStatePartial type is imported from @ganderbite/relay-core/live-state.
@@ -91,13 +92,49 @@ function logStructured(event: string, fields: Record<string, string | number | u
 }
 
 // ---------------------------------------------------------------------------
+// Per-step verbose accumulator
+// ---------------------------------------------------------------------------
+
+interface VerboseAccumulator {
+  /** Rendered lines (excluding text.delta streaming line). */
+  lines: string[];
+  /** Accumulated char count from text.delta events. */
+  textDeltaChars: number;
+  /** Accumulated turn count (turn.start events). */
+  turns: number;
+  /** Accumulated tool call count (tool.call events). */
+  tools: number;
+  /** Latest tokensIn from a usage event. */
+  tokensIn: number;
+  /** Latest tokensOut from a usage event. */
+  tokensOut: number;
+  /** Latest costUsd from a stream.end event. */
+  costUsd: number | undefined;
+  /** All EventRecords parsed from the .jsonl file — kept for non-TTY NDJSON emit. */
+  records: EventRecord[];
+}
+
+function makeAccumulator(): VerboseAccumulator {
+  return {
+    lines: [],
+    textDeltaChars: 0,
+    turns: 0,
+    tools: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    costUsd: undefined,
+    records: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // ProgressDisplay
 // ---------------------------------------------------------------------------
 
 /**
  * Three-zone live progress display.
  *
- * Constructor: `new ProgressDisplay(runDir, flow, auth)`
+ * Constructor: `new ProgressDisplay(runDir, flow, auth, verbose?)`
  * Start:       `.start(runId)` — begins watching and rendering.
  * Stop:        `.stop()` — clears the live area and returns terminal control.
  * Metrics:     `.updateRunnerMetrics(runnerId, { tokensIn, tokensOut, costUsd, durationMs, model })`
@@ -109,10 +146,12 @@ export class ProgressDisplay<TInput = unknown> {
   readonly #runDir: string;
   readonly #flow: Flow<TInput>;
   readonly #auth: AuthInfo;
+  readonly #verbose: boolean;
 
   #runId = '';
   #runStartedAt = '';
   #watcher: FSWatcher | null = null;
+  #eventsWatcher: FSWatcher | null = null;
   #spinnerFrame = 0;
   #tickTimer: ReturnType<typeof setInterval> | null = null;
   #debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -121,10 +160,14 @@ export class ProgressDisplay<TInput = unknown> {
   readonly #steps: Map<string, StepDisplayState> = new Map();
   #cumulativeTokens: number = 0;
 
-  constructor(runDir: string, flow: Flow<TInput>, auth: AuthInfo) {
+  /** stepId -> verbose accumulator (populated only when verbose=true) */
+  readonly #verboseAccumulators: Map<string, VerboseAccumulator> = new Map();
+
+  constructor(runDir: string, flow: Flow<TInput>, auth: AuthInfo, verbose = false) {
     this.#runDir = runDir;
     this.#flow = flow;
     this.#auth = auth;
+    this.#verbose = verbose;
     this.#isTTY = Boolean(process.stdout.isTTY);
   }
 
@@ -188,6 +231,10 @@ export class ProgressDisplay<TInput = unknown> {
       void this.#watcher.close();
       this.#watcher = null;
     }
+    if (this.#eventsWatcher !== null) {
+      void this.#eventsWatcher.close();
+      this.#eventsWatcher = null;
+    }
     if (this.#isTTY) {
       logUpdate.done();
     }
@@ -247,6 +294,18 @@ export class ProgressDisplay<TInput = unknown> {
     this.#watcher.on('add', onFileChange);
     this.#watcher.on('change', onFileChange);
 
+    // When verbose, additionally watch the events directory for .jsonl files.
+    if (this.#verbose) {
+      const eventsDir = join(this.#runDir, 'events');
+      this.#eventsWatcher = watch(eventsDir, {
+        persistent: true,
+        ignoreInitial: false,
+        awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 20 },
+      });
+      this.#eventsWatcher.on('add', this.#onEventsFileChange.bind(this));
+      this.#eventsWatcher.on('change', this.#onEventsFileChange.bind(this));
+    }
+
     // Spinner tick: advance frame every 100 ms and repaint.
     this.#tickTimer = setInterval(() => {
       this.#spinnerFrame = (this.#spinnerFrame + 1) % SYMBOLS.spinner.length;
@@ -254,6 +313,107 @@ export class ProgressDisplay<TInput = unknown> {
     }, 100);
 
     this.#redraw();
+  }
+
+  #stepIdFromEventsPath(filePath: string): string {
+    const basename = filePath.split('/').at(-1) ?? filePath.split('\\').at(-1) ?? '';
+    return basename.replace(/\.jsonl$/, '');
+  }
+
+  #onEventsFileChange(filePath: string): void {
+    if (!filePath.endsWith('.jsonl')) return;
+    void this.#readEventsFile(filePath);
+  }
+
+  async #readEventsFile(filePath: string): Promise<void> {
+    const stepId = this.#stepIdFromEventsPath(filePath);
+    if (!this.#steps.has(stepId)) return;
+
+    let raw: string;
+    try {
+      raw = await readFile(filePath, 'utf8');
+    } catch {
+      // File not yet available or read race — skip; next change event will retry.
+      return;
+    }
+
+    const acc = this.#verboseAccumulators.get(stepId) ?? makeAccumulator();
+
+    // Reset accumulated state and rebuild from scratch on every read.
+    acc.lines = [];
+    acc.textDeltaChars = 0;
+    acc.turns = 0;
+    acc.tools = 0;
+    acc.tokensIn = 0;
+    acc.tokensOut = 0;
+    acc.costUsd = undefined;
+    acc.records = [];
+
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+
+      let record: unknown;
+      try {
+        record = JSON.parse(trimmed);
+      } catch {
+        // Malformed line — skip and continue.
+        continue;
+      }
+
+      // Validate the minimal shape we need before casting.
+      if (
+        record === null ||
+        typeof record !== 'object' ||
+        !('seq' in record) ||
+        !('ts' in record) ||
+        !('attempt' in record) ||
+        !('event' in record)
+      ) {
+        continue;
+      }
+
+      const typed = record as EventRecord;
+      acc.records.push(typed);
+
+      const ev = typed.event;
+
+      // Accumulate counters for step summary.
+      if (ev.type === 'turn.start') {
+        acc.turns += 1;
+      } else if (ev.type === 'tool.call') {
+        acc.tools += 1;
+      } else if (ev.type === 'usage') {
+        acc.tokensIn = ev.usage.inputTokens ?? 0;
+        acc.tokensOut = ev.usage.outputTokens ?? 0;
+      } else if (ev.type === 'stream.end') {
+        if (ev.costUsd !== undefined) {
+          acc.costUsd = ev.costUsd;
+        }
+      } else if (ev.type === 'text.delta') {
+        acc.textDeltaChars += ev.delta.length;
+      }
+
+      // Render the event to a line (text.delta returns null — handled via streaming line).
+      const rendered = renderVerboseEvent(typed);
+      if (rendered !== null) {
+        acc.lines.push(rendered);
+      }
+    }
+
+    // Append the streaming line only when there have been text deltas.
+    if (acc.textDeltaChars > 0) {
+      acc.lines.push(renderStreamingLine(acc.textDeltaChars));
+    }
+
+    this.#verboseAccumulators.set(stepId, acc);
+
+    // Debounce redraws triggered from events file changes.
+    if (this.#debounceTimer !== null) clearTimeout(this.#debounceTimer);
+    this.#debounceTimer = setTimeout(() => {
+      this.#debounceTimer = null;
+      if (this.#isTTY) this.#redraw();
+    }, 100);
   }
 
   async #loadLiveFile(filePath: string): Promise<void> {
@@ -296,8 +456,69 @@ export class ProgressDisplay<TInput = unknown> {
     if (wasRunning && nowDone) {
       const started = state.runningStartedAt ?? parsed.startedAt;
       state.finalDurationMs = Date.now() - new Date(started).getTime();
+
       if (!this.#isTTY) {
         logStructured('step.end', { runnerId, durMs: state.finalDurationMs });
+
+        // Non-TTY verbose: emit one NDJSON line per EventRecord to stderr.
+        if (this.#verbose) {
+          const acc = this.#verboseAccumulators.get(runnerId);
+          if (acc !== undefined) {
+            for (const record of acc.records) {
+              process.stderr.write(
+                `${JSON.stringify({ ts: record.ts, step: runnerId, event: record })}\n`,
+              );
+            }
+          } else {
+            // Accumulator not yet populated via watcher — read the file directly.
+            const eventsPath = join(this.#runDir, 'events', `${runnerId}.jsonl`);
+            try {
+              const raw = await readFile(eventsPath, 'utf8');
+              for (const line of raw.split('\n')) {
+                const trimmed = line.trim();
+                if (trimmed.length === 0) continue;
+                let record: unknown;
+                try {
+                  record = JSON.parse(trimmed);
+                } catch {
+                  continue;
+                }
+                if (
+                  record === null ||
+                  typeof record !== 'object' ||
+                  !('seq' in record) ||
+                  !('ts' in record) ||
+                  !('attempt' in record) ||
+                  !('event' in record)
+                ) {
+                  continue;
+                }
+                const typed = record as EventRecord;
+                process.stderr.write(
+                  `${JSON.stringify({ ts: typed.ts, step: runnerId, event: typed })}\n`,
+                );
+              }
+            } catch {
+              // Events file absent — nothing to emit.
+            }
+          }
+        }
+      }
+
+      // Replace sub-stream lines with the step summary when verbose and TTY.
+      if (this.#verbose && this.#isTTY) {
+        const acc = this.#verboseAccumulators.get(runnerId);
+        const summaryArgs: Parameters<typeof renderStepSummary>[0] = {
+          turns: acc?.turns ?? 0,
+          tools: acc?.tools ?? 0,
+          tokensIn: acc?.tokensIn ?? 0,
+          tokensOut: acc?.tokensOut ?? 0,
+          ...(acc?.costUsd !== undefined ? { costUsd: acc.costUsd } : {}),
+        };
+        const summaryLine = renderStepSummary(summaryArgs);
+        const freshAcc = acc ?? makeAccumulator();
+        freshAcc.lines = [summaryLine];
+        this.#verboseAccumulators.set(runnerId, freshAcc);
       }
     }
 
@@ -385,7 +606,17 @@ export class ProgressDisplay<TInput = unknown> {
       const progressCol = progress.padEnd(DURATION_WIDTH);
       const totalToks = this.#cumulativeTokens + (live.tokensSoFar ?? 0);
       const tokensCol = fmtK(totalToks).padEnd(13);
-      return ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}`;
+      const stepRowLine = ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}`;
+
+      // When verbose, append accumulated sub-stream lines below the step row.
+      if (this.#verbose) {
+        const subLines = this.#verboseAccumulators.get(state.id)?.lines ?? [];
+        if (subLines.length > 0) {
+          return [stepRowLine, ...subLines].join('\n');
+        }
+      }
+
+      return stepRowLine;
     }
 
     // Succeeded / failed / skipped — show frozen metrics
@@ -401,11 +632,23 @@ export class ProgressDisplay<TInput = unknown> {
     const costUsd = state.finalCostUsd ?? 0;
     const costStr = fmtCostApprox(costUsd);
 
+    let terminalRow: string;
     if (status === 'succeeded') {
-      return ` ${green(SYMBOLS.ok)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${green(costStr)}`;
+      terminalRow = ` ${green(SYMBOLS.ok)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${green(costStr)}`;
+    } else {
+      // failed or skipped
+      terminalRow = ` ${red(SYMBOLS.fail)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${red(costStr)}`;
     }
-    // failed or skipped
-    return ` ${red(SYMBOLS.fail)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${red(costStr)}`;
+
+    // When verbose, append the summary line below the terminal step row.
+    if (this.#verbose) {
+      const subLines = this.#verboseAccumulators.get(state.id)?.lines ?? [];
+      if (subLines.length > 0) {
+        return [terminalRow, ...subLines].join('\n');
+      }
+    }
+
+    return terminalRow;
   }
 
   #computeSpent(): number {
