@@ -228,3 +228,52 @@ describe('EventLogWriter — error isolation', () => {
     await expect(writer.flush()).resolves.toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fallback record on JSON.stringify failure (circular reference)
+// ---------------------------------------------------------------------------
+
+describe('EventLogWriter — serialization fallback', () => {
+  it('[EVLOG-017] write() with a circular-reference event produces a fallback NDJSON line with _serialization: "failed"', async () => {
+    const eventsDir = join(tmpDir, 'events');
+    await mkdir(eventsDir, { recursive: true });
+
+    // Suppress stderr — the write catch path also invokes #report which writes stderr
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    // Construct a circular-reference payload that JSON.stringify will throw on.
+    // The event satisfies the InvocationEvent discriminant but the input field
+    // creates the cycle; JSON.stringify throws TypeError on circular structures.
+    const circularInput: Record<string, unknown> = {};
+    circularInput['self'] = circularInput;
+    const circularEvent = {
+      type: 'tool.call' as const,
+      name: 'bash',
+      input: circularInput,
+    };
+
+    const writer = new EventLogWriter(eventsDir, 'step-circular', 0);
+    await writer.write(5, circularEvent);
+    await writer.flush();
+
+    const raw = await readFile(join(eventsDir, 'step-circular.jsonl'), 'utf8');
+    const lines = raw
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    // Exactly one fallback line on disk
+    expect(lines).toHaveLength(1);
+
+    const fallback = lines[0];
+    expect(fallback).toBeDefined();
+    expect(fallback?.['seq']).toBe(5);
+    expect(fallback?.['attempt']).toBe(0);
+    expect(typeof fallback?.['ts']).toBe('string');
+    expect((fallback?.['event'] as Record<string, unknown>)?.['type']).toBe('tool.call');
+    expect(fallback?.['_serialization']).toBe('failed');
+    // The original (un-serializable) payload must not be present under event.name or event.input
+    expect(fallback?.['event']).not.toHaveProperty('name');
+    expect(fallback?.['event']).not.toHaveProperty('input');
+  });
+});
