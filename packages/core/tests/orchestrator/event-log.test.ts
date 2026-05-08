@@ -2,8 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ERROR_CODES, PipelineError, StepFailureError } from '../../src/errors.js';
 import type { EventRecord } from '../../src/orchestrator/event-log.js';
-import { EventLogWriter } from '../../src/orchestrator/event-log.js';
+import { EventLogWriter, EventRecordSchema } from '../../src/orchestrator/event-log.js';
 
 let tmpDir: string;
 
@@ -226,6 +227,117 @@ describe('EventLogWriter — error isolation', () => {
     await writer.write(0, { type: 'text.delta', delta: 'y' });
     // flush on a writer that never opened must be a no-op
     await expect(writer.flush()).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stream.error normalization round-trip
+// ---------------------------------------------------------------------------
+
+describe('EventLogWriter — stream.error normalization round-trip', () => {
+  it('[EVLOG-018] stream.error with PipelineError round-trips message, name, and code through EventRecordSchema', async () => {
+    const eventsDir = join(tmpDir, 'events-err');
+    await mkdir(eventsDir, { recursive: true });
+
+    const error = new PipelineError('boom', ERROR_CODES.STEP_FAILURE, { runId: 'run-abc' });
+    const writer = new EventLogWriter(eventsDir, 'step-err', 0);
+    await writer.write(7, { type: 'stream.error', error });
+    await writer.flush();
+
+    const raw = await readFile(join(eventsDir, 'step-err.jsonl'), 'utf8');
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+
+    expect(lines).toHaveLength(1);
+
+    const parsed: unknown = JSON.parse(lines[0] ?? '');
+    const result = EventRecordSchema.safeParse(parsed);
+
+    expect(result.success).toBe(true);
+
+    // Use the discriminated union to narrow down to stream.error before asserting
+    // field values — avoids `any` / `as` casts.
+    if (!result.success) return; // narrowing only; expect above already fails if false
+
+    const record = result.data;
+    expect(record.seq).toBe(7);
+    expect(record.attempt).toBe(0);
+    expect(record.event.type).toBe('stream.error');
+
+    if (record.event.type !== 'stream.error') return; // discriminant narrowing
+
+    expect(record.event.error.message).toBe('boom');
+  });
+
+  it('[EVLOG-019] stream.error with StepFailureError round-trips name, code, and details', async () => {
+    const eventsDir = join(tmpDir, 'events-step-err');
+    await mkdir(eventsDir, { recursive: true });
+
+    const error = new StepFailureError('step crashed', 'my-step', 2, {
+      exitCode: 1,
+      stderr: 'oops',
+    });
+    const writer = new EventLogWriter(eventsDir, 'step-fail', 1);
+    await writer.write(0, { type: 'stream.error', error });
+    await writer.flush();
+
+    const raw = await readFile(join(eventsDir, 'step-fail.jsonl'), 'utf8');
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+
+    expect(lines).toHaveLength(1);
+
+    const parsed: unknown = JSON.parse(lines[0] ?? '');
+    const result = EventRecordSchema.safeParse(parsed);
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) return;
+
+    const record = result.data;
+    expect(record.event.type).toBe('stream.error');
+
+    if (record.event.type !== 'stream.error') return;
+
+    // The normalizeForSerialization helper must have extracted non-enumerable props
+    expect(record.event.error.message).toBe('step crashed');
+
+    // Verify the passthrough() schema preserved the name and code fields
+    const errorObj = record.event.error as Record<string, unknown>;
+    expect(errorObj['name']).toBe('StepFailureError');
+    expect(errorObj['code']).toBe(ERROR_CODES.STEP_FAILURE);
+
+    // details must have been serialized as a plain object and round-tripped
+    const details = errorObj['details'] as Record<string, unknown> | undefined;
+    expect(details).toBeDefined();
+    expect(details?.['exitCode']).toBe(1);
+    expect(details?.['stderr']).toBe('oops');
+  });
+
+  it('[EVLOG-020] non-stream.error events are not affected by normalization', async () => {
+    const eventsDir = join(tmpDir, 'events-turn');
+    await mkdir(eventsDir, { recursive: true });
+
+    const writer = new EventLogWriter(eventsDir, 'step-turn', 0);
+    await writer.write(3, { type: 'turn.start', turn: 2 });
+    await writer.flush();
+
+    const raw = await readFile(join(eventsDir, 'step-turn.jsonl'), 'utf8');
+    const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+
+    expect(lines).toHaveLength(1);
+
+    const parsed: unknown = JSON.parse(lines[0] ?? '');
+    const result = EventRecordSchema.safeParse(parsed);
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) return;
+
+    const record = result.data;
+    expect(record.event.type).toBe('turn.start');
+
+    if (record.event.type !== 'turn.start') return;
+
+    expect(record.event.turn).toBe(2);
   });
 });
 
