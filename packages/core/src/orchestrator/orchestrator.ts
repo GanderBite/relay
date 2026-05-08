@@ -1169,6 +1169,10 @@ export class Orchestrator {
             });
           case 'terminal':
             return executeTerminal(step, baseCtx);
+          case 'loop':
+            throw new FlowDefinitionError(`loop steps are not yet supported by the orchestrator`, {
+              stepId: step.id,
+            });
         }
       };
 

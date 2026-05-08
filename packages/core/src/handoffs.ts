@@ -59,6 +59,80 @@ function resolveHandoffPath(handoffsDir: string, id: string): Result<string, Flo
   return ok(fullResolved);
 }
 
+// Validates an iteration index. Must be a non-negative safe integer; rejects
+// negatives, fractions, NaN, Infinity, and anything large enough to confuse
+// the integer comparison the runner relies on.
+function validateIteration(iter: number): Result<void, FlowDefinitionError> {
+  if (typeof iter !== 'number' || !Number.isSafeInteger(iter) || iter < 0) {
+    return err(
+      new FlowDefinitionError(`invalid iteration index: ${String(iter)}`, {
+        cause: { iter },
+      }),
+    );
+  }
+  return ok(undefined);
+}
+
+// Resolves an iteration-scoped handoff path
+// (`<handoffsDir>/<loopStepId>/iter_<iter>/<name>.json`) and confirms the
+// resolved path still lives under the store root. Each id segment must pass
+// validateHandoffId; the iteration index must pass validateIteration.
+function resolveIterationPath(
+  handoffsDir: string,
+  loopStepId: string,
+  iter: number,
+  name: string,
+): Result<string, FlowDefinitionError> {
+  const stepCheck = validateHandoffId(loopStepId);
+  if (stepCheck.isErr()) return err(stepCheck.error);
+  const nameCheck = validateHandoffId(name);
+  if (nameCheck.isErr()) return err(nameCheck.error);
+  const iterCheck = validateIteration(iter);
+  if (iterCheck.isErr()) return err(iterCheck.error);
+
+  const rootResolved = resolve(handoffsDir);
+  const fullResolved = resolve(handoffsDir, loopStepId, `iter_${iter}`, `${name}.json`);
+  const rootPrefix = rootResolved.endsWith(sep) ? rootResolved : rootResolved + sep;
+  if (!fullResolved.startsWith(rootPrefix)) {
+    return err(
+      new FlowDefinitionError('handoff path escapes store directory', {
+        handoffId: `${loopStepId}/iter_${iter}/${name}`,
+        resolved: fullResolved,
+        root: rootResolved,
+      }),
+    );
+  }
+  return ok(fullResolved);
+}
+
+// Resolves the latest-pointer path for a loop step's named handoff
+// (`<handoffsDir>/<loopStepId>/<name>.json`) and confirms it still lives
+// under the store root. Each id segment is validated.
+function resolveLatestPath(
+  handoffsDir: string,
+  loopStepId: string,
+  name: string,
+): Result<string, FlowDefinitionError> {
+  const stepCheck = validateHandoffId(loopStepId);
+  if (stepCheck.isErr()) return err(stepCheck.error);
+  const nameCheck = validateHandoffId(name);
+  if (nameCheck.isErr()) return err(nameCheck.error);
+
+  const rootResolved = resolve(handoffsDir);
+  const fullResolved = resolve(handoffsDir, loopStepId, `${name}.json`);
+  const rootPrefix = rootResolved.endsWith(sep) ? rootResolved : rootResolved + sep;
+  if (!fullResolved.startsWith(rootPrefix)) {
+    return err(
+      new FlowDefinitionError('handoff path escapes store directory', {
+        handoffId: `${loopStepId}/${name}`,
+        resolved: fullResolved,
+        root: rootResolved,
+      }),
+    );
+  }
+  return ok(fullResolved);
+}
+
 function errnoOf(cause: unknown): string | undefined {
   if (typeof cause === 'object' && cause !== null && 'code' in cause) {
     const code = (cause as { code: unknown }).code;
@@ -276,5 +350,246 @@ export class HandoffStore {
       .map((name) => name.slice(0, -'.json'.length))
       .sort();
     return ok(ids);
+  }
+
+  /**
+   * Persists a handoff value at the iteration-scoped path
+   * `<runDir>/handoffs/<loopStepId>/iter_<iter>/<name>.json` via an atomic
+   * rename. The loopStepId and name segments are validated against the
+   * standard handoff id allowlist; iter must be a non-negative safe integer.
+   * The resolved path is verified to still live under the store root.
+   *
+   * Parent directories are created via `mkdir({ recursive: true })` inside
+   * `atomicWriteJson` before the write begins, so callers do not need to
+   * ensure the loop or iteration directory exists first.
+   *
+   * Returns err with HandoffSchemaError on Zod validation failure,
+   * HandoffWriteError on filesystem write failure, or FlowDefinitionError
+   * on segment or iteration validation failure.
+   */
+  async writeIteration<T>(
+    loopStepId: string,
+    iter: number,
+    name: string,
+    value: T,
+    schema?: z.ZodType<T>,
+  ): Promise<Result<void, WriteError>> {
+    const pathResult = resolveIterationPath(this.#handoffsDir, loopStepId, iter, name);
+    if (pathResult.isErr()) return err(pathResult.error);
+
+    const handoffId = `${loopStepId}/iter_${iter}/${name}`;
+
+    if (schema !== undefined) {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        return err(
+          new HandoffSchemaError(
+            `handoff "${handoffId}" failed schema validation`,
+            handoffId,
+            parsed.error.issues,
+          ),
+        );
+      }
+    }
+
+    const writeResult = await atomicWriteJson(pathResult.value, value);
+    if (writeResult.isErr()) {
+      return err(
+        new HandoffWriteError(`failed to write handoff "${handoffId}"`, handoffId, {
+          cause: writeResult.error,
+          ...(writeResult.error.errno !== undefined ? { errno: writeResult.error.errno } : {}),
+          path: writeResult.error.path,
+        }),
+      );
+    }
+    return ok(undefined);
+  }
+
+  /**
+   * Loads and optionally schema-validates a handoff value from the
+   * iteration-scoped path
+   * `<runDir>/handoffs/<loopStepId>/iter_<iter>/<name>.json`. Segment and
+   * iteration validation matches `writeIteration`.
+   *
+   * Returns err with FlowDefinitionError on segment or iteration validation
+   * failure, HandoffNotFoundError when the file does not exist,
+   * HandoffSchemaError on Zod validation failure, or HandoffIoError on any
+   * other filesystem or JSON parse error.
+   *
+   * When called without a schema the ok payload is raw unknown.
+   * When called with a Zod schema the ok payload is the inferred type T.
+   */
+  async readIteration(
+    loopStepId: string,
+    iter: number,
+    name: string,
+  ): Promise<Result<unknown, HandoffNotFoundError | HandoffIoError | FlowDefinitionError>>;
+  async readIteration<T>(
+    loopStepId: string,
+    iter: number,
+    name: string,
+    schema: z.ZodType<T>,
+  ): Promise<
+    Result<T, HandoffNotFoundError | HandoffSchemaError | HandoffIoError | FlowDefinitionError>
+  >;
+  async readIteration<T>(
+    loopStepId: string,
+    iter: number,
+    name: string,
+    schema?: z.ZodType<T>,
+  ): Promise<Result<T | unknown, ReadError>> {
+    const pathResult = resolveIterationPath(this.#handoffsDir, loopStepId, iter, name);
+    if (pathResult.isErr()) return err(pathResult.error);
+    const handoffId = `${loopStepId}/iter_${iter}/${name}`;
+    return this.#readJsonAt(pathResult.value, handoffId, schema);
+  }
+
+  /**
+   * Reads the JSON at the iteration-scoped path
+   * `<runDir>/handoffs/<loopStepId>/iter_<iter>/<name>.json` and writes it
+   * atomically to the latest-pointer path
+   * `<runDir>/handoffs/<loopStepId>/<name>.json`. This is a read-then-write
+   * copy, not a filesystem symlink, so the latest pointer survives across
+   * resumes that may load a different working directory.
+   *
+   * Returns err with FlowDefinitionError on segment or iteration validation
+   * failure, HandoffWriteError when the source is missing or the destination
+   * write fails, or HandoffSchemaError-shaped errors only when a caller
+   * passes a schema (this method does not).
+   */
+  async promoteIteration(
+    loopStepId: string,
+    iter: number,
+    name: string,
+  ): Promise<Result<void, WriteError>> {
+    const sourceResult = resolveIterationPath(this.#handoffsDir, loopStepId, iter, name);
+    if (sourceResult.isErr()) return err(sourceResult.error);
+    const targetResult = resolveLatestPath(this.#handoffsDir, loopStepId, name);
+    if (targetResult.isErr()) return err(targetResult.error);
+
+    const handoffId = `${loopStepId}/${name}`;
+
+    let raw: string;
+    try {
+      raw = await readFile(sourceResult.value, { encoding: 'utf8' });
+    } catch (cause) {
+      const errno = errnoOf(cause);
+      return err(
+        new HandoffWriteError(
+          `failed to read iteration handoff "${loopStepId}/iter_${iter}/${name}" for promotion`,
+          handoffId,
+          {
+            cause: messageOf(cause),
+            ...(errno !== undefined ? { errno } : {}),
+            path: sourceResult.value,
+          },
+        ),
+      );
+    }
+
+    const parsed = safeParse(raw);
+    if (parsed.isErr()) {
+      return err(
+        new HandoffWriteError(
+          `failed to parse iteration handoff "${loopStepId}/iter_${iter}/${name}" for promotion`,
+          handoffId,
+          {
+            cause: parsed.error.details?.['cause'],
+            path: sourceResult.value,
+          },
+        ),
+      );
+    }
+
+    const writeResult = await atomicWriteJson(targetResult.value, parsed.value);
+    if (writeResult.isErr()) {
+      return err(
+        new HandoffWriteError(`failed to write handoff "${handoffId}"`, handoffId, {
+          cause: writeResult.error,
+          ...(writeResult.error.errno !== undefined ? { errno: writeResult.error.errno } : {}),
+          path: writeResult.error.path,
+        }),
+      );
+    }
+    return ok(undefined);
+  }
+
+  /**
+   * Loads and optionally schema-validates a handoff value from the
+   * latest-pointer path `<runDir>/handoffs/<loopStepId>/<name>.json`. The
+   * latest pointer is updated by `promoteIteration` after a loop iteration
+   * decides its output is canonical; reading the latest pointer is the way
+   * downstream steps observe the loop's final result.
+   *
+   * Returns err with FlowDefinitionError on segment validation failure,
+   * HandoffNotFoundError when the file does not exist, HandoffSchemaError on
+   * Zod validation failure, or HandoffIoError on any other filesystem or
+   * JSON parse error.
+   */
+  async readLatest(
+    loopStepId: string,
+    name: string,
+  ): Promise<Result<unknown, HandoffNotFoundError | HandoffIoError | FlowDefinitionError>>;
+  async readLatest<T>(
+    loopStepId: string,
+    name: string,
+    schema: z.ZodType<T>,
+  ): Promise<
+    Result<T, HandoffNotFoundError | HandoffSchemaError | HandoffIoError | FlowDefinitionError>
+  >;
+  async readLatest<T>(
+    loopStepId: string,
+    name: string,
+    schema?: z.ZodType<T>,
+  ): Promise<Result<T | unknown, ReadError>> {
+    const pathResult = resolveLatestPath(this.#handoffsDir, loopStepId, name);
+    if (pathResult.isErr()) return err(pathResult.error);
+    const handoffId = `${loopStepId}/${name}`;
+    return this.#readJsonAt(pathResult.value, handoffId, schema);
+  }
+
+  // Shared read helper used by readIteration and readLatest. Mirrors the body
+  // of read() but takes a pre-resolved path and a synthetic handoff id used
+  // only for error context.
+  async #readJsonAt<T>(
+    path: string,
+    handoffId: string,
+    schema: z.ZodType<T> | undefined,
+  ): Promise<Result<T | unknown, ReadError>> {
+    let raw: string;
+    try {
+      raw = await readFile(path, { encoding: 'utf8' });
+    } catch (cause) {
+      const errno = errnoOf(cause);
+      if (errno === 'ENOENT') {
+        return err(new HandoffNotFoundError(`handoff "${handoffId}" not found`, handoffId));
+      }
+      return err(
+        new HandoffIoError(`failed to read handoff "${handoffId}"`, handoffId, {
+          cause: messageOf(cause),
+          ...(errno !== undefined ? { errno } : {}),
+        }),
+      );
+    }
+
+    if (schema !== undefined) {
+      const result = parseWithSchema(raw, schema);
+      if (result.isErr()) {
+        const jsonErr = result.error;
+        const rawIssues = jsonErr.details?.['cause'];
+        const issues = isZodIssueArray(rawIssues) ? rawIssues : [];
+        return err(new HandoffSchemaError(jsonErr.message, handoffId, issues));
+      }
+      return ok(result.value);
+    }
+
+    const result = safeParse(raw);
+    if (result.isErr()) {
+      const jsonErr = result.error;
+      return err(
+        new HandoffIoError(jsonErr.message, handoffId, { cause: jsonErr.details?.['cause'] }),
+      );
+    }
+    return ok(result.value);
   }
 }

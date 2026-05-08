@@ -25,6 +25,7 @@ export const ERROR_CODES = {
   STATE_WRITE: 'relay_STATE_WRITE',
   STEP_FAILURE: 'relay_STEP_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
+  LOOP_MAX_ITERATIONS: 'relay_LOOP_MAX_ITERATIONS_EXCEEDED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -692,6 +693,51 @@ export class AtomicWriteError extends PipelineError<AtomicWriteDetails> {
     this.name = 'AtomicWriteError';
     this.path = path;
     this.errno = errno;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Typed details for `LoopMaxIterationsError`.
+ *
+ * `handoffsDir` is optional — not all loop executors track the handoff
+ * directory path at the throw site.
+ */
+export interface LoopMaxIterationsDetails extends Record<string, unknown> {
+  /** ID of the loop step that hit the iteration ceiling. */
+  loopStepId: string;
+  /** The configured upper bound that was reached. */
+  maxIterations: number;
+  /** Number of iterations that ran before the ceiling was enforced. */
+  iterationsRun: number;
+  /** Path to the handoffs directory for the run, when available. */
+  handoffsDir?: string;
+}
+
+/**
+ * Thrown when a loop step exhausts its configured `maxIterations` budget
+ * without the loop's exit condition being satisfied. The run is terminated
+ * rather than allowed to iterate indefinitely.
+ */
+export class LoopMaxIterationsError extends PipelineError<LoopMaxIterationsDetails> {
+  readonly loopStepId: string;
+  readonly maxIterations: number;
+  readonly iterationsRun: number;
+
+  constructor(
+    message: string,
+    loopStepId: string,
+    maxIterations: number,
+    iterationsRun: number,
+    details?: LoopMaxIterationsDetails,
+  ) {
+    super(message, ERROR_CODES.LOOP_MAX_ITERATIONS, details);
+    this.name = 'LoopMaxIterationsError';
+    this.loopStepId = loopStepId;
+    this.maxIterations = maxIterations;
+    this.iterationsRun = iterationsRun;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }

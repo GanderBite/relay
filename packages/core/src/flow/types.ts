@@ -1,6 +1,6 @@
 import type { z } from '../zod.js';
 
-export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal';
+export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop';
 
 /**
  * The minimum fields shared by every step type.
@@ -19,6 +19,16 @@ export type PromptStepOutput =
   | { handoff: string; schema?: z.ZodType | undefined }
   | { artifact: string }
   | { handoff: string; artifact: string; schema?: z.ZodType | undefined };
+
+/**
+ * Condition that terminates a loop iteration cycle. The `from` field names
+ * the step whose output is inspected, and `when` is a shallow-equality
+ * pattern matched against that output.
+ */
+export interface LoopUntilCondition {
+  from: string;
+  when: Record<string, unknown>;
+}
 
 /**
  * Specification for a step that invokes a Claude prompt via a provider.
@@ -88,13 +98,31 @@ export interface TerminalStepSpec extends StepBase {
   exitCode?: number | undefined;
 }
 
+/**
+ * Specification for a step that runs a set of body steps repeatedly until
+ * a named condition is met or the maximum iteration count is reached.
+ * `bodyGraph` is absent on the raw spec and injected by the compiler.
+ */
+export interface LoopStepSpec extends StepBase {
+  kind: 'loop';
+  body: Record<string, Step>;
+  until: LoopUntilCondition;
+  maxIterations: number;
+  contextFrom?: string[] | undefined;
+  dependsOn?: string[] | undefined;
+  onFail?: 'abort' | string | undefined;
+  maxRetries?: number | undefined;
+  bodyGraph?: FlowGraph | undefined;
+}
+
 export type PromptStep = PromptStepSpec & { id: string };
 export type ScriptStep = ScriptStepSpec & { id: string };
 export type BranchStep = BranchStepSpec & { id: string };
 export type ParallelStep = ParallelStepSpec & { id: string };
 export type TerminalStep = TerminalStepSpec & { id: string };
+export type LoopStep = LoopStepSpec & { id: string };
 
-export type Step = PromptStep | ScriptStep | BranchStep | ParallelStep | TerminalStep;
+export type Step = PromptStep | ScriptStep | BranchStep | ParallelStep | TerminalStep | LoopStep;
 
 export interface FlowGraph {
   successors: ReadonlyMap<string, ReadonlySet<string>>;
