@@ -425,13 +425,12 @@ describe('relay logs --verbose — streaming-line behavior', () => {
     expect(idxStreaming).toBeGreaterThan(idxTool);
   });
 
-  it('[LOGS-VRB-012] trailing-only text.delta events produce exactly one streaming line at the end of the buffer', async () => {
+  it('[LOGS-VRB-012] text.delta with no following non-text events still emits the streaming line at the most-recent text.delta cluster (before stream.end)', async () => {
     const { eventsDir } = await mkRunDir(tmpBase);
 
     // Fixture: turn.start → text.delta(30) → stream.end
-    // Expected: one streaming line with charCount=30, at the end of output
-    // (streamingLineIndex = lines.length after turn.start line, since text.delta
-    // arrives after turn.start and before stream.end).
+    // Expected: one streaming line with charCount=30, at index 1 (= lines.length when text.delta arrived),
+    // so it appears between turn.start and stream.end — not at the trailing end.
     const records = [
       {
         seq: 0,
