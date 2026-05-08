@@ -250,7 +250,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // ---------------------------------------------------------------------------
   // Step 5 — start progress display
   // ---------------------------------------------------------------------------
-  const progress = new ProgressDisplay(runDir, flow, authInfo);
+  const progress = new ProgressDisplay(runDir, flow, authInfo, options.verbose === true);
 
   // Create the live directory before starting the watcher so chokidar has a
   // real path to watch from the start. The orchestrator calls mkdir(live/)

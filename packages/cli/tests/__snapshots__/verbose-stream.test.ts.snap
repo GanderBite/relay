@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderStepSummary > renders turns, tools, tokens, and cost 1`] = `"    · 2 turns  ·  3 tools  ·  1.2K in / 340 out  ·  $0.012"`;
+
+exports[`renderStepSummary > renders without cost when costUsd is absent 1`] = `"    · 1 turn  ·  1 tool  ·  500 in / 120 out"`;
+
+exports[`renderStreamingLine > renderStreamingLine(238) matches snapshot 1`] = `"    · streaming  ···  238 chars"`;
+
+exports[`renderVerboseEvent > stream.end with stopReason and costUsd 1`] = `"    · done  end_turn  $0.0020"`;
+
+exports[`renderVerboseEvent > stream.error renders the error message 1`] = `"    ✕ error: test error for stream.error"`;
+
+exports[`renderVerboseEvent > system.init with model, sessionId, tools, mcpServers 1`] = `"    · model: claude-opus-4-5  session: sess-abc123  tools: Bash, Read"`;
+
+exports[`renderVerboseEvent > system.init with undefined tools renders "none" 1`] = `"    · model: claude-opus-4-5  session: sess-abc123  tools: none"`;
+
+exports[`renderVerboseEvent > tool.call with name and input 1`] = `"    · Bash({"cmd":"ls"})"`;
+
+exports[`renderVerboseEvent > tool.result ok=false 1`] = `"    ✕ Read failed"`;
+
+exports[`renderVerboseEvent > tool.result ok=true 1`] = `"    ✓ Bash returned"`;
+
+exports[`renderVerboseEvent > turn.start turn=1 1`] = `"    · turn 1"`;
+
+exports[`renderVerboseEvent > usage with nested usage object 1`] = `"    · usage  in: 100  out: 50  cache: 10"`;
