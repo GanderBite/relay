@@ -196,7 +196,7 @@ export function buildProgram(): Command {
   program
     .command('new <name>')
     .description('scaffold a new flow')
-    .option('--template <name>', 'template to use (blank|linear|fan-out|discovery)', undefined)
+    .option('--template <name>', 'template to use (blank|linear|fan-out|discovery|loop)', undefined)
     .option('--force', 'overwrite existing directory')
     .action(async (name: string, cmdOpts: { template?: string; force?: boolean }) => {
       const handler = await loadCommand('new');

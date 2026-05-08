@@ -1,7 +1,7 @@
 ---
 name: relay-generator
-description: Scaffold a new Relay flow package — name the flow, pick a template (blank, linear, fan-out, or discovery), elicit high-level steps, choose a model per step, and write a valid flow package to disk. Trigger when the user says "scaffold a new relay flow", "/relay-new", "generate a pipeline for ...", "new relay flow", or asks to create a Relay flow from a natural-language description. Uses Read, Write, AskUserQuestion, and Bash. Does not build the core library and does not run flows — it only emits a directory matching the Relay Flow Package format.
-tools: Read, Write, AskUserQuestion, Bash
+description: Scaffold a new Relay flow package — name the flow, pick a template (blank, linear, fan-out, discovery, or loop), elicit high-level steps, choose a model per step, and write a valid flow package to disk. Trigger when the user says "scaffold a new relay flow", "/relay-new", "generate a pipeline for ...", "new relay flow", or asks to create a Relay flow from a natural-language description (including iterative implement-and-review loops). Uses Read, Write, AskUserQuestion, and Bash. Does not build the core library and does not run flows — it only emits a directory matching the Relay Flow Package format.
+allowed-tools: Read, Write, AskUserQuestion, Bash
 ---
 
 <role>
@@ -39,7 +39,7 @@ Validate against `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`. Reject: uppercase letters, und
 </rule>
 
 <rule id="2" name="template-selection">
-Four templates: `blank`, `linear`, `fan-out`, `discovery`.
+Five templates: `blank`, `linear`, `fan-out`, `discovery`, `loop`.
 
 Match user intent directly; fall back to AskUserQuestion only when intent is ambiguous.
 
@@ -47,6 +47,7 @@ Matching heuristics:
 - "sequential / chain / series / step A then B then C" → `linear`
 - "parallel / fan-out / two branches / concurrently" → `fan-out`
 - "explore / audit / document / map a codebase / repo" → `discovery`
+- "iterative / loop / refine until / implement and review / try N times / fix until tests pass" → `loop`
 - "starting point / fill in myself / minimal / blank slate" → `blank`
 
 When intent is clear from the user's first message, confirm with one sentence: "Using the `linear` template — three steps in series." Do not ask again.
@@ -59,10 +60,11 @@ When intent is ambiguous, use AskUserQuestion with this menu format:
 >  · linear     · N steps in series
 >  · fan-out    · prep, parallel branches, then merge
 >  · discovery  · modeled on codebase-discovery (inventory → entities + services → report)
+>  · loop       · two-step body (implement + review) that repeats until review returns done
 </rule>
 
 <rule id="3" name="step-collection">
-For `blank` and `discovery`: steps are fixed by the template. Confirm the default step names with the user in one sentence and skip to Rule 4.
+For `blank`, `discovery`, and `loop`: steps are fixed by the template. Confirm the default step names with the user in one sentence and skip to Rule 4. The `loop` template's body has fixed step ids `implement` and `review` wrapped by an outer `fix_loop` step — do not ask the user to rename them.
 
 For `linear` and `fan-out`: ask for step names conversationally — not as a form.
 
@@ -181,7 +183,7 @@ Every flow package the scaffolder emits has this shape (§7.1):
 <voice>
 When printing status or error text, follow the Relay voice rules:
 
-- No emojis. Symbol vocabulary: `✓` done, `✕` failed, `⚠` warning, `·` separator, `○` pending, `●─▶` brand mark.
+- No emojis. Symbol vocabulary: `✓` done, `✕` failed, `⚠` warning, `·` separator, `○` pending, `⊘` cancelled, `●─▶` brand mark.
 - The word "simply" is banned.
 - No trailing `!` on any line.
 - Second person, present tense, active voice.

@@ -12,6 +12,7 @@ All exports come from `'@ganderbite/relay-core'`.
 | `step.branch(config)` | Runs a shell command; routes control flow via exit code |
 | `step.parallel(config)` | Fan-in barrier; waits for all listed `branches` to complete |
 | `step.terminal(config)` | Ends the flow immediately |
+| `step.loop(config)` | Runs a body of step builders repeatedly until a handoff matches a shallow-equality pattern; bounded by `maxIterations` |
 | `z` | Zod v4 re-export; use for all schemas in flow packages |
 | `Result<T,E>` | neverthrow result type; returned by fallible core operations |
 | `ResultAsync<T,E>` | async variant of `Result<T,E>` |
@@ -91,6 +92,23 @@ interface TerminalStepSpec {
   exitCode?: number;                           // 0-255
   // no retry, timeout, output, or contextFrom
 }
+
+interface LoopStepSpec {
+  kind: 'loop';
+  body: Record<string, StepBuilderOutput>;     // record of step builders forming one iteration
+  until: { from: string; when: Record<string, unknown> }; // shallow-equality pattern against the named handoff
+  maxIterations: number;                       // required; positive integer; bounds total iterations
+  dependsOn?: string[];
+  // No retry, timeout, output, or contextFrom on the loop wrapper itself —
+  // each body step carries its own retry/timeout, and iteration is the
+  // recovery boundary.
+  //
+  // Body steps may use `contextFrom` with the optional-handoff suffix `?`
+  // (e.g. `contextFrom: ['review?']`) to gate context on whether a handoff
+  // exists yet — it does not on the first iteration.
+  //
+  // step.parallel inside a loop body is rejected at compile time.
+}
 ```
 
 ---
@@ -143,7 +161,7 @@ Handoffs referenced in `contextFrom` appear as `<c name="handoffId">` blocks. Re
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^1.0.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",            // optional; inferred from defineFlow name
@@ -223,7 +241,7 @@ Note on nested tokens in linear prompt files: `{{{{stepNames[0]}}.result}}` is i
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^1.0.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -368,7 +386,7 @@ MIT
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^1.0.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -583,7 +601,7 @@ MIT. Copyright Ganderbite.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^1.0.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -830,7 +848,7 @@ MIT.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^1.0.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -1058,6 +1076,260 @@ relay run . .
 |---|---|---|---|
 | `repoPath` | `string` | (required) | Absolute path to the repository. |
 | `audience` | `enum` | `both` | One of `pm`, `dev`, `both`. Tunes the report prose. |
+
+## License
+
+MIT. Copyright Ganderbite.
+```
+
+---
+
+### §7.5 — loop
+
+The body has fixed step ids `implement` and `review`. The user does not name them — the loop template re-runs both until `review` returns `decision: 'done'` or `maxIterations` is hit. The `implement` step uses the optional-handoff suffix `'review?'` so the first iteration runs without a prior review feedback block.
+
+**File tree:**
+```
+<flow-name>/
+├── package.json
+├── tsconfig.json
+├── flow.ts
+├── prompts/
+│   ├── 01_implement.md
+│   └── 02_review.md
+└── README.md
+```
+
+**package.json**
+```json
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "Iterative implement-review loop scaffolded from @ganderbite/relay-generator.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@ganderbite/relay-core": "^0.3.0"
+  },
+  "relay": {
+    "flowName": "{{pkgName}}",
+    "displayName": "{{pkgName}}",
+    "tags": [
+      "loop",
+      "iterative",
+      "review"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.1,
+      "max": 1.0
+    },
+    "estimatedDurationMin": {
+      "min": 5,
+      "max": 30
+    },
+    "audience": [
+      "dev"
+    ]
+  }
+}
+```
+
+**tsconfig.json**
+```json
+{
+  "extends": "@ganderbite/relay-core/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./"
+  },
+  "include": ["flow.ts", "schemas/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+**flow.ts**
+```typescript
+import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+/**
+ * Schema for the review handoff. The loop terminates when `decision` equals
+ * `'done'`; otherwise the body re-runs and the implement step reads the prior
+ * `feedback` from this handoff.
+ */
+export const ReviewSchema = z.object({
+  decision: z.enum(['continue', 'done']),
+  feedback: z.string().optional(),
+});
+
+export default defineFlow({
+  name: '{{pkgName}}',
+  version: '0.1.0',
+  description:
+    'Iterative implement-review loop: implement reads optional prior review feedback, review decides continue or done.',
+  input: z.object({
+    task: z.string().describe('The task to implement.'),
+  }),
+  steps: {
+    fix_loop: step.loop({
+      body: {
+        implement: step.prompt({
+          promptFile: 'prompts/01_implement.md',
+          contextFrom: ['review?'],
+          output: { handoff: 'implementation' },
+        }),
+        review: step.prompt({
+          promptFile: 'prompts/02_review.md',
+          dependsOn: ['implement'],
+          contextFrom: ['implementation'],
+          output: { handoff: 'review', schema: ReviewSchema },
+        }),
+      },
+      until: { from: 'review', when: { decision: 'done' } },
+      maxIterations: 5,
+    }),
+  },
+});
+```
+
+**prompts/01_implement.md**
+```
+You are implementing a task. The loop iterates until the review step decides the work is done, or until the maximum iteration count is reached.
+
+Input:
+- task: {{input.task}}
+
+If a `<context name="review">` block is available above, the prior iteration's review feedback is in `{{review.feedback}}`. Read it and address every point. If no review block exists, this is the first iteration — read `{{input.task}}` and implement it from scratch.
+
+Use the available tools (Read, Glob, Grep, Bash, Edit, Write) to inspect the workspace, make the changes, and verify they apply cleanly.
+
+## Output
+
+Return ONLY a JSON object with this shape. No prose, no backticks, no preamble.
+
+{
+  "summary": "one or two sentences describing what you changed and why",
+  "files": ["path/to/changed/file.ts", "path/to/another.ts"]
+}
+```
+
+**prompts/02_review.md**
+```
+You are reviewing an implementation against the original task. Decide whether the work is done or whether another iteration is needed.
+
+Input:
+- task: {{input.task}}
+- implementation summary: {{implementation.summary}}
+- changed files: {{implementation.files}}
+
+The implement step's full handoff is in the `<context name="implementation">` block above. Read it, then open each file in `{{implementation.files}}` to verify the changes match the task. Run the project's build or test commands if they exist and the change warrants it.
+
+Decide:
+- `done` — the implementation satisfies the task and you found no blocking issues.
+- `continue` — there is at least one concrete problem the next iteration must fix. Put every issue in `feedback` as a numbered list.
+
+## Output
+
+Return ONLY a JSON object with this shape. No prose, no backticks, no preamble.
+
+{
+  "decision": "done",
+  "feedback": null
+}
+
+Or:
+
+{
+  "decision": "continue",
+  "feedback": "1. Missing null check at foo.ts:42. 2. Test name does not match the case it covers."
+}
+```
+
+**README.md**
+```markdown
+# {{pkgName}}
+
+`●─▶●─▶●─▶●  {{pkgName}}`
+
+## What it does
+
+An iterative implement-review flow. One outer step (`fix_loop`) wraps two inner steps that run in sequence: `implement` makes a change, then `review` inspects it and decides `continue` or `done`. When `review` returns `decision: 'done'`, the loop exits. Otherwise the body re-runs — `implement` reads the prior `review.feedback` from its handoff and addresses each point. The loop caps at five iterations to bound cost; raise or lower the cap in `flow.ts` to fit your task.
+
+Use this template when the work has a clear acceptance check (a test passes, a lint rule is clean, a refactor is structurally correct) and the model can make incremental progress between iterations.
+
+## Sample output
+
+The flow emits two handoffs per iteration: `implementation` (`{ summary, files[] }`) and `review` (`{ decision, feedback? }`). The final `review` handoff has `decision: 'done'`. Add a transcript or screenshot to `examples/` once you have a real run.
+
+## Estimated cost and duration
+
+- **Cost:** $0.10–$1.00 per run on the default sonnet model (billed to your subscription on Pro/Max). Cost scales linearly with the number of iterations.
+- **Duration:** 5–30 minutes — one to five iterations of two prompts each.
+
+Update these numbers after your first few runs — the CLI prints actuals.
+
+## Install
+
+```bash
+relay install {{pkgName}}
+```
+
+## Run
+
+```bash
+relay run {{pkgName}} --task="describe the change you want made"
+```
+
+## Configuration
+
+The flow accepts these inputs:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `task` | `string` | (required) | The task to implement. Be specific — the model reads this verbatim each iteration. |
+
+The loop uses these knobs (edit them in `flow.ts`):
+
+| Field | Default | Notes |
+|---|---|---|
+| `maxIterations` | `5` | Hard cap on body re-runs. Raise for harder tasks; lower to bound cost. |
+| `until.from` | `review` | The body step whose handoff is inspected for the exit condition. |
+| `until.when` | `{ decision: 'done' }` | Shallow-equality pattern matched against the `review` handoff. |
+
+Models per step (override via `relay run {{pkgName}} --model.<step>=<model>`):
+
+| Step | Default model |
+|---|---|
+| `implement` | `sonnet` |
+| `review` | `sonnet` |
+
+## Customization
+
+Fork the flow:
+
+```bash
+relay install {{pkgName}}
+mv ./.relay/flows/{{pkgName}} ./my-fork
+cd ./my-fork
+```
+
+Common customizations:
+
+- **Tighten the review schema.** Edit `ReviewSchema` in `flow.ts` to add fields like `severity` or `categories`. Update the prompt in `prompts/02_review.md` to match.
+- **Swap the model per step.** Set `model: 'opus'` on `implement` for harder reasoning, leave `review` on `sonnet` to keep cost low.
+- **Add a third body step.** For example, a `test` step between `implement` and `review` that runs the project's test suite and feeds results into the review's context.
+- **Change the exit condition.** `until.when` accepts any shallow-equality pattern — for example, `{ decision: 'done', confidence: 'high' }` if you add a `confidence` field to `ReviewSchema`.
 
 ## License
 

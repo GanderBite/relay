@@ -17,7 +17,13 @@ export interface NewCommandOptions {
   force?: boolean;
 }
 
-const VALID_TEMPLATES: ReadonlySet<string> = new Set(['blank', 'linear', 'fan-out', 'discovery']);
+const VALID_TEMPLATES: ReadonlySet<string> = new Set([
+  'blank',
+  'linear',
+  'fan-out',
+  'discovery',
+  'loop',
+]);
 
 function isTemplateId(s: string): s is TemplateId {
   return VALID_TEMPLATES.has(s);
@@ -116,7 +122,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
     process.stderr.write(
       `${red(`${SYMBOLS.fail} unknown template: "${templateRaw}"`)}\n` +
         '\n' +
-        '  valid templates: blank, linear, fan-out, discovery.\n' +
+        '  valid templates: blank, linear, fan-out, discovery, loop.\n' +
         '\n' +
         `  \u2192 relay new ${name} --template blank\n`,
     );
