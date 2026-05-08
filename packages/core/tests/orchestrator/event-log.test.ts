@@ -166,6 +166,9 @@ describe('EventLogWriter — missing directory', () => {
 
     const writer = new EventLogWriter(nonExistentDir, 'step-missing', 0);
     await expect(writer.write(0, { type: 'text.delta', delta: 'x' })).resolves.toBeUndefined();
+    // write() is fire-and-forget; flush() drains the in-flight queue so the
+    // open() failure has been observed by the time we assert on stderr.
+    await writer.flush();
 
     // The error was reported on stderr
     expect(stderrSpy).toHaveBeenCalled();

@@ -177,7 +177,7 @@ async function runProviderInvocation(args: {
   // log never derails the in-flight provider invocation.
   const eventsDir = join(runDir, 'events');
   await mkdir(eventsDir, { recursive: true }).catch(() => undefined);
-  const writer = new EventLogWriter(eventsDir, stepId, attempt);
+  const writer = new EventLogWriter(eventsDir, stepId, attempt, logger);
 
   if (typeof provider.stream === 'function') {
     const started = Date.now();
@@ -199,49 +199,57 @@ async function runProviderInvocation(args: {
     let capturedCostUsd: number | undefined;
     let capturedSessionId: string | undefined;
 
-    const iterable = provider.stream(request, invocationCtx);
-    // Per-invocation sequence counter — resets to 0 on every retry so each
-    // attempt's event log is self-describing without consulting prior attempts.
-    let seq = 0;
-    for await (const event of iterable) {
-      switch (event.type) {
-        case 'text.delta':
-          accumulatedText += event.delta;
-          if (!firstDeltaSeen) {
-            firstDeltaSeen = true;
+    // try/finally guarantees the writer's queue drains and the file handle
+    // closes even when the iterator throws (e.g. RunAbortedError racing the
+    // stream from the orchestrator) or yields a stream.error that re-throws
+    // below. Without this, an abort mid-stream would drop the open handle
+    // and skip the trailing fsync — recent events could be lost on SIGKILL.
+    try {
+      const iterable = provider.stream(request, invocationCtx);
+      // Per-invocation sequence counter — resets to 0 on every retry so each
+      // attempt's event log is self-describing without consulting prior attempts.
+      let seq = 0;
+      for await (const event of iterable) {
+        switch (event.type) {
+          case 'text.delta':
+            accumulatedText += event.delta;
+            if (!firstDeltaSeen) {
+              firstDeltaSeen = true;
+              await emitLive(usage, toolCallCount, model);
+            }
+            break;
+          case 'usage':
+            usage = mergeUsage(usage, event.usage);
             await emitLive(usage, toolCallCount, model);
-          }
-          break;
-        case 'usage':
-          usage = mergeUsage(usage, event.usage);
-          await emitLive(usage, toolCallCount, model);
-          break;
-        case 'tool.call':
-          toolCallCount += 1;
-          break;
-        case 'turn.end':
-          turnCount = Math.max(turnCount, event.turn);
-          break;
-        case 'stream.end':
-          capturedStopReason = event.stopReason;
-          capturedCostUsd = event.costUsd;
-          capturedSessionId = event.sessionId;
-          break;
-        case 'stream.error':
-          // Persist the terminal error event before re-throwing so the on-disk
-          // log records that the stream ended in error rather than appearing
-          // truncated to readers.
-          await writer.write(seq++, event, undefined);
-          await writer.flush();
-          throw event.error;
-        default:
-          break;
+            break;
+          case 'tool.call':
+            toolCallCount += 1;
+            break;
+          case 'turn.end':
+            turnCount = Math.max(turnCount, event.turn);
+            break;
+          case 'stream.end':
+            capturedStopReason = event.stopReason;
+            capturedCostUsd = event.costUsd;
+            capturedSessionId = event.sessionId;
+            break;
+          case 'stream.error':
+            // Persist the terminal error event before re-throwing so the
+            // on-disk log records that the stream ended in error rather
+            // than appearing truncated. flush is handled by the finally.
+            await writer.write(seq++, event, undefined);
+            throw event.error;
+          default:
+            break;
+        }
+        // Raw envelope is not exposed across provider.stream(); pass
+        // undefined unconditionally and let the verbose renderer
+        // reconstruct from events.
+        await writer.write(seq++, event, undefined);
       }
-      // Raw envelope is not exposed across provider.stream(); pass undefined
-      // unconditionally and let the verbose renderer reconstruct from events.
-      await writer.write(seq++, event, undefined);
+    } finally {
+      await writer.flush();
     }
-    await writer.flush();
 
     return {
       text: accumulatedText,
@@ -257,21 +265,26 @@ async function runProviderInvocation(args: {
 
   // Provider does not expose stream(); fall back to the single-shot
   // invoke() and still emit one live-state update after the call returns.
-  const result = await provider.invoke(request, invocationCtx);
-  if (result.isErr()) throw result.error;
-  const response = result.value;
-  await emitLive(response.usage, 0, response.model);
-  // Synthesize a terminal stream.end record so non-streaming providers still
-  // produce a parseable per-step event log. The aggregated response is the
-  // only signal available on this branch, so seq is always 0.
-  await writer.write(0, {
-    type: 'stream.end',
-    stopReason: response.stopReason ?? 'stream_completed',
-    ...(response.costUsd !== undefined ? { costUsd: response.costUsd } : {}),
-    ...(response.sessionId !== undefined ? { sessionId: response.sessionId } : {}),
-  });
-  await writer.flush();
-  return response;
+  // The try/finally mirrors the stream branch so a thrown invoke() rejection
+  // (or response handling error) still drains the writer and closes the file.
+  try {
+    const result = await provider.invoke(request, invocationCtx);
+    if (result.isErr()) throw result.error;
+    const response = result.value;
+    await emitLive(response.usage, 0, response.model);
+    // Synthesize a terminal stream.end record so non-streaming providers still
+    // produce a parseable per-step event log. The aggregated response is the
+    // only signal available on this branch, so seq is always 0.
+    await writer.write(0, {
+      type: 'stream.end',
+      stopReason: response.stopReason ?? 'stream_completed',
+      ...(response.costUsd !== undefined ? { costUsd: response.costUsd } : {}),
+      ...(response.sessionId !== undefined ? { sessionId: response.sessionId } : {}),
+    });
+    return response;
+  } finally {
+    await writer.flush();
+  }
 }
 
 /**
