@@ -14,6 +14,7 @@ import {
   ERROR_CODES,
   FlowDefinitionError,
   HandoffSchemaError,
+  LoopMaxIterationsError,
   NoProviderConfiguredError,
   PipelineError,
   ProviderAuthError,
@@ -23,7 +24,7 @@ import {
   TimeoutError,
 } from '@ganderbite/relay-core';
 import { describe, expect, it } from 'vitest';
-import { EXIT_CODES, exitCodeFor } from '../src/exit-codes.js';
+import { EXIT_CODES, exitCodeFor, formatError } from '../src/exit-codes.js';
 
 describe('exitCodeFor', () => {
   // -------------------------------------------------------------------------
@@ -205,5 +206,58 @@ describe('exitCodeFor', () => {
     expect(EXIT_CODES.no_provider).toBe(6);
     expect(EXIT_CODES.io_error).toBe(7);
     expect(EXIT_CODES.rate_limit).toBe(8);
+    expect(EXIT_CODES.loop_exhausted).toBe(9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LoopMaxIterationsError
+// ---------------------------------------------------------------------------
+
+describe('LoopMaxIterationsError', () => {
+  const handoffsDir = '/tmp/handoffs/fix_loop';
+
+  function mkLoopError(): LoopMaxIterationsError {
+    return new LoopMaxIterationsError('loop did not converge', 'fix_loop', 5, 5, {
+      loopStepId: 'fix_loop',
+      maxIterations: 5,
+      iterationsRun: 5,
+      handoffsDir,
+    });
+  }
+
+  it('[CLI-LOOP-001] exitCodeFor returns 9 for LoopMaxIterationsError', () => {
+    const err = mkLoopError();
+    expect(exitCodeFor(err)).toBe(9);
+    expect(exitCodeFor(err)).toBe(EXIT_CODES.loop_exhausted);
+  });
+
+  it('[CLI-LOOP-002] formatError headline contains the loop step id and iteration count', () => {
+    const err = mkLoopError();
+    const output = formatError(err);
+    expect(output).toContain('fix_loop');
+    expect(output).toContain('5');
+    expect(output).toContain(handoffsDir);
+  });
+
+  it('[CLI-LOOP-003] formatError output passes brand grammar check', () => {
+    const err = mkLoopError();
+    const output = formatError(err);
+
+    // No Unicode emojis — Supplemental Multilingual Plane pictographs and
+    // Emoticons/Misc Symbols and Pictographs blocks (U+1F300–U+1FAFF).
+    // The brand symbol vocabulary (✕ ✓ ⚠ ⠋ ○ · ▶ ⊘) lives in lower Unicode
+    // ranges and is explicitly permitted; this regex targets only emoji-specific
+    // blocks, not the general symbol range those characters occupy.
+    expect(output).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+
+    // Does not contain the banned word 'simply'
+    expect(output).not.toContain('simply');
+
+    // No line ends with '!'
+    const lines = output.split('\n');
+    for (const line of lines) {
+      expect(line.trimEnd()).not.toMatch(/!$/);
+    }
   });
 });

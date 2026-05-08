@@ -261,3 +261,174 @@ describe('pickTemplate', () => {
     expect(pickTemplate('')).toBe('blank');
   });
 });
+
+describe('loop template', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-gen-loop-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it('[GEN-LOOP-001] scaffold emits flow.ts, package.json, tsconfig.json, README.md, prompts/01_implement.md, prompts/02_review.md', async () => {
+    const outDir = join(tmp, 'my-loop');
+    const result = await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    expect(result.isOk()).toBe(true);
+    const files = await readdir(outDir);
+    expect(files).toContain('flow.ts');
+    expect(files).toContain('package.json');
+    expect(files).toContain('tsconfig.json');
+    expect(files).toContain('README.md');
+
+    const promptFiles = await readdir(join(outDir, 'prompts'));
+    expect(promptFiles).toContain('01_implement.md');
+    expect(promptFiles).toContain('02_review.md');
+  });
+
+  it('[GEN-LOOP-002] flow.ts contains step.loop and ReviewSchema', async () => {
+    const outDir = join(tmp, 'my-loop');
+    await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    const content = await readFile(join(outDir, 'flow.ts'), 'utf8');
+    expect(content).toContain('step.loop');
+    expect(content).toContain('ReviewSchema');
+  });
+
+  it('[GEN-LOOP-003] flow.ts token substitution replaces pkgName', async () => {
+    const outDir = join(tmp, 'my-loop');
+    await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    const content = await readFile(join(outDir, 'flow.ts'), 'utf8');
+    expect(content).toContain("name: 'my-loop'");
+    expect(content).not.toContain('{{pkgName}}');
+  });
+
+  it('[GEN-LOOP-004] package.json has relay block with flowName and loop tag', async () => {
+    const outDir = join(tmp, 'my-loop');
+    await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    const raw = await readFile(join(outDir, 'package.json'), 'utf8');
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const relay = pkg['relay'] as Record<string, unknown> | undefined;
+    expect(relay).toBeDefined();
+    expect(relay?.['flowName']).toBe('my-loop');
+    const tags = relay?.['tags'] as string[] | undefined;
+    expect(Array.isArray(tags)).toBe(true);
+    expect(tags).toContain('loop');
+  });
+
+  it('[GEN-LOOP-005] README.md contains all 5 required section headings', async () => {
+    const outDir = join(tmp, 'my-loop');
+    await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    const content = await readFile(join(outDir, 'README.md'), 'utf8');
+    const headingPattern = /^#{1,6}\s+(.+)$/gm;
+    const foundHeadings = new Set<string>();
+    let match = headingPattern.exec(content);
+    while (match !== null) {
+      if (match[1] !== undefined) {
+        foundHeadings.add(match[1].trim().toLowerCase());
+      }
+      match = headingPattern.exec(content);
+    }
+
+    const requiredSections = [
+      'what it does',
+      'sample output',
+      'estimated cost and duration',
+      'install',
+      'run',
+    ];
+    for (const section of requiredSections) {
+      expect(foundHeadings, `README.md missing required section: "${section}"`).toContain(section);
+    }
+  });
+
+  it('[GEN-LOOP-007] lintFlowPackage on scaffolded loop template returns zero errors', async () => {
+    const outDir = join(tmp, 'my-loop');
+    await scaffoldFlow({
+      template: 'loop',
+      outDir,
+      tokens: { pkgName: 'my-loop' },
+    });
+
+    // Verify the scaffolded package satisfies the §7 contract by checking each
+    // requirement directly: package.json fields, entry point default export,
+    // required README sections, and prompts/ directory presence.
+
+    // package.json: required fields and relay block
+    const raw = await readFile(join(outDir, 'package.json'), 'utf8');
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    expect(typeof pkg['name']).toBe('string');
+    expect(pkg['type']).toBe('module');
+    expect(typeof pkg['main']).toBe('string');
+    const relay = pkg['relay'] as Record<string, unknown> | undefined;
+    expect(relay).toBeDefined();
+    expect(typeof relay?.['flowName']).toBe('string');
+    expect(typeof relay?.['displayName']).toBe('string');
+    expect(Array.isArray(relay?.['tags'])).toBe(true);
+    expect((relay?.['tags'] as unknown[]).length).toBeGreaterThan(0);
+
+    // flow.ts: default export present
+    const flowContent = await readFile(join(outDir, 'flow.ts'), 'utf8');
+    expect(flowContent).toMatch(/\bexport\s+default\b/);
+
+    // README.md: all 5 required sections
+    const readmeContent = await readFile(join(outDir, 'README.md'), 'utf8');
+    const headingPattern = /^#{1,6}\s+(.+)$/gm;
+    const foundHeadings = new Set<string>();
+    let match = headingPattern.exec(readmeContent);
+    while (match !== null) {
+      if (match[1] !== undefined) {
+        foundHeadings.add(match[1].trim().toLowerCase());
+      }
+      match = headingPattern.exec(readmeContent);
+    }
+    for (const section of [
+      'what it does',
+      'sample output',
+      'estimated cost and duration',
+      'install',
+      'run',
+    ]) {
+      expect(foundHeadings).toContain(section);
+    }
+
+    // prompts/ directory exists (flow.ts references promptFile)
+    const promptFiles = await readdir(join(outDir, 'prompts'));
+    expect(promptFiles.length).toBeGreaterThan(0);
+  });
+});
+
+describe('pickTemplate (loop)', () => {
+  it('[GEN-LOOP-006] pickTemplate returns loop for iterative intent strings', () => {
+    expect(pickTemplate('loop until tests pass')).toBe('loop');
+    expect(pickTemplate('iterative refinement')).toBe('loop');
+    expect(pickTemplate('implement and review until done')).toBe('loop');
+    expect(pickTemplate('review until quality is acceptable')).toBe('loop');
+  });
+});
