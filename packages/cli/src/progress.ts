@@ -24,6 +24,7 @@
 import type { FileHandle } from 'node:fs/promises';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import type { EventRecord, Flow, StepStatus } from '@ganderbite/relay-core';
 import { EventRecordSchema, z } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
@@ -157,6 +158,12 @@ interface TailState {
   offset: number;
   /** Accumulated partial line (bytes read but no trailing newline yet). */
   partial: string;
+  /**
+   * UTF-8 streaming decoder. Buffers trailing partial multi-byte sequences
+   * across reads so that a chokidar event that fires mid-codepoint does not
+   * corrupt the decoded string with replacement characters.
+   */
+  decoder: StringDecoder;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,10 +283,12 @@ export class ProgressDisplay<TInput = unknown> {
   /**
    * Stop the display.
    * Clears the live area (TTY), unwires SIGINT handlers, and closes the watcher.
-   * Awaits all in-flight tail reads before closing the events watcher so the
-   * final EventLogWriter.flush() bytes are captured.
+   * Closes the events watcher BEFORE draining in-flight tail reads so that no
+   * new tail promises can be enqueued after the snapshot — the conventional
+   * "drain a watcher" idiom. Returns a promise that resolves only after the
+   * drain completes, so callers can await it before process.exit().
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.#tickTimer !== null) {
       clearInterval(this.#tickTimer);
       this.#tickTimer = null;
@@ -297,21 +306,18 @@ export class ProgressDisplay<TInput = unknown> {
       this.#watcher = null;
     }
 
-    // Drain all in-flight tail reads before closing the events watcher.
-    // This ensures that the final EventLogWriter.flush() bytes are tailed
-    // before the watcher closes. awaitWriteFinish on the watcher fires one
-    // final change event after flush; we await the resulting tail promise here.
-    const drainAndClose = async (): Promise<void> => {
-      const pending = Array.from(this.#inFlightTail.values());
-      if (pending.length > 0) {
-        await Promise.allSettled(pending);
-      }
-      if (this.#eventsWatcher !== null) {
-        await this.#eventsWatcher.close();
-        this.#eventsWatcher = null;
-      }
-    };
-    void drainAndClose();
+    // Close the events watcher FIRST so no new tail promises can be enqueued,
+    // then drain whatever is already in #inFlightTail. This avoids the race
+    // where a chokidar change event fires between the Promise.allSettled snapshot
+    // and the watcher.close() call, producing an unawaited tail promise.
+    if (this.#eventsWatcher !== null) {
+      await this.#eventsWatcher.close();
+      this.#eventsWatcher = null;
+    }
+    const pending = Array.from(this.#inFlightTail.values());
+    if (pending.length > 0) {
+      await Promise.allSettled(pending);
+    }
 
     if (this.#isTTY) {
       logUpdate.done();
@@ -444,7 +450,7 @@ export class ProgressDisplay<TInput = unknown> {
     // Lazy-allocate tail state and accumulator for this step.
     let tail = tails.get(stepId);
     if (tail === undefined) {
-      tail = { offset: 0, partial: '' };
+      tail = { offset: 0, partial: '', decoder: new StringDecoder('utf8') };
       tails.set(stepId, tail);
     }
     let acc = accs.get(stepId);
@@ -486,7 +492,10 @@ export class ProgressDisplay<TInput = unknown> {
     }
 
     // Frame the chunk into complete lines, preserving the partial buffer.
-    const text = tail.partial + chunk.toString('utf8');
+    // StringDecoder.write() buffers trailing partial multi-byte sequences
+    // so that a chokidar event firing mid-codepoint cannot produce replacement
+    // characters in the decoded output.
+    const text = tail.partial + tail.decoder.write(chunk);
     const newlineIndex = text.lastIndexOf('\n');
     if (newlineIndex === -1) {
       // No complete line yet — accumulate into partial buffer.

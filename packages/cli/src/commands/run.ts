@@ -359,7 +359,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
-    progress.stop();
+    await progress.stop();
     maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
@@ -379,7 +379,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // Step 7 — stop progress display, remove SIGINT handler
   // ---------------------------------------------------------------------------
   process.removeListener('SIGINT', sigintHandler);
-  progress.stop();
+  await progress.stop();
 
   // ---------------------------------------------------------------------------
   // Step 8 — read per-step data and render the appropriate banner

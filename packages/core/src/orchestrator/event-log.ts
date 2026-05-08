@@ -22,6 +22,49 @@ import type { Logger } from '../logger.js';
 import type { InvocationEvent } from '../providers/types.js';
 import { z } from '../zod.js';
 
+/**
+ * On-disk shape for the error field in a stream.error record.
+ * Error.message, .name, and .stack are non-enumerable on Error subclasses
+ * and are therefore omitted by JSON.stringify. This type names the fields
+ * explicitly extracted before serialization so the reader always finds them.
+ */
+type SerializedStreamError = {
+  message: string;
+  name: string;
+  code: string | undefined;
+  details: unknown;
+};
+
+/**
+ * An on-disk InvocationEvent variant where stream.error carries a plain
+ * SerializedStreamError instead of a PipelineError instance. All other
+ * members of the union are unchanged.
+ */
+type SerializableInvocationEvent =
+  | Exclude<InvocationEvent, { type: 'stream.error' }>
+  | { type: 'stream.error'; error: SerializedStreamError };
+
+/**
+ * Normalize an InvocationEvent before JSON.stringify. When the event is a
+ * stream.error, the error field is a PipelineError whose non-enumerable
+ * properties (message, name) are not serialized by default. This helper
+ * returns a new event object with those fields extracted into a plain object.
+ * All other event types are returned unchanged.
+ */
+function normalizeForSerialization(event: InvocationEvent): SerializableInvocationEvent {
+  if (event.type !== 'stream.error') {
+    return event;
+  }
+  const err = event.error;
+  const serializedError: SerializedStreamError = {
+    message: err.message,
+    name: err.name,
+    code: 'code' in err && typeof err.code === 'string' ? err.code : undefined,
+    details: 'details' in err ? err.details : undefined,
+  };
+  return { type: 'stream.error', error: serializedError };
+}
+
 export type EventRecord = {
   seq: number;
   ts: string;
@@ -160,11 +203,23 @@ export class EventLogWriter {
       return;
     }
 
-    const record: EventRecord = {
+    // Normalize stream.error events before serialization. Error.message and
+    // Error.name are non-enumerable on Error subclasses and would be omitted
+    // by JSON.stringify, leaving the on-disk record without a message field
+    // that the schema requires. normalizeForSerialization extracts them into
+    // a plain object so the reader always finds a well-formed record.
+    const normalizedEvent = normalizeForSerialization(event);
+    const record: {
+      seq: number;
+      ts: string;
+      attempt: number;
+      event: SerializableInvocationEvent;
+      raw?: unknown;
+    } = {
       seq,
       ts,
       attempt: this.#attempt,
-      event,
+      event: normalizedEvent,
       ...(raw === undefined ? {} : { raw }),
     };
 
