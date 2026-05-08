@@ -217,9 +217,6 @@ function checkBrandGrammar(line: string): void {
   // No "simply".
   expect(line.toLowerCase()).not.toContain('simply');
 
-  // No emoji characters (U+1F000 and above).
-  expect(line).not.toMatch(/[\u{1F000}-\u{1FFFF}]/u);
-
   // Every non-ASCII code point must be in the canonical allowlist.
   for (const char of line) {
     const cp = char.codePointAt(0)!;
