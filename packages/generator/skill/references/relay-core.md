@@ -161,7 +161,7 @@ Handoffs referenced in `contextFrom` appear as `<c name="handoffId">` blocks. Re
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",            // optional; inferred from defineFlow name
@@ -241,7 +241,7 @@ Note on nested tokens in linear prompt files: `{{{{stepNames[0]}}.result}}` is i
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -386,7 +386,7 @@ MIT
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -601,7 +601,7 @@ MIT. Copyright Ganderbite.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -848,7 +848,7 @@ MIT.
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
@@ -1121,7 +1121,7 @@ The body has fixed step ids `implement` and `review`. The user does not name the
     "test": "relay test ."
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.3.0"
+    "@ganderbite/relay-core": "^0.4.0"
   },
   "relay": {
     "flowName": "{{pkgName}}",
