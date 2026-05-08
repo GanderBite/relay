@@ -1,10 +1,10 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { err, ok, type Result } from 'neverthrow';
 
-export type TemplateId = 'blank' | 'linear' | 'fan-out' | 'discovery';
+export type TemplateId = 'blank' | 'linear' | 'fan-out' | 'discovery' | 'loop';
 
 export interface ScaffoldReport {
   filesWritten: string[];
@@ -39,9 +39,7 @@ function applyTokens(content: string, tokens: Record<string, string>): string {
 
 async function walkDir(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
-  return entries
-    .filter((e) => e.isFile())
-    .map((e) => join(e.parentPath, e.name));
+  return entries.filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
 }
 
 export async function scaffoldFlow(
@@ -133,5 +131,6 @@ export function pickTemplate(intentText: string): TemplateId {
   if (/(explore|audit|document|review codebase)/.test(lower)) return 'discovery';
   if (/(then|chain|sequential)/.test(lower)) return 'linear';
   if (/(parallel|fan[-_ ]?out)/.test(lower)) return 'fan-out';
+  if (/(loop|iterative|implement.*review|review.*until)/.test(lower)) return 'loop';
   return 'blank';
 }

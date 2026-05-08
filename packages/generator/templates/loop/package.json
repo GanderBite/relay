@@ -1,0 +1,42 @@
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "Iterative implement-review loop scaffolded from @ganderbite/relay-generator.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@ganderbite/relay-core": "^0.2.0"
+  },
+  "relay": {
+    "flowName": "{{pkgName}}",
+    "displayName": "{{pkgName}}",
+    "tags": [
+      "loop",
+      "iterative",
+      "review"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.1,
+      "max": 1.0
+    },
+    "estimatedDurationMin": {
+      "min": 5,
+      "max": 30
+    },
+    "audience": [
+      "dev"
+    ]
+  }
+}
