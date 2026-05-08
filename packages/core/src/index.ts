@@ -237,6 +237,9 @@ export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
  */
 export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 
+/** Per-step event record persisted to .relay/runs/<runId>/events/<stepId>.jsonl. */
+export type { EventRecord } from './orchestrator/event-log.js';
+
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
   BranchStepResult,

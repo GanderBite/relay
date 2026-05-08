@@ -61,6 +61,8 @@ export interface RunCommandOptions {
    * the feature entirely for this run.
    */
   worktree?: boolean;
+  /** When true, render the verbose event sub-stream under each running step. */
+  verbose?: boolean;
 }
 
 /**
@@ -336,6 +338,9 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     // a fresh checkout of the CLI picks up isolation automatically.
     if (options.worktree === false) {
       runOpts.worktree = false;
+    }
+    if (options.verbose === true) {
+      runOpts.verbose = true;
     }
     const preAuthedMap = new Map<string, AuthState>();
     preAuthedMap.set(resolvedProvider.name, authState);
