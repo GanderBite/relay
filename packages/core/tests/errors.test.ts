@@ -8,6 +8,7 @@ import {
   FlowDefinitionError,
   HandoffIoError,
   HandoffNotFoundError,
+  HandoffOutputError,
   HandoffSchemaError,
   HandoffWriteError,
   MetricsWriteError,
@@ -36,6 +37,7 @@ describe('Error hierarchy', () => {
       new HandoffSchemaError('msg', 'h', []),
       new HandoffIoError('msg', 'h'),
       new HandoffNotFoundError('msg', 'h'),
+      new HandoffOutputError('msg', 'h', 'missing'),
       new HandoffWriteError('msg', 'h'),
       new MetricsWriteError('msg'),
       new StateCorruptError('msg'),
@@ -61,8 +63,35 @@ describe('Error hierarchy', () => {
       expect(seen.has(inst.code)).toBe(false);
       seen.add(inst.code);
     }
-    // All 17 distinct classes should occupy all 17 codes.
+    // All distinct classes should occupy distinct codes.
     expect(seen.size).toBe(instances.length);
+  });
+
+  it('[ERROR-009] HandoffOutputError preserves handoffId, reason, and details across all reason variants', () => {
+    const probe = z.object({ name: z.string() }).safeParse({ name: 1 });
+    if (probe.success) throw new Error('probe must fail to surface real issues');
+    const issues = probe.error.issues;
+
+    const missing = new HandoffOutputError('not produced', 'greeted', 'missing', {
+      runId: 'r1',
+      stepName: 's1',
+      promptFile: 'prompts/p.md',
+      attempt: 2,
+    });
+    expect(missing.code).toBe(ERROR_CODES.HANDOFF_OUTPUT);
+    expect(missing.name).toBe('HandoffOutputError');
+    expect(missing.handoffId).toBe('greeted');
+    expect(missing.reason).toBe('missing');
+    expect(missing.details?.runId).toBe('r1');
+    expect(missing.details?.attempt).toBe(2);
+    expect(missing).toBeInstanceOf(PipelineError);
+
+    const invalid = new HandoffOutputError('not json', 'g', 'invalid_json');
+    expect(invalid.reason).toBe('invalid_json');
+
+    const mismatch = new HandoffOutputError('schema mismatch', 'g', 'schema_mismatch', { issues });
+    expect(mismatch.reason).toBe('schema_mismatch');
+    expect(mismatch.details?.issues).toEqual(issues);
   });
 
   it('[ERROR-002] StepFailureError preserves stepId + attempt as own properties', () => {

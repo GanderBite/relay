@@ -3,6 +3,9 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 import { assemblePrompt, loadHandoffValues } from '../../context-inject.js';
 import type { CostTracker, StepMetrics } from '../../cost.js';
 import {
+  HandoffIoError,
+  HandoffNotFoundError,
+  HandoffOutputError,
   HandoffSchemaError,
   PipelineError,
   type StepFailureDetails,
@@ -22,6 +25,7 @@ import { atomicWriteText } from '../../util/atomic-write.js';
 import { extractJson } from '../../util/json.js';
 import { z } from '../../zod.js';
 import { writeLiveState } from '../live-state.js';
+import { renderOutputContract } from '../output-contract.js';
 
 /**
  * Context bag threaded into executePrompt. The Step constructs this from its
@@ -257,6 +261,7 @@ function wrapFailure(
     return cause;
   }
   if (cause instanceof HandoffSchemaError) return cause;
+  if (cause instanceof HandoffOutputError) return cause;
   const message = messageOf(cause);
   return new StepFailureError(`step "${stepId}" failed: ${message}`, stepId, attempt, {
     cause: message,
@@ -317,6 +322,36 @@ export async function executePrompt(
     const schema = 'schema' in step.output ? step.output.schema : undefined;
     const jsonSchema = toJsonSchema(schema);
 
+    // When the step has a schema-bound handoff, append the OUTPUT CONTRACT
+    // block so the model writes its draft JSON to the staging path and runs
+    // the per-run helper script via Bash. The contract carries the schema
+    // verbatim — the legacy `request.jsonSchema` payload is dropped on this
+    // branch because no current provider acts on it server-side and the
+    // contract is the canonical source of truth for the model.
+    const handoffId =
+      'handoff' in step.output && schema !== undefined ? step.output.handoff : undefined;
+    let promptText = assembled.value;
+    if (handoffId !== undefined && jsonSchema !== undefined) {
+      const stagingPath = join(ctx.runDir, '.tmp', `${handoffId}.json`);
+      const handoffScript = join(ctx.runDir, '.bin', 'handoff.mjs');
+      promptText += renderOutputContract({
+        handoffId,
+        stagingPath,
+        handoffScript,
+        schemaJson: JSON.stringify(jsonSchema, null, 2),
+      });
+    }
+
+    // Tool-list enrichment: schema-bound handoff steps need Bash + Write to
+    // fulfil the contract. We only inject when the author already pinned a
+    // restricted tools list — leaving `step.tools` undefined defers to the
+    // provider's default tool set, which already grants both. Adding them to
+    // an undefined list would suddenly RESTRICT the tools the provider exposes.
+    const enrichedTools =
+      handoffId !== undefined && step.tools !== undefined
+        ? Array.from(new Set([...step.tools, 'Bash', 'Write']))
+        : step.tools;
+
     // Pre-flight finished — only now is the step actually invoking the
     // provider. Writing 'running' before handoff load / prompt assembly would
     // leave a zombie running file in live/ when those pre-flight steps fail
@@ -336,12 +371,15 @@ export async function executePrompt(
     }
 
     // 5. Build the invocation request + context.
+    // When the contract is appended, drop request.jsonSchema — the contract
+    // carries the schema verbatim and `claude-cli` ignores the field anyway.
+    const includeJsonSchema = jsonSchema !== undefined && handoffId === undefined;
     const request: InvocationRequest = {
-      prompt: assembled.value,
+      prompt: promptText,
       ...(step.model !== undefined ? { model: step.model } : {}),
       ...(step.systemPrompt !== undefined ? { systemPrompt: step.systemPrompt } : {}),
-      ...(step.tools !== undefined ? { tools: step.tools } : {}),
-      ...(jsonSchema !== undefined ? { jsonSchema } : {}),
+      ...(enrichedTools !== undefined ? { tools: enrichedTools } : {}),
+      ...(includeJsonSchema ? { jsonSchema } : {}),
       ...(step.maxBudgetUsd !== undefined ? { maxBudgetUsd: step.maxBudgetUsd } : {}),
       ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}),
     };
@@ -394,29 +432,65 @@ export async function executePrompt(
 
     if ('handoff' in step.output) {
       const handoffKey = step.output.handoff;
-      const parsedJson = extractJson(response.text);
-      if (parsedJson.isErr()) {
-        throw new HandoffSchemaError(
-          `handoff "${handoffKey}" response is not valid JSON: ${parsedJson.error.message}`,
-          handoffKey,
-          [],
-        );
-      }
-
       if (schema !== undefined) {
-        const check = schema.safeParse(parsedJson.value);
-        if (!check.success) {
-          throw new HandoffSchemaError(
-            `handoff "${handoffKey}" failed schema validation`,
+        // Schema-bound contract: the helper script wrote the file; we verify
+        // it landed and re-validate with Zod (defense in depth). Reading
+        // without a schema separates the three failure modes cleanly —
+        // missing file, malformed JSON, and Zod mismatch — onto distinct
+        // `HandoffOutputError` reason variants.
+        const baseDetails = {
+          runId: ctx.runId,
+          stepName: stepId,
+          promptFile: step.promptFile,
+          attempt,
+        };
+        const readResult = await ctx.handoffStore.read(handoffKey);
+        if (readResult.isErr()) {
+          const cause = readResult.error;
+          if (cause instanceof HandoffNotFoundError) {
+            throw new HandoffOutputError(
+              `handoff "${handoffKey}" was not produced by the model`,
+              handoffKey,
+              'missing',
+              baseDetails,
+            );
+          }
+          if (cause instanceof HandoffIoError) {
+            throw new HandoffOutputError(
+              `handoff "${handoffKey}" file was not valid JSON`,
+              handoffKey,
+              'invalid_json',
+              baseDetails,
+            );
+          }
+          throw cause;
+        }
+        const validated = schema.safeParse(readResult.value);
+        if (!validated.success) {
+          throw new HandoffOutputError(
+            `handoff "${handoffKey}" did not match the expected schema`,
             handoffKey,
-            check.error.issues,
+            'schema_mismatch',
+            { ...baseDetails, issues: validated.error.issues },
           );
         }
-      }
+        handoffs.push(handoffKey);
+      } else {
+        // Schemaless handoff: keep the legacy stdout-extract path. The model
+        // never sees the OUTPUT CONTRACT block on this branch.
+        const parsedJson = extractJson(response.text);
+        if (parsedJson.isErr()) {
+          throw new HandoffSchemaError(
+            `handoff "${handoffKey}" response is not valid JSON: ${parsedJson.error.message}`,
+            handoffKey,
+            [],
+          );
+        }
 
-      const writeResult = await ctx.handoffStore.write(handoffKey, parsedJson.value, schema);
-      if (writeResult.isErr()) throw writeResult.error;
-      handoffs.push(handoffKey);
+        const writeResult = await ctx.handoffStore.write(handoffKey, parsedJson.value);
+        if (writeResult.isErr()) throw writeResult.error;
+        handoffs.push(handoffKey);
+      }
     }
 
     // Artifact routing: write the response text verbatim to

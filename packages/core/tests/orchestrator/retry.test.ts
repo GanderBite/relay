@@ -3,9 +3,9 @@
  * References packages/core/src/orchestrator/retry.ts — not yet implemented.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { TimeoutError } from '../../src/errors.js';
+import { HandoffOutputError, HandoffSchemaError, TimeoutError } from '../../src/errors.js';
 import { createLogger } from '../../src/logger.js';
-import { withRetry } from '../../src/orchestrator/retry.js';
+import { shouldRetry, withRetry } from '../../src/orchestrator/retry.js';
 
 function base() {
   return { logger: createLogger({ flowName: 'f', runId: 'r' }), stepId: 's' };
@@ -42,6 +42,25 @@ describe('withRetry (sprint 5 task_38)', () => {
       withRetry(() => new Promise(() => undefined), { ...base(), maxRetries: 0, timeoutMs: 120 }),
     ).rejects.toBeInstanceOf(TimeoutError);
     expect(Date.now() - started).toBeLessThan(600);
+  });
+
+  it('shouldRetry: HandoffOutputError is retryable; HandoffSchemaError is NOT', () => {
+    expect(shouldRetry(new HandoffOutputError('missing', 'h', 'missing'))).toBe(true);
+    expect(shouldRetry(new HandoffOutputError('bad json', 'h', 'invalid_json'))).toBe(true);
+    expect(shouldRetry(new HandoffOutputError('mismatch', 'h', 'schema_mismatch'))).toBe(true);
+    expect(shouldRetry(new HandoffSchemaError('def-bug', 'h', []))).toBe(false);
+  });
+
+  it('HandoffOutputError is retried: succeeds on attempt 2 within budget', async () => {
+    let calls = 0;
+    const fn = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new HandoffOutputError('first attempt missing', 'h', 'missing');
+      return 'ok';
+    });
+    const result = await withRetry(fn, { ...base(), maxRetries: 1 });
+    expect(result).toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it('[RETRY-005] passes the 1-based attempt number to fn on each call', async () => {

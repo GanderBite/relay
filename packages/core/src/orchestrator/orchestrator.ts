@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { access, mkdir } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import type { Result } from 'neverthrow';
+
 import { CostTracker } from '../cost.js';
 import {
+  type AtomicWriteError,
   AuthTimeoutError,
   ERROR_CODES,
   FlowDefinitionError,
@@ -20,6 +23,7 @@ import { resolveProvider } from '../settings/resolve.js';
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 import { atomicWriteJson } from '../util/atomic-write.js';
 import { createWorktree, isGitRepo, removeWorktree } from '../util/worktree.js';
+import { z } from '../zod.js';
 
 import { checkCapabilities } from './capability-check.js';
 import { executeBranch } from './exec/branch.js';
@@ -27,6 +31,7 @@ import { executeParallel } from './exec/parallel.js';
 import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
 import { executeTerminal } from './exec/terminal.js';
+import { writeHandoffHelperScript } from './handoff-helper.js';
 import { writeLiveState } from './live-state.js';
 import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { withRetry } from './retry.js';
@@ -247,6 +252,12 @@ export class Orchestrator {
 
     await mkdir(runDir, { recursive: true });
     await mkdir(join(runDir, 'live'), { recursive: true });
+    // Pre-create the per-run staging + helper-script directories so the
+    // schema-bound prompt contract can reference them without having to
+    // mkdir on every prompt invocation. Empty directories cost nothing
+    // and make the output contract's instructions deterministic.
+    await mkdir(join(runDir, '.tmp'), { recursive: true });
+    await mkdir(join(runDir, '.bin'), { recursive: true });
 
     await this.#writeFlowRef(runDir, flow, opts.flowPath);
 
@@ -269,6 +280,13 @@ export class Orchestrator {
     stateMachine.getState().input = validatedInput;
     const initialSave = await stateMachine.save();
     if (initialSave.isErr()) throw initialSave.error;
+
+    // Emit the per-run handoff helper script so schema-bound prompt steps can
+    // round-trip validation inside a single Claude invocation. Failure to write
+    // the script is fatal — without it, those prompts have no way to land a
+    // valid handoff and the whole run will deadlock retrying.
+    const helperResult = await this.#writeHandoffHelper(runDir, flow);
+    if (helperResult.isErr()) throw helperResult.error;
 
     // Provider resolution happens BEFORE any step runs, so a misconfiguration
     // surfaces as a single typed error (NoProviderConfiguredError or
@@ -478,6 +496,15 @@ export class Orchestrator {
 
     const stateMachine = new StateMachine(runDir, flow.name, flow.version, runId);
     stateMachine.hydrate(persistedState);
+
+    // Resume gets a fresh helper script. The schema set could have changed if
+    // the flow file was edited between crash and resume — `verifyCompatibility`
+    // already gates on flow name + version, but rewriting the helper is cheap
+    // and idempotent, so we always do it.
+    await mkdir(join(runDir, '.tmp'), { recursive: true });
+    await mkdir(join(runDir, '.bin'), { recursive: true });
+    const resumedHelperResult = await this.#writeHandoffHelper(runDir, flow);
+    if (resumedHelperResult.isErr()) throw resumedHelperResult.error;
 
     // Crash robustness: a SIGKILL (or OS crash) bypasses markRun(), so steps
     // can be persisted in 'running' status with no in-flight work to complete
@@ -816,6 +843,32 @@ export class Orchestrator {
     return resolved.value;
   }
 
+  /**
+   * Build the per-flow schema map and emit `<runDir>/.bin/handoff.mjs`. The
+   * map only includes prompt steps with `output.handoff` AND `output.schema`;
+   * artifact-only and handoff-without-schema steps fall through to the legacy
+   * stdout-extract path and need no entry. Returns the result so the caller
+   * can surface an atomic-write failure as a typed error.
+   */
+  async #writeHandoffHelper<TInput>(
+    runDir: string,
+    flow: Flow<TInput>,
+  ): Promise<Result<string, AtomicWriteError>> {
+    const schemasById: Record<string, unknown> = {};
+    for (const step of Object.values(flow.steps)) {
+      if (step.kind !== 'prompt') continue;
+      if (!('handoff' in step.output)) continue;
+      const schema = step.output.schema;
+      if (schema === undefined) continue;
+      schemasById[step.output.handoff] = z.toJSONSchema(schema);
+    }
+    return writeHandoffHelperScript({
+      runDir,
+      schemasById,
+      handoffsDir: join(runDir, 'handoffs'),
+    });
+  }
+
   async #writeFlowRef<TInput>(
     runDir: string,
     flow: Flow<TInput>,
@@ -1105,12 +1158,18 @@ export class Orchestrator {
         step: Step,
       ): { maxRetries: number; timeoutMs: number | undefined } => {
         if (step.kind === 'prompt') {
+          // Schema-bound prompts default to a single retry: the OUTPUT CONTRACT
+          // helper-script round-trip absorbs most failures inside one
+          // invocation, but a model that gives up mid-loop still gets one more
+          // attempt at the orchestrator level. Other prompt shapes keep the
+          // historical "no retry" default so the change is opt-in via schema.
+          const hasSchemaContract = 'handoff' in step.output && step.output.schema !== undefined;
           // Backstop for the default prompt timeout. The schema applies the same value
           // when authors run their flow through step.prompt(...), but the Orchestrator
           // also accepts hand-built PromptStepSpec literals; without this fallback
           // a runaway invocation could stream tokens indefinitely.
           return {
-            maxRetries: step.maxRetries ?? 0,
+            maxRetries: step.maxRetries ?? (hasSchemaContract ? 1 : 0),
             timeoutMs: step.timeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
           };
         }

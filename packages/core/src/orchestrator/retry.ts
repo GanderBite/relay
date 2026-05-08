@@ -3,6 +3,7 @@ import {
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
+  HandoffOutputError,
   HandoffSchemaError,
   ProviderAuthError,
   TimeoutError,
@@ -26,8 +27,14 @@ const BASE_DELAY_MS = 100;
 /**
  * Errors that are non-retryable regardless of attempt budget. These represent
  * misconfiguration or invariant violations that will not heal on a second try.
+ *
+ * `HandoffOutputError` is the canonical retryable failure: the model emitted
+ * the wrong shape and the next invocation gets the same OUTPUT CONTRACT block
+ * to try again. Promoted to an explicit positive case so a future contributor
+ * does not accidentally add it to the denylist.
  */
 export function shouldRetry(err: unknown): boolean {
+  if (err instanceof HandoffOutputError) return true;
   if (err instanceof TimeoutError) return false;
   if (err instanceof ClaudeAuthError) return false;
   if (err instanceof ProviderAuthError) return false;
@@ -93,6 +100,25 @@ export async function withRetry<T>(
         ? (error as { code: unknown }).code
         : ERROR_CODES.STEP_FAILURE;
     const message = error instanceof Error ? error.message : String(error);
+
+    if (error instanceof HandoffOutputError) {
+      // The handoff round-trip is expected behaviour — log at info so it does
+      // not clutter the warn channel that operators monitor for actual problems.
+      logger.info(
+        {
+          event: 'handoff.output.retry',
+          stepId,
+          attempt: attemptNumber,
+          nextAttempt: attemptNumber + 1,
+          handoffId: error.handoffId,
+          reason: error.reason,
+          code,
+          message,
+        },
+        `retrying step "${stepId}" after handoff ${error.reason}`,
+      );
+      return;
+    }
 
     logger.warn(
       {

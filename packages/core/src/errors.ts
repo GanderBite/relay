@@ -10,6 +10,7 @@ export const ERROR_CODES = {
   FLOW_NOT_FOUND: 'relay_FLOW_NOT_FOUND',
   HANDOFF_IO: 'relay_HANDOFF_IO',
   HANDOFF_NOT_FOUND: 'relay_HANDOFF_NOT_FOUND',
+  HANDOFF_OUTPUT: 'relay_HANDOFF_OUTPUT',
   HANDOFF_SCHEMA: 'relay_HANDOFF_SCHEMA',
   HANDOFF_WRITE: 'relay_HANDOFF_WRITE',
   METRICS_WRITE: 'relay_METRICS_WRITE',
@@ -231,6 +232,61 @@ export class HandoffSchemaError extends PipelineError<HandoffSchemaDetails> {
     this.name = 'HandoffSchemaError';
     this.handoffId = handoffId;
     this.issues = issues;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Reason discriminator for `HandoffOutputError`. Distinguishes the three ways
+ * an in-run handoff write can fail observability-wise: the model never produced
+ * the file, produced bytes that are not valid JSON, or produced JSON that fails
+ * the configured Zod schema.
+ */
+export type HandoffOutputReason = 'missing' | 'invalid_json' | 'schema_mismatch';
+
+/**
+ * Typed details for `HandoffOutputError`.
+ *
+ * `issues` is populated only when `reason === 'schema_mismatch'`; the other
+ * reasons leave it undefined so the CLI formatter can branch cleanly.
+ */
+export interface HandoffOutputDetails extends Record<string, unknown> {
+  /** Zod issues from the post-invoke revalidation. */
+  issues?: z.core.$ZodIssue[];
+  /** Run id for CLI-side remediation hints. */
+  runId?: string;
+  /** Step name for prompt-file lookup. */
+  stepName?: string;
+  /** Path to the prompt template file. */
+  promptFile?: string;
+  /** Attempt number that produced the failure, 1-based. */
+  attempt?: number;
+}
+
+/**
+ * Raised after a prompt invocation finishes when the schema-bound handoff file
+ * the model was instructed to produce is missing, malformed, or does not match
+ * the schema. Distinct from `HandoffSchemaError` (which fires when
+ * `HandoffStore.write` is called by core code with a programmer-induced
+ * mismatch) so the retry policy can branch cleanly: this class is retryable;
+ * `HandoffSchemaError` is not.
+ */
+export class HandoffOutputError extends PipelineError<HandoffOutputDetails> {
+  readonly handoffId: string;
+  readonly reason: HandoffOutputReason;
+
+  constructor(
+    message: string,
+    handoffId: string,
+    reason: HandoffOutputReason,
+    details?: HandoffOutputDetails,
+  ) {
+    super(message, ERROR_CODES.HANDOFF_OUTPUT, details);
+    this.name = 'HandoffOutputError';
+    this.handoffId = handoffId;
+    this.reason = reason;
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
