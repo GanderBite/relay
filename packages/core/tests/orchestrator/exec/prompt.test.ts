@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CostTracker } from '../../../src/cost.js';
-import { HandoffSchemaError, StepFailureError } from '../../../src/errors.js';
+import { HandoffOutputError, StepFailureError } from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
@@ -92,32 +92,99 @@ describe('executePrompt (sprint 5 task_33)', () => {
     expect(wrote.isOk()).toBe(true);
   });
 
-  it('[EXEC-PROMPT-002] converts Zod schema to JSON schema on InvocationRequest.jsonSchema', async () => {
+  it('[EXEC-PROMPT-002] schema-bound handoff appends OUTPUT CONTRACT to the prompt and drops request.jsonSchema', async () => {
     const s = step.prompt({
       promptFile: 'prompts/p.md',
       output: { handoff: 'x', schema: z.object({ name: z.string() }) },
     });
 
-    let capturedJsonSchema: unknown;
+    let capturedRequest: { prompt: string; jsonSchema?: unknown } | undefined;
+    // The model "writes" its handoff to disk so the post-invoke read succeeds —
+    // simulating the helper-script round-trip without spawning subprocesses.
+    const ctxBase = makeCtxBase();
+    const handoffsDir = join(tmp, 'handoffs');
     const provider = new MockProvider({
       responses: {
-        [s.id || 'p']: (req) => {
-          capturedJsonSchema = req.jsonSchema;
+        [s.id || 'p']: async (req) => {
+          capturedRequest = { prompt: req.prompt, jsonSchema: req.jsonSchema };
+          await mkdir(handoffsDir, { recursive: true });
+          await writeFile(join(handoffsDir, 'x.json'), JSON.stringify({ name: 'alice' }), 'utf8');
           return canned;
         },
       },
     });
 
-    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    const ctx = { ...ctxBase, stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
-    expect(capturedJsonSchema).toBeTypeOf('object');
-    const js = capturedJsonSchema as Record<string, unknown>;
-    expect(js.type).toBe('object');
-    expect(js.properties).toBeDefined();
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest?.prompt).toContain('## OUTPUT CONTRACT (required)');
+    expect(capturedRequest?.prompt).toContain('"type": "object"');
+    // Contract appended ⇒ jsonSchema is intentionally dropped.
+    expect(capturedRequest?.jsonSchema).toBeUndefined();
   });
 
-  it('[EXEC-PROMPT-003] invalid JSON response against schema surfaces HandoffSchemaError', async () => {
+  it('handoff-without-schema steps do NOT append OUTPUT CONTRACT', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: { handoff: 'noschema' },
+    });
+    let capturedPrompt = '';
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: (req) => {
+          capturedPrompt = req.prompt;
+          return { ...canned, text: '{"k":"v"}' };
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    expect(capturedPrompt).not.toContain('OUTPUT CONTRACT');
+  });
+
+  it('artifact-only steps do NOT append OUTPUT CONTRACT', async () => {
+    const s = step.prompt({ promptFile: 'prompts/p.md', output: { artifact: 'r.html' } });
+    let capturedPrompt = '';
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: (req) => {
+          capturedPrompt = req.prompt;
+          return { ...canned, text: '<html></html>' };
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    expect(capturedPrompt).not.toContain('OUTPUT CONTRACT');
+  });
+
+  it('schema-bound step with explicit tools list adds Bash + Write to enriched tools', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      tools: ['Read'],
+      output: { handoff: 'enr', schema: z.object({ ok: z.boolean() }) },
+    });
+    const handoffsDir = join(tmp, 'handoffs');
+    let capturedTools: string[] | undefined;
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: async (req) => {
+          capturedTools = req.tools;
+          await mkdir(handoffsDir, { recursive: true });
+          await writeFile(join(handoffsDir, 'enr.json'), JSON.stringify({ ok: true }), 'utf8');
+          return { ...canned, text: '{"ok":true}' };
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    expect(capturedTools).toContain('Read');
+    expect(capturedTools).toContain('Bash');
+    expect(capturedTools).toContain('Write');
+  });
+
+  it('[EXEC-PROMPT-003] schema-bound handoff with no file written surfaces HandoffOutputError(missing)', async () => {
     const s = step.prompt({
       promptFile: 'prompts/p.md',
       output: {
@@ -128,14 +195,70 @@ describe('executePrompt (sprint 5 task_33)', () => {
       },
     });
     const provider = new MockProvider({
+      // Provider returns text but never writes the handoff file ⇒ missing.
       responses: {
-        [s.id || 'p']: { ...canned, text: '{"entities":[{"name":1}]}' },
+        [s.id || 'p']: { ...canned, text: '(model forgot to call helper)' },
       },
     });
     const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
     await expect(
       executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]),
-    ).rejects.toBeInstanceOf(HandoffSchemaError);
+    ).rejects.toMatchObject({
+      name: 'HandoffOutputError',
+      reason: 'missing',
+    });
+  });
+
+  it('schema-bound handoff with malformed JSON file surfaces HandoffOutputError(invalid_json)', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: { handoff: 'malformed', schema: z.object({ k: z.string() }) },
+    });
+    const handoffsDir = join(tmp, 'handoffs');
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: async () => {
+          await mkdir(handoffsDir, { recursive: true });
+          await writeFile(join(handoffsDir, 'malformed.json'), '{not json', 'utf8');
+          return canned;
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await expect(
+      executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]),
+    ).rejects.toMatchObject({
+      name: 'HandoffOutputError',
+      reason: 'invalid_json',
+    });
+  });
+
+  it('schema-bound handoff with wrong-shape JSON surfaces HandoffOutputError(schema_mismatch)', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: { handoff: 'wrong', schema: z.object({ name: z.string() }) },
+    });
+    const handoffsDir = join(tmp, 'handoffs');
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: async () => {
+          await mkdir(handoffsDir, { recursive: true });
+          await writeFile(join(handoffsDir, 'wrong.json'), JSON.stringify({ name: 1 }), 'utf8');
+          return canned;
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    let caught: unknown;
+    try {
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(HandoffOutputError);
+    const err = caught as HandoffOutputError;
+    expect(err.reason).toBe('schema_mismatch');
+    expect(err.details?.issues?.length).toBeGreaterThan(0);
   });
 
   it('[EXEC-PROMPT-004] writes artifact file when output.artifact is set', async () => {
@@ -240,5 +363,109 @@ describe('executePrompt (sprint 5 task_33)', () => {
     await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
     expect(events).toContain('prompt.start');
     expect(events).toContain('prompt.done');
+  });
+
+  describe('staging-file contract paths in OUTPUT CONTRACT', () => {
+    // These tests verify that the literal paths embedded in the OUTPUT CONTRACT
+    // block are derived from runDir and handoffId — not hardcoded, not relative.
+    // If executePrompt ever fell back to a different path derivation strategy
+    // the model would try to invoke a script that does not exist.
+
+    it('[EXEC-PROMPT-STAGING-001] staging path in OUTPUT CONTRACT is <runDir>/.tmp/<handoffId>.json', async () => {
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: { handoff: 'inventory', schema: z.object({ items: z.array(z.string()) }) },
+      });
+      const handoffsDir = join(tmp, 'handoffs');
+      let capturedPrompt = '';
+      const provider = new MockProvider({
+        responses: {
+          [s.id || 'p']: async (req) => {
+            capturedPrompt = req.prompt;
+            await mkdir(handoffsDir, { recursive: true });
+            await writeFile(
+              join(handoffsDir, 'inventory.json'),
+              JSON.stringify({ items: ['a', 'b'] }),
+              'utf8',
+            );
+            return canned;
+          },
+        },
+      });
+      const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+      // The staging path must be the absolute path under runDir/.tmp — not a
+      // relative path, not a different directory. The model writes here before
+      // calling the helper script.
+      const expectedStagingPath = join(tmp, '.tmp', 'inventory.json');
+      expect(capturedPrompt).toContain(expectedStagingPath);
+    });
+
+    it('[EXEC-PROMPT-STAGING-002] handoff script path in OUTPUT CONTRACT is <runDir>/.bin/handoff.mjs', async () => {
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: { handoff: 'summary', schema: z.object({ text: z.string() }) },
+      });
+      const handoffsDir = join(tmp, 'handoffs');
+      let capturedPrompt = '';
+      const provider = new MockProvider({
+        responses: {
+          [s.id || 'p']: async (req) => {
+            capturedPrompt = req.prompt;
+            await mkdir(handoffsDir, { recursive: true });
+            await writeFile(
+              join(handoffsDir, 'summary.json'),
+              JSON.stringify({ text: 'done' }),
+              'utf8',
+            );
+            return canned;
+          },
+        },
+      });
+      const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+      // The script path must point to .bin/handoff.mjs under runDir. Any other
+      // path would make the Bash invocation fail because that script does not exist.
+      const expectedScriptPath = join(tmp, '.bin', 'handoff.mjs');
+      expect(capturedPrompt).toContain(`node ${expectedScriptPath}`);
+    });
+
+    it('[EXEC-PROMPT-STAGING-003] OUTPUT CONTRACT sentinel "OK <handoffId>" matches the step handoff id', async () => {
+      const handoffId = 'my_unique_handoff';
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: {
+          handoff: handoffId,
+          schema: z.object({ value: z.number() }),
+        },
+      });
+      const handoffsDir = join(tmp, 'handoffs');
+      let capturedPrompt = '';
+      const provider = new MockProvider({
+        responses: {
+          [s.id || 'p']: async (req) => {
+            capturedPrompt = req.prompt;
+            await mkdir(handoffsDir, { recursive: true });
+            await writeFile(
+              join(handoffsDir, `${handoffId}.json`),
+              JSON.stringify({ value: 42 }),
+              'utf8',
+            );
+            return canned;
+          },
+        },
+      });
+      const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+      // The sentinel the model must see before stopping must use the exact
+      // handoff id — a mismatch would leave the model in an infinite loop
+      // checking for an "OK" line that never arrives.
+      expect(capturedPrompt).toContain(`OK ${handoffId}`);
+      // The Bash command must also reference the handoff id for routing.
+      expect(capturedPrompt).toContain(`write ${handoffId} --from`);
+    });
   });
 });
