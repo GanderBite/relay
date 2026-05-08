@@ -389,49 +389,43 @@ describe('executeLoop', () => {
     expect((caught as FlowDefinitionError).message).toMatch(/cycle/i);
   });
 
-  it('[LOOP-006] nested loops rejected at builder call time', () => {
-    expect(() => {
-      step.loop({
-        body: {
-          // Inline nested loop — the body builder rejects this synchronously.
-          inner_loop: step.loop({
-            body: {
-              review: step.prompt({
-                promptFile: 'p.md',
-                output: { handoff: 'review' },
-              }),
-            },
-            until: { from: 'review', when: { decision: 'done' } },
-            maxIterations: 3,
-          }),
-        },
-        until: { from: 'review', when: { decision: 'done' } },
-        maxIterations: 5,
-      });
-    }).toThrow(FlowDefinitionError);
-
-    let caught: unknown;
-    try {
-      step.loop({
-        body: {
-          inner_loop: step.loop({
-            body: {
-              review: step.prompt({
-                promptFile: 'p.md',
-                output: { handoff: 'review' },
-              }),
-            },
-            until: { from: 'review', when: { decision: 'done' } },
-            maxIterations: 3,
-          }),
-        },
-        until: { from: 'review', when: { decision: 'done' } },
-        maxIterations: 5,
-      });
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(FlowDefinitionError);
+  it('[LOOP-006] nested loops rejected at the type level by the body constraint', () => {
+    // FLAG-6 moved nested-loop rejection from a runtime kind-check to the
+    // TypeScript type system: LoopStepBuilderInput.body is typed as
+    // Record<string, Exclude<StepBuilderOutput, LoopStepBuilderOutput>>,
+    // so passing a loop builder output is a compile-time error.
+    //
+    // There is no runtime guard for this case. The // @ts-expect-error
+    // directive below is the assertion: if the body type constraint were
+    // relaxed (so loop outputs were accepted), TypeScript would emit
+    // TS2578 "Unused '@ts-expect-error' directive" and the typecheck
+    // step would fail.
+    //
+    // The outer loop is constructed with a valid until.from so it does
+    // not throw at runtime — the test verifies that a nested loop in the
+    // body passes the runtime path silently (no runtime guard) while
+    // remaining a type error.
+    step.loop({
+      body: {
+        implement: step.prompt({
+          promptFile: 'p.md',
+          output: { handoff: 'implementation' },
+        }),
+        // @ts-expect-error — LoopStepBuilderOutput is excluded from the body type
+        inner_loop: step.loop({
+          body: {
+            review: step.prompt({
+              promptFile: 'p.md',
+              output: { handoff: 'review' },
+            }),
+          },
+          until: { from: 'review', when: { decision: 'done' } },
+          maxIterations: 3,
+        }),
+      },
+      until: { from: 'implementation', when: { ok: true } },
+      maxIterations: 5,
+    });
   });
 
   it('[LOOP-007] body referencing unknown handoff without "?" is rejected at defineFlow time', () => {
@@ -631,6 +625,106 @@ describe('executeLoop', () => {
     // must NOT terminate the loop.
     expect(result.iterations).toBe(3);
     expect(callCount).toBe(3);
+  });
+
+  it('[LOOP-013] loopStep rejects body prompt step that declares maxRetries', () => {
+    expect(() => {
+      step.loop({
+        body: {
+          review: step.prompt({
+            promptFile: 'p.md',
+            output: { handoff: 'review' },
+            maxRetries: 3,
+          }),
+        },
+        until: { from: 'review', when: { ok: true } },
+        maxIterations: 5,
+      });
+    }).toThrow(FlowDefinitionError);
+
+    let caught: unknown;
+    try {
+      step.loop({
+        body: {
+          review: step.prompt({
+            promptFile: 'p.md',
+            output: { handoff: 'review' },
+            maxRetries: 3,
+          }),
+        },
+        until: { from: 'review', when: { ok: true } },
+        maxIterations: 5,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect((caught as FlowDefinitionError).message).toMatch(/maxRetries/);
+  });
+
+  it('[LOOP-014] loopStep rejects body prompt step that declares timeoutMs', () => {
+    expect(() => {
+      step.loop({
+        body: {
+          review: step.prompt({
+            promptFile: 'p.md',
+            output: { handoff: 'review' },
+            timeoutMs: 60_000,
+          }),
+        },
+        until: { from: 'review', when: { ok: true } },
+        maxIterations: 5,
+      });
+    }).toThrow(FlowDefinitionError);
+
+    let caught: unknown;
+    try {
+      step.loop({
+        body: {
+          review: step.prompt({
+            promptFile: 'p.md',
+            output: { handoff: 'review' },
+            timeoutMs: 60_000,
+          }),
+        },
+        until: { from: 'review', when: { ok: true } },
+        maxIterations: 5,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect((caught as FlowDefinitionError).message).toMatch(/timeoutMs/);
+  });
+
+  it('[LOOP-015] loopStep rejects body parallel step', () => {
+    // The parallel-body guard fires before any other body validation
+    // (including the until.from check), so branch ids and until do not
+    // need to resolve to real steps for the rejection to trigger.
+    expect(() => {
+      step.loop({
+        body: {
+          fan: step.parallel({ branches: ['a', 'b'] }),
+        },
+        until: { from: 'fan', when: { ok: true } },
+        maxIterations: 5,
+      });
+    }).toThrow(FlowDefinitionError);
+
+    let caught: unknown;
+    try {
+      step.loop({
+        body: {
+          fan: step.parallel({ branches: ['a', 'b'] }),
+        },
+        until: { from: 'fan', when: { ok: true } },
+        maxIterations: 5,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect((caught as FlowDefinitionError).message).toMatch(/parallel/);
   });
 });
 
