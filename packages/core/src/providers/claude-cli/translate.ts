@@ -134,9 +134,30 @@ function translateCore(msg: unknown): InvocationEvent[] {
     const msgType = msg['type'];
     if (!isString(msgType)) return [];
 
-    // System messages are purely informational — init, heartbeat, etc.
+    // System messages carry session/model/tools/mcp metadata at stream start.
+    // Translate the init envelope into a structured event so downstream
+    // consumers (live state, progress display) can surface session_id and
+    // the active tool/mcp inventory without re-reading the raw payload.
     if (msgType === 'system') {
-      return [];
+      const model = isString(msg['model']) ? msg['model'] : undefined;
+      const sessionId = isString(msg['session_id']) ? msg['session_id'] : undefined;
+      const rawTools = msg['tools'];
+      const tools = isArray(rawTools)
+        ? rawTools.flatMap((t) => {
+            if (isString(t)) return [t];
+            if (isRecord(t) && isString(t['name'])) return [t['name'] as string];
+            return [];
+          })
+        : undefined;
+      const rawMcp = msg['mcp_servers'];
+      const mcpServers = isArray(rawMcp)
+        ? rawMcp.flatMap((s) => {
+            if (isString(s)) return [s];
+            if (isRecord(s) && isString(s['name'])) return [s['name'] as string];
+            return [];
+          })
+        : undefined;
+      return [{ type: 'system.init', model, sessionId, tools, mcpServers }];
     }
 
     // Turn boundary events

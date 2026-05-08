@@ -140,6 +140,14 @@ export interface RunOptions {
    * Defaults to true (backward compatible).
    */
   logToStdout?: boolean | undefined;
+  /**
+   * When true, the per-step event log writer includes the raw stream-json
+   * envelope alongside the translated InvocationEvent in each EventRecord.
+   * Raw envelopes are large; persisting them on every run wastes disk for
+   * runs that will never be inspected in verbose mode. Everything else —
+   * writing the event log, rendering progress — is unconditional.
+   */
+  verbose?: boolean | undefined;
 }
 
 export interface RunResult {

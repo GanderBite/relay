@@ -243,7 +243,14 @@ export type InvocationEvent =
    * that aggregate streams into an InvocationResponse treat this as the
    * stream's final event and surface the error via their own Result channel.
    */
-  | { type: 'stream.error'; error: PipelineError };
+  | { type: 'stream.error'; error: PipelineError }
+  | {
+      type: 'system.init';
+      model: string | undefined;
+      sessionId: string | undefined;
+      tools: string[] | undefined;
+      mcpServers: string[] | undefined;
+    };
 
 // ---------------------------------------------------------------------------
 // CostEstimate (used by Provider.estimateCost)
