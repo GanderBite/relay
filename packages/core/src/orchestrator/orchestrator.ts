@@ -158,6 +158,18 @@ export interface RunResult {
   cost: { totalUsd: number; totalTokens: number };
   artifacts: string[];
   durationMs: number;
+  /**
+   * The first non-abort step error encountered during the walk, captured so
+   * embedding hosts can route the error through their own exit-code or
+   * formatter helpers without re-throwing the orchestrator's control flow.
+   * Typed as the broad `Error` so this field carries every PipelineError
+   * subclass (StepFailureError, TimeoutError, LoopMaxIterationsError,
+   * ProviderRateLimitError, etc.) verbatim — callers narrow with `instanceof`.
+   * Undefined for successful runs, runs aborted via SIGINT/SIGTERM, and any
+   * other path that exits without a step error (resume short-circuit, etc.).
+   * In-memory only — never persisted to state.json.
+   */
+  firstError?: Error | undefined;
 }
 
 /**
@@ -319,6 +331,7 @@ export class Orchestrator {
 
     const start = Date.now();
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    let firstError: Error | undefined;
     // Declared outside the try so the finally block can tear down whatever
     // setupWorktree produced, including a partial success where create-after-
     // probe throws mid-way.
@@ -350,7 +363,7 @@ export class Orchestrator {
       if (abortController.signal.aborted) {
         runStatus = 'aborted';
       } else {
-        runStatus = await this.#walkDag({
+        const walkResult = await this.#walkDag({
           flow: flow as Flow<unknown>,
           runDir,
           runId,
@@ -370,6 +383,8 @@ export class Orchestrator {
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
           ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
+        runStatus = walkResult.status;
+        firstError = walkResult.firstError;
       }
     } catch (caught) {
       if (isAbortLike(caught)) {
@@ -407,6 +422,7 @@ export class Orchestrator {
       cost: { totalUsd: summary.totalUsd, totalTokens: summary.totalTokens },
       artifacts,
       durationMs: Date.now() - start,
+      ...(firstError !== undefined ? { firstError } : {}),
     };
   }
 
@@ -573,6 +589,7 @@ export class Orchestrator {
 
     const start = Date.now();
     let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    let firstError: Error | undefined;
     // A resumed run gets its own fresh worktree. Declared outside the try so
     // the finally block can tear down a partial setup even when auth or the
     // worktree creation itself throws.
@@ -606,7 +623,7 @@ export class Orchestrator {
         runStatus = 'aborted';
       } else {
         const initialQueue = seedReadyQueueForResume(flow, stateMachine.getState());
-        runStatus = await this.#walkDag({
+        const walkResult = await this.#walkDag({
           flow: flow as Flow<unknown>,
           runDir,
           runId,
@@ -626,6 +643,8 @@ export class Orchestrator {
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
           ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
+        runStatus = walkResult.status;
+        firstError = walkResult.firstError;
       }
     } catch (caught) {
       if (isAbortLike(caught)) {
@@ -663,6 +682,7 @@ export class Orchestrator {
       cost: { totalUsd: summary.totalUsd, totalTokens: summary.totalTokens },
       artifacts,
       durationMs: Date.now() - start,
+      ...(firstError !== undefined ? { firstError } : {}),
     };
   }
 
@@ -1013,7 +1033,10 @@ export class Orchestrator {
      * alongside each translated InvocationEvent when set.
      */
     verbose?: boolean;
-  }): Promise<'succeeded' | 'failed' | 'aborted'> {
+  }): Promise<{
+    status: 'succeeded' | 'failed' | 'aborted';
+    firstError: Error | undefined;
+  }> {
     const {
       flow,
       runDir,
@@ -1047,6 +1070,12 @@ export class Orchestrator {
     }> = [];
     let notify: (() => void) | null = null;
     let runFailed = false;
+    // First non-abort step error captured by the walker. Embedding hosts (the
+    // CLI) read this off RunResult to map the underlying failure class to the
+    // right exit code instead of conflating every step failure with code 1.
+    // We only record the first one so the originating cause survives even when
+    // onFail=continue keeps the walker draining other completions.
+    let firstError: Error | undefined;
 
     const waitForCompletion = (): Promise<void> =>
       new Promise((resolve) => {
@@ -1452,6 +1481,13 @@ export class Orchestrator {
             if (completed.error instanceof StateWriteError) {
               throw completed.error;
             }
+            // Capture the first non-abort, non-state-write error so RunResult
+            // can carry it back to embedding hosts. Subsequent failures (e.g.
+            // a downstream timeout that fired after the originating exhaustion)
+            // do not overwrite — the originating cause is the useful one.
+            if (firstError === undefined && completed.error instanceof Error) {
+              firstError = completed.error;
+            }
             const message = errorMessageOf(completed.error);
             const step = flow.steps[completed.stepId];
             const policy = step !== undefined ? stepOnFail(step) : 'abort';
@@ -1501,8 +1537,11 @@ export class Orchestrator {
         if (!runFailed && !abortController.signal.aborted) enqueueReady();
       }
 
-      if (abortController.signal.aborted) return 'aborted';
-      return runFailed ? 'failed' : 'succeeded';
+      if (abortController.signal.aborted) return { status: 'aborted', firstError };
+      return {
+        status: runFailed ? 'failed' : 'succeeded',
+        firstError: runFailed ? firstError : undefined,
+      };
     } finally {
       abortController.signal.removeEventListener('abort', onAbort);
     }

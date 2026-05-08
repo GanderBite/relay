@@ -64,6 +64,12 @@ function compileBodySteps(body: Record<string, StepBuilderOutput>): Record<strin
  * Validation performed:
  * - `body` must be non-empty.
  * - No body step may have `kind === 'loop'` (nested loops are not supported).
+ * - No body step may have `kind === 'parallel'` (parallel inside a loop body
+ *   is not supported in this version — the dispatch path looks up step ids in
+ *   `flow.steps`, but body step ids live only in the loop's `body` map).
+ * - Body prompt/script/branch steps must not declare `maxRetries` or
+ *   `timeoutMs`. The loop iteration cycle is the recovery boundary, so per-
+ *   step retry/timeout fields would be silently ignored at runtime.
  * - `until.from` must match the `output.handoff` of at least one prompt step
  *   in the body.
  * - `maxIterations` must be a positive integer.
@@ -79,14 +85,38 @@ export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
   for (const key of bodyKeys) {
     const s = spec.body[key];
     if (s === undefined) continue;
-    // Check kind via string comparison — the union will expand to include loop
-    // in a future wave, so this guard is written defensively against runtime
-    // values that slip past the static type.
+    // Check kind via string comparison — the union may expand in a future wave,
+    // so this guard is written defensively against runtime values that slip
+    // past the static type.
     const kind: string = s.kind;
     if (kind === 'loop') {
       throw new FlowDefinitionError(
         'loop step body must not contain nested loops (step.loop inside a body is not supported in this version)',
       );
+    }
+    if (kind === 'parallel') {
+      throw new FlowDefinitionError(
+        'loop step body must not contain parallel steps (step.parallel inside a body is not supported in this version)',
+      );
+    }
+
+    // Body steps re-use the parent loop's iteration cycle as their recovery
+    // boundary — per-step retry and timeout fields are not honored on body
+    // steps. Reject them at build time so authors don't write fields the
+    // runtime would silently drop. prompt, script, and branch all carry
+    // both fields; the union narrowing below lets the compiler keep them
+    // typed without a cast.
+    if (s.kind === 'prompt' || s.kind === 'script' || s.kind === 'branch') {
+      if (s.maxRetries !== undefined) {
+        throw new FlowDefinitionError(
+          `loop step body "${key}" sets maxRetries, but body steps run without per-step retry — the loop iteration is the recovery boundary. Remove maxRetries from this body step.`,
+        );
+      }
+      if (s.timeoutMs !== undefined) {
+        throw new FlowDefinitionError(
+          `loop step body "${key}" sets timeoutMs, but body steps run without per-step timeout — the loop iteration is the recovery boundary. Remove timeoutMs from this body step.`,
+        );
+      }
     }
   }
 

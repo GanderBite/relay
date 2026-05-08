@@ -468,6 +468,15 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       platform: process.platform,
     });
 
+    // If the orchestrator captured a step error (loop_exhausted, timeout,
+    // rate_limit, step_failure, etc.), surface its formatted message and the
+    // matching exit code instead of conflating every step failure with code 1.
+    // Falls back to code 1 when no firstError is set (run-level abort, etc.).
+    if (result.firstError !== undefined) {
+      process.stderr.write(formatError(result.firstError) + '\n');
+      process.exit(exitCodeFor(result.firstError));
+    }
+
     process.exit(1);
   }
 }
