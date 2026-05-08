@@ -19,7 +19,7 @@ For each commit:
 
 Populate `counts` by counting commits per type category. `breaking` counts all commits where `breaking: true`, regardless of type.
 
-Return ONLY a JSON object with this shape:
+The JSON object must match this shape:
 
 {
   "fromRef": "{{input.fromRef}}",
@@ -42,4 +42,3 @@ Return ONLY a JSON object with this shape:
   ]
 }
 
-No prose, no backticks, no preamble.

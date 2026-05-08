@@ -27,7 +27,7 @@ Good: "Given a user with the admin role, when they send DELETE /api/v1/items/:id
 </examples>
 
 <output_format>
-Return ONLY the raw JSON object below, with the array populated. No prose, no markdown fences, no preamble.
+The JSON object must match this shape:
 
 {
   "acceptanceCriteria": [

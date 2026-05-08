@@ -15,7 +15,7 @@ Then execute these steps in order:
 5. Record the repo-relative paths of all CI files in `ciFilePaths`.
 6. Use Grep to scan the README and CONTRIBUTING files for environment variable references (`$VAR_NAME`, `process.env.VAR_NAME`, `os.environ['VAR_NAME']`). Collect unique names in `envVarKeys`.
 
-Return ONLY a JSON object in this exact shape. No prose, no backticks, no preamble.
+The JSON object must match this shape:
 
 {
   "projectName": "my-project",

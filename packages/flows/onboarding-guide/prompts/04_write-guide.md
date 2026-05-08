@@ -19,7 +19,7 @@ For every audience: produce a `dayOneTasks` checklist with concrete actions orde
 
 Set `projectName` to `{{scan.projectName}}` and `audience` to `{{input.audience}}`.
 
-Return ONLY a JSON object in this exact shape. No prose, no backticks, no preamble.
+The JSON object must match this shape:
 
 {
   "audience": "developer",

@@ -1,7 +1,6 @@
 import { defineFlow, step, z } from '@ganderbite/relay-core';
-
-const JSON_ONLY_SYSTEM_PROMPT =
-  'Output only raw JSON. Your entire response must be a single valid JSON object — no preamble, no markdown fences, no explanatory text.';
+import { DocumentSchema } from './schemas/document.js';
+import { ParseCommitsSchema } from './schemas/parse-commits.js';
 
 const MARKDOWN_ONLY_SYSTEM_PROMPT =
   'Output only the raw Markdown document. Do not use any tools. Do not write any files. Your entire response must be the document text — no preamble, no commentary, no tool calls.';
@@ -23,31 +22,27 @@ export default defineFlow({
   start: 'parse_commits',
   steps: {
     parse_commits: step.prompt({
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
       promptFile: 'prompts/01_parse-commits.md',
       tools: ['Bash'],
-      output: { handoff: 'parse_commits' },
+      output: { handoff: 'parse_commits', schema: ParseCommitsSchema },
     }),
     write_technical: step.prompt({
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
       promptFile: 'prompts/02_write-technical.md',
       dependsOn: ['parse_commits'],
       contextFrom: ['parse_commits'],
-      output: { handoff: 'write_technical' },
+      output: { handoff: 'write_technical', schema: DocumentSchema },
     }),
     write_customer: step.prompt({
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
       promptFile: 'prompts/03_write-customer.md',
       dependsOn: ['parse_commits'],
       contextFrom: ['parse_commits'],
-      output: { handoff: 'write_customer' },
+      output: { handoff: 'write_customer', schema: DocumentSchema },
     }),
     write_marketing: step.prompt({
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
       promptFile: 'prompts/04_write-marketing.md',
       dependsOn: ['parse_commits'],
       contextFrom: ['parse_commits'],
-      output: { handoff: 'write_marketing' },
+      output: { handoff: 'write_marketing', schema: DocumentSchema },
     }),
     barrier: step.parallel({
       branches: ['write_technical', 'write_customer', 'write_marketing'],

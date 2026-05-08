@@ -17,7 +17,7 @@ Extract all of the following:
 - **Local setup** — read the file at `{{scan.readmePath}}` and extract the exact, ordered sequence of commands a developer runs to get the project working locally.
 - **Gotchas** — anything in the docs or source flagged as a common mistake, footgun, or non-obvious constraint.
 
-Return ONLY a JSON object with this shape:
+The JSON object must match this shape:
 
 {
   "architecturePattern": { "name": "...", "layers": [{ "name": "...", "modules": ["..."] }] },
@@ -30,4 +30,3 @@ Return ONLY a JSON object with this shape:
   "gotchas": ["..."]
 }
 
-No prose, no backticks, no preamble.

@@ -28,4 +28,4 @@ List each commit with `type: deps`.
 List all remaining commits (chore, docs, refactor, test, perf, ci, build, other). Omit scope when null.
 </job>
 
-Return ONLY a JSON object with this shape: { "document": "<full Markdown text>" }. No prose, no backticks, no preamble. The document must not open with any heading — start directly with the first non-empty `###` section.
+Write a JSON object with this shape: { "document": "<full Markdown text>" }. The document must not open with any heading — start directly with the first non-empty `###` section.

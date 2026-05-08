@@ -24,7 +24,7 @@ Generate all six requirement sets and return them as a single JSON object matchi
 </rules>
 
 <output_format>
-Return ONLY the raw JSON object below, with every array populated. No prose, no markdown fences, no preamble.
+The JSON object must match this shape:
 
 {
   "functionalRequirements": [

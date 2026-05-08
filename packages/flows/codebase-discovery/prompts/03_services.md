@@ -27,7 +27,7 @@ Skip concerns used by only one package.
 
 ## Output
 
-Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no preamble.
+The JSON object must match this shape:
 
 ```
 {

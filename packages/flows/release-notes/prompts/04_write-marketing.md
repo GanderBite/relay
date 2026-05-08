@@ -26,4 +26,4 @@ Include this section only if `breakingChanges` in the `parse_commits` context is
 One line in this format: `X features, Y fixes across Z commits.` Use the counts from `parse_commits.counts`.
 </job>
 
-Return ONLY a JSON object with this shape: { "document": "<full Markdown text>" }. No prose, no backticks, no preamble. The document must not open with any heading — start directly with `### Headline`.
+Write a JSON object with this shape: { "document": "<full Markdown text>" }. The document must not open with any heading — start directly with `### Headline`.

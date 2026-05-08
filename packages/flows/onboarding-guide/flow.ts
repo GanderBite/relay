@@ -4,9 +4,6 @@ import { GuideSectionsSchema } from './schemas/guide-sections.js';
 import { PracticesSchema } from './schemas/practices.js';
 import { ScanSchema } from './schemas/scan.js';
 
-const JSON_ONLY_SYSTEM_PROMPT =
-  'Output only raw JSON. Your entire response must be a single valid JSON object — no preamble, no markdown fences, no explanatory text.';
-
 export default defineFlow({
   name: 'onboarding-guide',
   version: '0.1.0',
@@ -21,15 +18,13 @@ export default defineFlow({
   steps: {
     scan: step.prompt({
       promptFile: 'prompts/01_scan.md',
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
       tools: ['Read', 'Glob', 'Grep', 'Bash'],
       output: { handoff: 'scan', schema: ScanSchema },
-      maxRetries: 1,
     }),
 
     explore: step.prompt({
       promptFile: 'prompts/02_explore.md',
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
+
       dependsOn: ['scan'],
       contextFrom: ['scan'],
       tools: ['Read', 'Glob', 'Grep', 'Bash'],
@@ -38,7 +33,7 @@ export default defineFlow({
 
     'extract-practices': step.prompt({
       promptFile: 'prompts/03_extract-practices.md',
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
+
       dependsOn: ['explore'],
       contextFrom: ['scan', 'explore'],
       tools: ['Read', 'Glob', 'Grep', 'Bash'],
@@ -47,7 +42,7 @@ export default defineFlow({
 
     'write-guide': step.prompt({
       promptFile: 'prompts/04_write-guide.md',
-      systemPrompt: JSON_ONLY_SYSTEM_PROMPT,
+
       dependsOn: ['extract-practices'],
       contextFrom: ['scan', 'explore', 'practices'],
       output: { handoff: 'guide', schema: GuideSectionsSchema },

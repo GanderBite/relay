@@ -29,7 +29,7 @@ Aim for 5–15 entities total. Favor load-bearing constructs a new reader needs;
 
 ## Output
 
-Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no preamble.
+The JSON object must match this shape:
 
 ```
 {

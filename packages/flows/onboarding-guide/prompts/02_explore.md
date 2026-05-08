@@ -16,7 +16,7 @@ For each package in `{{scan.manifests}}`:
 
 Then identify inter-package dependencies: which packages import from which, and the nature of the coupling (runtime, dev, or peer).
 
-Return ONLY a JSON object with this shape:
+The JSON object must match this shape:
 
 {
   "modules": [
@@ -34,4 +34,3 @@ Return ONLY a JSON object with this shape:
   ]
 }
 
-No prose, no backticks, no preamble.

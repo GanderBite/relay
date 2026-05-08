@@ -22,7 +22,7 @@ Do not invent packages. Only include packages that `package.json` files confirm 
 
 ## Output
 
-Return ONLY the raw JSON object in this shape. No prose, no markdown fences, no preamble.
+The JSON object must match this shape:
 
 ```
 {
