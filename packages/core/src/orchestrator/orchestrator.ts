@@ -27,6 +27,7 @@ import { z } from '../zod.js';
 
 import { checkCapabilities } from './capability-check.js';
 import { executeBranch } from './exec/branch.js';
+import { executeLoop } from './exec/loop.js';
 import { executeParallel } from './exec/parallel.js';
 import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
@@ -866,11 +867,25 @@ export class Orchestrator {
   ): Promise<Result<string, AtomicWriteError>> {
     const schemasById: Record<string, unknown> = {};
     for (const step of Object.values(flow.steps)) {
-      if (step.kind !== 'prompt') continue;
-      if (!('handoff' in step.output)) continue;
-      const schema = step.output.schema;
-      if (schema === undefined) continue;
-      schemasById[step.output.handoff] = z.toJSONSchema(schema);
+      if (step.kind === 'prompt') {
+        if (!('handoff' in step.output)) continue;
+        const schema = step.output.schema;
+        if (schema === undefined) continue;
+        schemasById[step.output.handoff] = z.toJSONSchema(schema);
+        continue;
+      }
+      // Loop body steps live outside flow.steps, so the prompt-step loop above
+      // skips them. Walk each loop's body map so schema-bound prompts inside
+      // a loop also land in the helper script.
+      if (step.kind === 'loop') {
+        for (const bodyStep of Object.values(step.body)) {
+          if (bodyStep.kind !== 'prompt') continue;
+          if (!('handoff' in bodyStep.output)) continue;
+          const schema = bodyStep.output.schema;
+          if (schema === undefined) continue;
+          schemasById[bodyStep.output.handoff] = z.toJSONSchema(schema);
+        }
+      }
     }
     return writeHandoffHelperScript({
       runDir,
@@ -1170,10 +1185,45 @@ export class Orchestrator {
           case 'terminal':
             return executeTerminal(step, baseCtx);
           case 'loop':
-            throw new FlowDefinitionError(`loop steps are not yet supported by the orchestrator`, {
+            return executeLoop(step, {
+              runDir,
+              runId,
+              flowDir,
+              flowName: flow.name,
               stepId: step.id,
+              attempt,
+              abortSignal: abortController.signal,
+              handoffStore,
+              costTracker,
+              stateMachine,
+              logger: stepLogger,
+              providers,
+              provider,
+              dispatch: (bodyStepId, bodyStep, loopIter) =>
+                runBodyStep(bodyStepId, bodyStep, loopIter, step.id),
+              inputVars,
+              ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
+              ...(verbose !== undefined ? { verbose } : {}),
             });
         }
+      };
+
+      /**
+       * Dispatch a single body step inside a loop iteration. Body steps live
+       * inside the loop's `body` map, not the top-level flow.steps map, and
+       * have no StateMachine entry — they re-use the parent loop step's
+       * retry/abort context. The closure simply delegates to runExecutor so
+       * each body step still picks up the kind-specific executor (prompt,
+       * script, branch, parallel, terminal). Body-step-level retries are not
+       * applied here; the loop's own iteration cycle is the recovery boundary.
+       */
+      const runBodyStep = async (
+        _bodyStepId: string,
+        bodyStep: Step,
+        _loopIter: number,
+        _loopStepId: string,
+      ): Promise<StepResult> => {
+        return runExecutor(bodyStep, 1);
       };
 
       const stepRetryBudget = (
@@ -1197,6 +1247,9 @@ export class Orchestrator {
         }
         if (step.kind === 'script' || step.kind === 'branch') {
           return { maxRetries: step.maxRetries ?? 0, timeoutMs: step.timeoutMs };
+        }
+        if (step.kind === 'loop') {
+          return { maxRetries: step.maxRetries ?? 0, timeoutMs: undefined };
         }
         return { maxRetries: 0, timeoutMs: undefined };
       };

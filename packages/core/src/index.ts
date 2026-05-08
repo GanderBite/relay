@@ -47,6 +47,7 @@ export type {
   HandoffOutputReason,
   HandoffSchemaDetails,
   HandoffWriteDetails,
+  LoopMaxIterationsDetails,
   MetricsWriteDetails,
   NoProviderConfiguredDetails,
   ProviderAuthDetails,
@@ -84,6 +85,7 @@ export type {
  * - `TimeoutError` — thrown when a step exceeds its configured `timeoutMs` budget.
  * - `AuthTimeoutError` — thrown when a provider's `authenticate()` does not settle within `authTimeoutMs`.
  * - `AtomicWriteError` — thrown (via `Result.err`) when an atomic write fails irrecoverably.
+ * - `LoopMaxIterationsError` — thrown when a loop step exhausts its `maxIterations` budget without the exit condition being satisfied.
  * - `ERROR_CODES` — stable string constants for all error codes.
  * - `toFlowDefError` — wraps a Zod parse error into a `FlowDefinitionError`.
  */
@@ -98,6 +100,7 @@ export {
   HandoffOutputError,
   HandoffSchemaError,
   HandoffWriteError,
+  LoopMaxIterationsError,
   MetricsWriteError,
   NoProviderConfiguredError,
   PipelineError,
@@ -152,6 +155,12 @@ export { defineFlow } from './flow/define.js';
  *   `onAllComplete`, `onFail`, `dependsOn`. Does not support retry, timeout,
  *   or `contextFrom`.
  *
+ * - `step.loop(config)` — runs a body of steps repeatedly until a condition is met.
+ *   Key config options: `body` (required, record of step builder outputs),
+ *   `until` (required — `{ from, condition }` — names a handoff and evaluates
+ *   a predicate against its value), `maxIterations` (required, positive integer),
+ *   `dependsOn`.
+ *
  * - `step.terminal(config)` — ends the flow with an optional message and exit code.
  *   Key config options: `message`, `exitCode`, `dependsOn`.
  */
@@ -159,6 +168,7 @@ export { step } from './flow/step.js';
 
 /** Builder input and output shapes for each step kind. Useful for typing custom step wrappers. */
 export type { BranchStepBuilderInput, BranchStepBuilderOutput } from './flow/steps/branch.js';
+export type { LoopStepBuilderInput, LoopStepBuilderOutput } from './flow/steps/loop.js';
 export type {
   ParallelStepBuilderInput,
   ParallelStepBuilderOutput,
@@ -179,7 +189,7 @@ export type {
  * - `FlowStatus` — `'running' | 'succeeded' | 'failed' | 'aborted'`.
  * - `Step` — discriminated union of all compiled step types.
  * - `StepBase` — fields shared by every step (`id`, `dependsOn`).
- * - `StepKind` — `'prompt' | 'script' | 'branch' | 'parallel' | 'terminal'`.
+ * - `StepKind` — `'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop'`.
  * - `StepState` — per-step checkpoint state persisted in `state.json`.
  * - `StepStatus` — `'pending' | 'running' | 'succeeded' | 'failed' | 'skipped'`.
  * - `PromptStepSpec` — spec for a step that invokes a Claude prompt.
@@ -257,6 +267,7 @@ export { EventRecordSchema } from './orchestrator/event-log.js';
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
   BranchStepResult,
+  LoopStepResult,
   OrchestratorOptions,
   ParallelStepResult,
   PromptStepResult,

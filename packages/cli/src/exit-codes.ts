@@ -11,6 +11,7 @@
  *   6 — no provider configured (NoProviderConfiguredError)
  *   7 — I/O error (AtomicWriteError)
  *   8 — rate limited (ProviderRateLimitError)
+ *   9 — loop exhausted (LoopMaxIterationsError)
  *
  * Error format follows the product spec error template:
  *   ✕ <one-line headline>
@@ -26,6 +27,7 @@ import {
   ERROR_CODES,
   FlowDefinitionError,
   HandoffSchemaError,
+  LoopMaxIterationsError,
   PipelineError,
   ProviderAuthError,
   ProviderCapabilityError,
@@ -52,6 +54,7 @@ export const EXIT_CODES = {
   no_provider: 6,
   io_error: 7,
   rate_limit: 8,
+  loop_exhausted: 9,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
@@ -367,6 +370,30 @@ const errorRegistry = new Map<string, RegistryEntry>([
           `${INDENT}Wait for the rate limit to reset, then resume the run.`,
           BLANK,
           remediation(`relay resume ${runId}      retry after the rate limit resets`),
+        ].join('\n');
+      },
+    ),
+  ],
+
+  // LoopMaxIterationsError — loop step exhausted its iteration cap
+  [
+    ERROR_CODES.LOOP_MAX_ITERATIONS,
+    makeHandler(
+      EXIT_CODES.loop_exhausted,
+      (e): e is LoopMaxIterationsError => e instanceof LoopMaxIterationsError,
+      (err) => {
+        const loopStepId = err.loopStepId;
+        const iterationsRun = err.iterationsRun;
+        const maxIterations = err.maxIterations;
+        const handoffsDir = err.details?.handoffsDir ?? './.relay/runs/<runId>/handoffs';
+        return [
+          red(`✕ Loop step '${loopStepId}' exhausted its iteration cap`),
+          BLANK,
+          `${INDENT}The loop ran ${iterationsRun} of ${maxIterations} permitted iterations without`,
+          `${INDENT}the exit condition being satisfied.`,
+          BLANK,
+          remediation(`inspect handoffs: ${handoffsDir}`),
+          remediation(`raise maxIterations in flow.ts or tighten the until condition`),
         ].join('\n');
       },
     ),

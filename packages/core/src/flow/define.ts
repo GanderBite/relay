@@ -3,6 +3,7 @@ import type { z } from '../zod.js';
 import { buildGraph } from './graph.js';
 import { flowSpecInputSchema } from './schemas.js';
 import type { BranchStepBuilderOutput } from './steps/branch.js';
+import type { LoopStepBuilderOutput } from './steps/loop.js';
 import type { ParallelStepBuilderOutput } from './steps/parallel.js';
 import type { PromptStepBuilderOutput } from './steps/prompt.js';
 import type { ScriptStepBuilderOutput } from './steps/script.js';
@@ -19,7 +20,8 @@ export type StepBuilderOutput =
   | ScriptStepBuilderOutput
   | BranchStepBuilderOutput
   | ParallelStepBuilderOutput
-  | TerminalStepBuilderOutput;
+  | TerminalStepBuilderOutput
+  | LoopStepBuilderOutput;
 
 /**
  * Input shape for `defineFlow`. `steps` accepts builder outputs (without
@@ -46,6 +48,8 @@ function synthesizeStep(raw: StepBuilderOutput, id: string): Step {
     case 'parallel':
       return { ...raw, id };
     case 'terminal':
+      return { ...raw, id };
+    case 'loop':
       return { ...raw, id };
   }
 }

@@ -37,6 +37,8 @@ function synthesizeBodyStep(raw: StepBuilderOutput, id: string): Step {
       return { ...raw, id };
     case 'terminal':
       return { ...raw, id };
+    case 'loop':
+      return { ...raw, id };
   }
 }
 

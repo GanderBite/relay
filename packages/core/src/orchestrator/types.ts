@@ -1,4 +1,5 @@
 import type { BranchStepResult } from './exec/branch.js';
+import type { LoopStepResult } from './exec/loop.js';
 import type { ParallelStepResult } from './exec/parallel.js';
 import type { PromptStepResult } from './exec/prompt.js';
 import type { ScriptStepResult } from './exec/script.js';
@@ -17,4 +18,5 @@ export type StepResult =
   | ScriptStepResult
   | BranchStepResult
   | ParallelStepResult
-  | TerminalStepResult;
+  | TerminalStepResult
+  | LoopStepResult;

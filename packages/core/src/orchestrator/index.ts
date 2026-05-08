@@ -1,4 +1,5 @@
 export type { BranchStepResult } from './exec/branch.js';
+export type { LoopStepResult } from './exec/loop.js';
 export type { ParallelStepResult } from './exec/parallel.js';
 export type { PromptStepResult } from './exec/prompt.js';
 export type { ScriptStepResult } from './exec/script.js';
