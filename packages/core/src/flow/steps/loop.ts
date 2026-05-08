@@ -4,17 +4,6 @@ import { loopStepSpecSchema } from '../schemas.js';
 import type { LoopStepSpec, Step } from '../types.js';
 
 /**
- * Input shape for the loop builder. The `body` field accepts builder outputs
- * (without `id`) rather than compiled `Step` values — the builder injects ids
- * from the record keys. `id`, `kind`, and `bodyGraph` are excluded: `id` comes
- * from the flow record key, `kind` is injected by this builder, and `bodyGraph`
- * is filled in by the graph compiler.
- */
-export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph'> & {
-  body: Record<string, StepBuilderOutput>;
-};
-
-/**
  * The shape returned by the loop builder before the flow compiler assigns an
  * id. `bodyGraph` is undefined — the graph compiler populates it after the
  * outer flow graph is resolved.
@@ -22,10 +11,27 @@ export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph
 export type LoopStepBuilderOutput = Omit<LoopStepSpec, 'id'> & { kind: 'loop' };
 
 /**
+ * Input shape for the loop builder. The `body` field accepts builder outputs
+ * (without `id`) rather than compiled `Step` values — the builder injects ids
+ * from the record keys. `id`, `kind`, and `bodyGraph` are excluded: `id` comes
+ * from the flow record key, `kind` is injected by this builder, and `bodyGraph`
+ * is filled in by the graph compiler.
+ *
+ * Nested loops are excluded from the body type so the compiler rejects them at
+ * the call site rather than relying on a runtime kind check.
+ */
+export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph'> & {
+  body: Record<string, Exclude<StepBuilderOutput, LoopStepBuilderOutput>>;
+};
+
+/**
  * Synthesise a single `Step` from a builder output by injecting the id.
  * The exhaustive switch keeps the return type precise without a cast.
  */
-function synthesizeBodyStep(raw: StepBuilderOutput, id: string): Step {
+function synthesizeBodyStep(
+  raw: Exclude<StepBuilderOutput, LoopStepBuilderOutput>,
+  id: string,
+): Step {
   switch (raw.kind) {
     case 'prompt':
       return { ...raw, id };
@@ -37,8 +43,6 @@ function synthesizeBodyStep(raw: StepBuilderOutput, id: string): Step {
       return { ...raw, id };
     case 'terminal':
       return { ...raw, id };
-    case 'loop':
-      return { ...raw, id };
   }
 }
 
@@ -46,7 +50,9 @@ function synthesizeBodyStep(raw: StepBuilderOutput, id: string): Step {
  * Compile body builder outputs into Steps by injecting the record key as each
  * step's `id`.
  */
-function compileBodySteps(body: Record<string, StepBuilderOutput>): Record<string, Step> {
+function compileBodySteps(
+  body: Record<string, Exclude<StepBuilderOutput, LoopStepBuilderOutput>>,
+): Record<string, Step> {
   const compiled: Record<string, Step> = {};
   for (const key of Object.keys(body)) {
     const raw = body[key];
@@ -63,7 +69,6 @@ function compileBodySteps(body: Record<string, StepBuilderOutput>): Record<strin
  *
  * Validation performed:
  * - `body` must be non-empty.
- * - No body step may have `kind === 'loop'` (nested loops are not supported).
  * - No body step may have `kind === 'parallel'` (parallel inside a loop body
  *   is not supported in this version — the dispatch path looks up step ids in
  *   `flow.steps`, but body step ids live only in the loop's `body` map).
@@ -85,16 +90,7 @@ export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
   for (const key of bodyKeys) {
     const s = spec.body[key];
     if (s === undefined) continue;
-    // Check kind via string comparison — the union may expand in a future wave,
-    // so this guard is written defensively against runtime values that slip
-    // past the static type.
-    const kind: string = s.kind;
-    if (kind === 'loop') {
-      throw new FlowDefinitionError(
-        'loop step body must not contain nested loops (step.loop inside a body is not supported in this version)',
-      );
-    }
-    if (kind === 'parallel') {
+    if (s.kind === 'parallel') {
       throw new FlowDefinitionError(
         'loop step body must not contain parallel steps (step.parallel inside a body is not supported in this version)',
       );
