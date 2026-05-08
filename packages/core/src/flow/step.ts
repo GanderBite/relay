@@ -1,4 +1,5 @@
 import { branchStep } from './steps/branch.js';
+import { loopStep } from './steps/loop.js';
 import { parallelStep } from './steps/parallel.js';
 import { promptStep } from './steps/prompt.js';
 import { scriptStep } from './steps/script.js';
@@ -10,4 +11,5 @@ export const step = {
   branch: branchStep,
   parallel: parallelStep,
   terminal: terminalStep,
+  loop: loopStep,
 } as const;

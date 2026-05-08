@@ -2,13 +2,21 @@ import { err, ok, type Result } from 'neverthrow';
 import { GITHUB_ISSUES_URL } from '../constants.js';
 import { FlowDefinitionError } from '../errors.js';
 import { lookup } from '../util/map-utils.js';
-import type { FlowGraph, Step } from './types.js';
+import type { FlowGraph, LoopStep, Step } from './types.js';
 
 export type { FlowGraph } from './types.js';
 
 export function buildGraph(
   steps: Record<string, Step>,
   start?: string,
+): Result<FlowGraph, FlowDefinitionError> {
+  return buildGraphInternal(steps, start, false);
+}
+
+function buildGraphInternal(
+  steps: Record<string, Step>,
+  start: string | undefined,
+  isBody: boolean,
 ): Result<FlowGraph, FlowDefinitionError> {
   const keys = Object.keys(steps);
 
@@ -163,7 +171,7 @@ export function buildGraph(
 
   const ancestorSets = computeAncestorSets(topoOrder, predecessors);
 
-  const ctxResult = validateContextFrom(keys, stepMap, ancestorSets);
+  const ctxResult = validateContextFrom(keys, stepMap, ancestorSets, isBody);
   if (ctxResult.isErr()) return err(ctxResult.error);
 
   const frozenSuccessors = new Map<string, ReadonlySet<string>>();
@@ -174,6 +182,24 @@ export function buildGraph(
     frozenPredecessors.set(key, lookup(predecessors, key)._unsafeUnwrap());
   }
 
+  // Compile a nested mini-graph for each loop step's body. Body steps live
+  // in the loop step's `body` record and never appear in this outer graph's
+  // step map, edges, or topo order — they are validated as their own DAG
+  // and the resulting graph is attached to the loop step in place.
+  if (!isBody) {
+    for (const key of topoOrder) {
+      // Invariant: every key in topoOrder was inserted into stepMap above.
+      const step = lookup(stepMap, key)._unsafeUnwrap();
+      if (step.kind !== 'loop') continue;
+      const bodyResult = buildBodyGraph(step);
+      if (bodyResult.isErr()) return err(bodyResult.error);
+      // Attach the compiled body graph to the loop step. The bodyGraph
+      // field is declared optional on the spec and populated here once
+      // the outer graph has accepted the step.
+      step.bodyGraph = bodyResult.value;
+    }
+  }
+
   return ok({
     successors: frozenSuccessors,
     predecessors: frozenPredecessors,
@@ -181,6 +207,21 @@ export function buildGraph(
     rootSteps,
     entry,
   });
+}
+
+function buildBodyGraph(loopStep: LoopStep): Result<FlowGraph, FlowDefinitionError> {
+  const body = loopStep.body;
+  for (const [bodyKey, bodyStep] of Object.entries(body)) {
+    if (bodyStep === undefined) continue;
+    if (bodyStep.kind === 'loop') {
+      return err(
+        new FlowDefinitionError(
+          `loop step "${loopStep.id}" body contains nested loop step "${bodyKey}". Nested loops are not supported — flatten the body or move the inner loop into a separate flow.`,
+        ),
+      );
+    }
+  }
+  return buildGraphInternal(body, undefined, true);
 }
 
 function kahnTopoSort(
@@ -333,6 +374,7 @@ function validateContextFrom(
   keys: readonly string[],
   stepMap: Map<string, Step>,
   ancestorSets: ReadonlyMap<string, ReadonlySet<string>>,
+  isBody: boolean,
 ): Result<void, FlowDefinitionError> {
   const producers = new Map<string, Set<string>>();
   for (const key of keys) {
@@ -359,15 +401,35 @@ function validateContextFrom(
     // Invariant: every `key` has an entry in `ancestorSets` (computed in topo order).
     const ancestors = lookup(ancestorSets, key)._unsafeUnwrap();
 
-    for (const required of step.contextFrom) {
+    for (const raw of step.contextFrom) {
+      // Dotted ids name a handoff in a different scope (e.g. parent flow or
+      // a sibling loop iteration). The compiler cannot resolve them — they
+      // are validated when the runtime materialises the context.
+      if (raw.includes('.')) continue;
+
+      // A trailing '?' marks the contextFrom entry as optional. Strip it
+      // before lookup; the optional marker tells the runtime to tolerate a
+      // missing handoff at injection time, not the compiler.
+      const isOptional = raw.endsWith('?');
+      const required = isOptional ? raw.slice(0, -1) : raw;
+
       const writers = producers.get(required);
       if (writers === undefined) {
+        // Inside a loop body, an optional ref may resolve against an outer
+        // scope handoff that this body cannot see. Skip the producer check
+        // in that case; the runtime will handle resolution and absence.
+        if (isBody && isOptional) continue;
         return err(
           new FlowDefinitionError(
             `step "${key}" contextFrom references unknown handoff "${required}". Remove "${required}" from step "${key}"'s contextFrom array or add an upstream prompt step whose output declares handoff: "${required}" in defineFlow(...).`,
           ),
         );
       }
+
+      // Optional refs inside a loop body do not require an ancestor writer:
+      // a sibling body step (or an outer-scope step) may produce the value
+      // depending on which iteration path runs.
+      if (isBody && isOptional) continue;
 
       let hasAncestorWriter = false;
       for (const writer of writers) {

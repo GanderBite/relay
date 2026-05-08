@@ -23,7 +23,7 @@ export type { AssemblePromptArgs, LoadHandoffValuesError } from './context-injec
  * Assembles a prompt string by interpolating handoff values into a template.
  * Call before passing the prompt text to a provider invocation.
  */
-export { assemblePrompt, loadHandoffValues } from './context-inject.js';
+export { assemblePrompt, loadHandoffValues, stripOptional } from './context-inject.js';
 
 /** Per-step token and dollar cost metrics recorded by `CostTracker`. */
 export type { CostSummary, StepMetrics } from './cost.js';
