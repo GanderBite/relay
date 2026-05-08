@@ -222,3 +222,40 @@ describe('EventLogWriter — close failure (logger path)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// EVLOG-017: report() throw must not poison the write queue
+// ---------------------------------------------------------------------------
+
+describe('EventLogWriter — #report itself throws (queue not poisoned)', () => {
+  it('[EVLOG-017] subsequent write() and flush() resolve when logger.warn throws on a fault-path report', async () => {
+    const eventsDir = join(tmpDir, 'events');
+    await mkdir(eventsDir, { recursive: true });
+
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+
+    const mockWarn = vi.fn().mockImplementation(() => {
+      throw new Error('logger broken');
+    });
+    const mockLogger = { warn: mockWarn } as unknown as Logger;
+
+    openInterceptor = (handle) => {
+      vi.spyOn(handle, 'write').mockRejectedValue(new Error('disk full'));
+    };
+
+    const writer = new EventLogWriter(eventsDir, 'step-rfail', 0, mockLogger);
+
+    await expect(writer.write(0, { type: 'text.delta', delta: 'a' })).resolves.toBeUndefined();
+    await expect(writer.flush()).resolves.toBeUndefined();
+
+    await expect(writer.write(1, { type: 'text.delta', delta: 'b' })).resolves.toBeUndefined();
+    await expect(writer.flush()).resolves.toBeUndefined();
+
+    expect(mockWarn).toHaveBeenCalled();
+
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+});

@@ -59,19 +59,23 @@ export class EventLogWriter {
   }
 
   #report(phase: 'open' | 'write' | 'sync' | 'close', caught: unknown): void {
-    if (this.#logger !== undefined) {
-      this.#logger.warn(
-        {
-          event: `event-log.${phase}_failed`,
-          stepId: this.#stepId,
-          attempt: this.#attempt,
-          error: detailOf(caught),
-        },
-        `event-log ${phase} failed; continuing`,
-      );
-      return;
+    try {
+      if (this.#logger !== undefined) {
+        this.#logger.warn(
+          {
+            event: `event-log.${phase}_failed`,
+            stepId: this.#stepId,
+            attempt: this.#attempt,
+            error: detailOf(caught),
+          },
+          `event-log ${phase} failed; continuing`,
+        );
+        return;
+      }
+      process.stderr.write(stderrMessage(`event-log: ${phase} failed`, caught));
+    } catch {
+      // best-effort logging cannot poison the write queue
     }
-    process.stderr.write(stderrMessage(`event-log: ${phase} failed`, caught));
   }
 
   write(seq: number, event: InvocationEvent, raw?: unknown): Promise<void> {
