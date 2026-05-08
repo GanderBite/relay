@@ -138,7 +138,6 @@ export const loopStepSpecSchema: z.ZodType<LoopStepSpec> = z.strictObject({
     when: z.record(z.string(), z.unknown()),
   }),
   maxIterations: z.number().int().positive(),
-  contextFrom: z.array(stepId).optional(),
   dependsOn: z.array(stepId).optional(),
   onFail: z.union([z.literal('abort'), stepId]).optional(),
   maxRetries: z.number().int().nonnegative().optional(),

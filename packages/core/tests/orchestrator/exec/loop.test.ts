@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadHandoffValues } from '../../../src/context-inject.js';
-import { CostTracker } from '../../../src/cost.js';
 import { FlowDefinitionError, LoopMaxIterationsError } from '../../../src/errors.js';
 import { defineFlow } from '../../../src/flow/define.js';
 import { buildGraph } from '../../../src/flow/graph.js';
@@ -14,7 +13,6 @@ import { createLogger } from '../../../src/logger.js';
 import type { LoopExecutorContext } from '../../../src/orchestrator/exec/loop.js';
 import { executeLoop } from '../../../src/orchestrator/exec/loop.js';
 import type { PromptStepResult } from '../../../src/orchestrator/exec/prompt.js';
-import { MockProvider } from '../../../src/testing/mock-provider.js';
 import { z } from '../../../src/zod.js';
 
 function mkPromptResult(stepId: string, handoffs: string[]): PromptStepResult {
@@ -45,7 +43,6 @@ function buildLoopSpec(opts: {
   untilWhen: Record<string, unknown>;
   maxIterations: number;
   dependsOn?: string[];
-  contextFrom?: string[];
 }): LoopStepSpec {
   const bodyGraphResult = buildGraph(opts.body);
   if (bodyGraphResult.isErr()) {
@@ -59,7 +56,6 @@ function buildLoopSpec(opts: {
     maxIterations: opts.maxIterations,
     bodyGraph: bodyGraphResult.value,
     ...(opts.dependsOn !== undefined ? { dependsOn: opts.dependsOn } : {}),
-    ...(opts.contextFrom !== undefined ? { contextFrom: opts.contextFrom } : {}),
   };
 }
 
@@ -77,14 +73,12 @@ function promptBodyStep(id: string, handoff: string, dependsOn?: string[]): Step
 describe('executeLoop', () => {
   let tmp: string;
   let handoffStore: HandoffStore;
-  let costTracker: CostTracker;
   let logger: ReturnType<typeof createLogger>;
 
   beforeEach(async () => {
     tmp = await mkdtemp(join(tmpdir(), 'relay-loop-'));
     await mkdir(join(tmp, 'live'), { recursive: true });
     handoffStore = new HandoffStore(tmp);
-    costTracker = new CostTracker(join(tmp, 'metrics.json'));
     logger = createLogger({ flowName: 'test-flow', runId: 'r1' });
   });
 
@@ -93,21 +87,12 @@ describe('executeLoop', () => {
   });
 
   function makeCtx(overrides?: Partial<LoopExecutorContext>): LoopExecutorContext {
-    const provider = new MockProvider({ responses: {} });
     return {
       runDir: tmp,
-      runId: 'r1',
-      flowDir: tmp,
-      flowName: 'test-flow',
       stepId: 'fix_loop',
-      attempt: 1,
       abortSignal: new AbortController().signal,
       handoffStore,
-      costTracker,
-      stateMachine: undefined as unknown as LoopExecutorContext['stateMachine'],
       logger,
-      provider,
-      providers: undefined as unknown as LoopExecutorContext['providers'],
       dispatch: async () => {
         throw new Error('dispatch not configured');
       },

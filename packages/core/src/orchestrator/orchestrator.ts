@@ -1187,23 +1187,12 @@ export class Orchestrator {
           case 'loop':
             return executeLoop(step, {
               runDir,
-              runId,
-              flowDir,
-              flowName: flow.name,
               stepId: step.id,
-              attempt,
               abortSignal: abortController.signal,
               handoffStore,
-              costTracker,
-              stateMachine,
               logger: stepLogger,
-              providers,
-              provider,
               dispatch: (bodyStepId, bodyStep, loopIter) =>
                 runBodyStep(bodyStepId, bodyStep, loopIter, step.id),
-              inputVars,
-              ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
-              ...(verbose !== undefined ? { verbose } : {}),
             });
         }
       };

@@ -1,11 +1,8 @@
-import type { CostTracker } from '../../cost.js';
+import { join } from 'node:path';
 import { FlowDefinitionError, LoopMaxIterationsError } from '../../errors.js';
 import type { LoopStepSpec, Step } from '../../flow/types.js';
 import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
-import type { Provider } from '../../providers/types.js';
-import type { StateMachine } from '../../state.js';
 import type { StepResult } from '../types.js';
 
 export interface LoopStepResult {
@@ -21,23 +18,14 @@ export interface LoopStepResult {
  * single body step — the closure handles state transitions, retries, and
  * provider invocation, so the loop executor itself only owns the iteration
  * cycle, the iteration-scoped handoff promotion, and the until-condition
- * check. The provider/providers fields mirror the prompt executor's bag for
- * symmetry; the loop executor does not invoke providers directly.
+ * check.
  */
 export interface LoopExecutorContext {
   runDir: string;
-  runId: string;
-  flowDir: string;
-  flowName: string;
   stepId: string;
-  attempt: number;
   abortSignal: AbortSignal;
   handoffStore: HandoffStore;
-  costTracker: CostTracker;
-  stateMachine: StateMachine;
   logger: Logger;
-  provider: Provider;
-  providers: ProviderRegistry;
   /**
    * Dispatch one body step at a given iteration. The closure is owned by the
    * orchestrator and re-uses the existing per-step execution path (state
@@ -45,9 +33,6 @@ export interface LoopExecutorContext {
    * once per body step per iteration.
    */
   dispatch: (bodyStepId: string, bodyStep: Step, loopIter: number) => Promise<StepResult>;
-  inputVars?: Record<string, unknown> | undefined;
-  cwd?: string | undefined;
-  verbose?: boolean | undefined;
 }
 
 /**
@@ -284,6 +269,7 @@ export async function executeLoop(
       loopStepId: step.id,
       maxIterations,
       iterationsRun: iterationsCompleted,
+      handoffsDir: join(ctx.runDir, 'handoffs', step.id),
     },
   );
 }
