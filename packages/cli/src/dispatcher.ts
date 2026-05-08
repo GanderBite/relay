@@ -229,10 +229,16 @@ export function buildProgram(): Command {
     .option('--step <id>', 'filter to a specific step')
     .option('-f, --follow', 'tail the log stream')
     .option('--level <lvl>', 'minimum log level (debug|info|warn|error)')
-    .action(async (runId: string, cmdOpts: { step?: string; follow?: boolean; level?: string }) => {
-      const handler = await loadCommand('logs');
-      await handler([runId], { ...program.opts(), ...cmdOpts });
-    });
+    .option('--verbose', 'replay the full event stream from events/*.jsonl')
+    .action(
+      async (
+        runId: string,
+        cmdOpts: { step?: string; follow?: boolean; level?: string; verbose?: boolean },
+      ) => {
+        const handler = await loadCommand('logs');
+        await handler([runId], { ...program.opts(), ...cmdOpts });
+      },
+    );
 
   // -------------------------------------------------------------- config --
   const configCmd = program

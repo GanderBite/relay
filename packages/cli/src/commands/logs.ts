@@ -20,11 +20,14 @@
  */
 
 import { createReadStream, watch } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import type { EventRecord } from '@ganderbite/relay-core';
+import { EventRecordSchema } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
+import { renderStreamingLine, renderVerboseEvent } from '../verboseStream.js';
 
 // ---------------------------------------------------------------------------
 // Level ordering
@@ -49,6 +52,7 @@ interface LogFlags {
   step: string | undefined;
   follow: boolean;
   minLevel: string;
+  verbose: boolean;
 }
 
 function parseFlags(): LogFlags {
@@ -56,11 +60,15 @@ function parseFlags(): LogFlags {
   let step: string | undefined;
   let follow = false;
   let minLevel = 'debug';
+  let verbose = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--follow' || arg === '-f') {
       follow = true;
+    }
+    if (arg === '--verbose') {
+      verbose = true;
     }
     if (arg === '--step' && i + 1 < argv.length) {
       step = argv[i + 1];
@@ -73,7 +81,7 @@ function parseFlags(): LogFlags {
     }
   }
 
-  return { step, follow, minLevel };
+  return { step, follow, minLevel, verbose };
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +238,118 @@ async function readFlowName(runDir: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// NDJSON line parser for EventRecord (events/*.jsonl)
+// ---------------------------------------------------------------------------
+
+// The Zod schema infers optional fields as `T | undefined` which conflicts
+// with exactOptionalPropertyTypes in the target EventRecord type. The schema
+// validates the shape at runtime; the cast bridges the two type representations.
+function toEventRecord(parsed: unknown): EventRecord | null {
+  const result = EventRecordSchema.safeParse(parsed);
+  if (!result.success) return null;
+  return result.data as unknown as EventRecord;
+}
+
+function parseEventLine(line: string): EventRecord | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return null;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return toEventRecord(parsed);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Verbose replay — reads events/*.jsonl and renders each record
+// ---------------------------------------------------------------------------
+
+async function replayVerbose(runDir: string, step: string | undefined): Promise<void> {
+  const eventsDir = join(runDir, 'events');
+
+  // Check if events dir exists.
+  try {
+    await access(eventsDir);
+  } catch {
+    process.stdout.write('  (no event log for this run)\n');
+    return;
+  }
+
+  // List .jsonl files.
+  let allFiles: string[];
+  try {
+    allFiles = await readdir(eventsDir);
+  } catch {
+    process.stdout.write('  (no event log for this run)\n');
+    return;
+  }
+
+  let jsonlFiles = allFiles.filter((f) => f.endsWith('.jsonl')).sort();
+
+  if (step !== undefined) {
+    jsonlFiles = jsonlFiles.filter((f) => f === `${step}.jsonl`);
+  }
+
+  if (jsonlFiles.length === 0) {
+    process.stdout.write('  (no event log for this run)\n');
+    return;
+  }
+
+  // Read and parse all records, tagging each with its file index for sorting.
+  type TaggedRecord = { fileIdx: number; record: EventRecord };
+  const taggedRecords: TaggedRecord[] = [];
+  for (let fileIdx = 0; fileIdx < jsonlFiles.length; fileIdx++) {
+    const filename = jsonlFiles[fileIdx];
+    if (filename === undefined) continue;
+    const filePath = join(eventsDir, filename);
+    let raw: string;
+    try {
+      raw = await readFile(filePath, { encoding: 'utf8' });
+    } catch {
+      continue;
+    }
+    for (const line of raw.split('\n')) {
+      const record = parseEventLine(line);
+      if (record !== null) {
+        taggedRecords.push({ fileIdx, record });
+      }
+    }
+  }
+
+  // Sort by file index first (step order), then by seq within each file.
+  taggedRecords.sort((a, b) => {
+    if (a.fileIdx !== b.fileIdx) return a.fileIdx - b.fileIdx;
+    return a.record.seq - b.record.seq;
+  });
+
+  const allRecords = taggedRecords.map((t) => t.record);
+
+  // Render records.
+  let charCount = 0;
+
+  for (const record of allRecords) {
+    if (record.event.type === 'text.delta') {
+      charCount += record.event.delta.length;
+    } else {
+      if (charCount > 0) {
+        process.stdout.write(renderStreamingLine(charCount) + '\n');
+        charCount = 0;
+      }
+      const line = renderVerboseEvent(record);
+      if (line !== null) {
+        process.stdout.write(line + '\n');
+      }
+    }
+  }
+
+  // Flush any remaining text delta chars.
+  if (charCount > 0) {
+    process.stdout.write(renderStreamingLine(charCount) + '\n');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Stream existing log lines
 // ---------------------------------------------------------------------------
 
@@ -341,6 +461,12 @@ export default async function logsCommand(args: unknown[], _opts: unknown): Prom
   // Print header.
   process.stdout.write(`${MARK}  logs for ${runId}  ${SYMBOLS.dot}  ${flowName}\n`);
   process.stdout.write('\n');
+
+  // Verbose path: replay events/*.jsonl files without animation.
+  if (flags.verbose) {
+    await replayVerbose(runDir, flags.step);
+    return;
+  }
 
   const logPath = join(runDir, 'run.log');
 
