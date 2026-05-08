@@ -1,6 +1,7 @@
 import { z } from '../zod.js';
 import type {
   BranchStepSpec,
+  LoopStepSpec,
   ParallelStepSpec,
   PromptStepOutput,
   PromptStepSpec,
@@ -121,6 +122,28 @@ export const terminalStepSpecSchema: z.ZodType<TerminalStepSpec> = z.strictObjec
   message: z.string().optional(),
   exitCode: z.number().int().min(0).max(255).optional(),
 });
+
+// Loop steps run a body sub-graph until a condition is met or the iteration
+// cap is reached. The body values and bodyGraph are typed as unknown here
+// because the compiler resolves them from raw input; the outer type parameter
+// anchors the schema to LoopStepSpec.
+export const loopStepSpecSchema: z.ZodType<LoopStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('loop'),
+  body: z.record(stepId, z.unknown()).refine((o) => Object.keys(o).length > 0, {
+    message: 'loop step "body" must be a non-empty object',
+  }),
+  until: z.strictObject({
+    from: nonEmptyString,
+    when: z.record(z.string(), z.unknown()),
+  }),
+  maxIterations: z.number().int().positive(),
+  contextFrom: z.array(stepId).optional(),
+  dependsOn: z.array(stepId).optional(),
+  onFail: z.union([z.literal('abort'), stepId]).optional(),
+  maxRetries: z.number().int().nonnegative().optional(),
+  bodyGraph: z.unknown().optional(),
+}) as z.ZodType<LoopStepSpec>;
 
 export const flowSpecInputSchema = z.strictObject({
   name: z
