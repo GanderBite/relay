@@ -482,6 +482,87 @@ describe('mergeUsage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// system envelope — emits system.init at stream start
+// ---------------------------------------------------------------------------
+
+describe('system envelope', () => {
+  it('[TRANSLATE-SYS-001] system envelope with model, session_id, tools array, and mcp_servers array emits one system.init with all fields populated', () => {
+    const events = translateCliMessage({
+      type: 'system',
+      model: 'claude-opus-4-5',
+      session_id: 'sess-abc',
+      tools: ['Bash', 'Read'],
+      mcp_servers: ['filesystem', 'git'],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'system.init',
+      model: 'claude-opus-4-5',
+      sessionId: 'sess-abc',
+      tools: ['Bash', 'Read'],
+      mcpServers: ['filesystem', 'git'],
+    });
+  });
+
+  it('[TRANSLATE-SYS-002] system envelope with no tools or mcp_servers emits system.init with tools and mcpServers undefined', () => {
+    const events = translateCliMessage({
+      type: 'system',
+      model: 'claude-sonnet-4-6',
+      session_id: 'sess-xyz',
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    if (ev?.type === 'system.init') {
+      expect(ev.model).toBe('claude-sonnet-4-6');
+      expect(ev.sessionId).toBe('sess-xyz');
+      expect(ev.tools).toBeUndefined();
+      expect(ev.mcpServers).toBeUndefined();
+    } else {
+      throw new Error('expected system.init event');
+    }
+  });
+
+  it('[TRANSLATE-SYS-003] system envelope with tools as array of objects extracts name strings only', () => {
+    const events = translateCliMessage({
+      type: 'system',
+      model: 'claude-opus-4-5',
+      session_id: 'sess-obj',
+      tools: [
+        { name: 'Bash', description: 'Run shell commands' },
+        { name: 'Read', description: 'Read a file' },
+        { name: 'Edit' },
+      ],
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    if (ev?.type === 'system.init') {
+      expect(ev.tools).toEqual(['Bash', 'Read', 'Edit']);
+    } else {
+      throw new Error('expected system.init event');
+    }
+  });
+
+  it('[TRANSLATE-SYS-004] stream_event wrapping a system envelope emits system.init', () => {
+    const events = translateCliMessage({
+      type: 'stream_event',
+      event: {
+        type: 'system',
+        model: 'claude-opus-4-5',
+        session_id: 'abc',
+        tools: ['Bash'],
+      },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'system.init',
+      model: 'claude-opus-4-5',
+      sessionId: 'abc',
+      tools: ['Bash'],
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // End-to-end through translateCliMessage — id correlation is the provider's
 // concern, but the translator emits toolUseId on every tool event so the
 // provider's Map can do its job.
