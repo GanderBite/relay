@@ -20,6 +20,7 @@ import { join } from 'node:path';
 
 import type { Logger } from '../logger.js';
 import type { InvocationEvent } from '../providers/types.js';
+import { z } from '../zod.js';
 
 export type EventRecord = {
   seq: number;
@@ -28,6 +29,63 @@ export type EventRecord = {
   event: InvocationEvent;
   raw?: unknown;
 };
+
+/**
+ * Zod schema for EventRecord — used by the CLI progress display to validate
+ * NDJSON lines read from the events file before processing. Mirrors the
+ * InvocationEvent discriminated union from providers/types.ts.
+ *
+ * Uses safeParse so a malformed line is skipped without throwing.
+ */
+export const EventRecordSchema = z.object({
+  seq: z.number(),
+  ts: z.string(),
+  attempt: z.number(),
+  event: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('turn.start'), turn: z.number() }),
+    z.object({ type: z.literal('text.delta'), delta: z.string() }),
+    z.object({
+      type: z.literal('tool.call'),
+      name: z.string(),
+      input: z.unknown().optional(),
+      toolUseId: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal('tool.result'),
+      name: z.string(),
+      ok: z.boolean(),
+      toolUseId: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal('usage'),
+      usage: z.object({
+        inputTokens: z.number().optional(),
+        outputTokens: z.number().optional(),
+        cacheReadTokens: z.number().optional(),
+        cacheCreationTokens: z.number().optional(),
+      }),
+    }),
+    z.object({ type: z.literal('turn.end'), turn: z.number() }),
+    z.object({
+      type: z.literal('stream.end'),
+      stopReason: z.string(),
+      costUsd: z.number().optional(),
+      sessionId: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal('stream.error'),
+      error: z.object({ message: z.string() }).passthrough(),
+    }),
+    z.object({
+      type: z.literal('system.init'),
+      model: z.string().optional(),
+      sessionId: z.string().optional(),
+      tools: z.array(z.string()).optional(),
+      mcpServers: z.array(z.string()).optional(),
+    }),
+  ]),
+  raw: z.unknown().optional(),
+});
 
 function stderrMessage(prefix: string, caught: unknown): string {
   const detail = caught instanceof Error ? caught.message : String(caught);

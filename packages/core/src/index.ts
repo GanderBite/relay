@@ -239,6 +239,8 @@ export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
 
 /** Per-step event record persisted to .relay/runs/<runId>/events/<stepId>.jsonl. */
 export type { EventRecord } from './orchestrator/event-log.js';
+/** Zod schema for validating EventRecord lines read from the events NDJSON file. */
+export { EventRecordSchema } from './orchestrator/event-log.js';
 
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
