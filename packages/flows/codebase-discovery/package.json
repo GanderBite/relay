@@ -1,6 +1,6 @@
 {
   "name": "@ganderbite/flow-codebase-discovery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Explores a codebase and produces an HTML report covering packages, entities, services, and architecture.",
   "type": "module",
   "main": "./dist/flow.js",
@@ -23,7 +23,7 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.2.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "devDependencies": {
     "@ganderbite/relay-core": "workspace:*",

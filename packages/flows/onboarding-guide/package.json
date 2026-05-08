@@ -1,6 +1,6 @@
 {
   "name": "@ganderbite/flow-onboarding-guide",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scans a project directory and produces an audience-specific HTML onboarding guide.",
   "type": "module",
   "main": "./dist/flow.js",
@@ -23,7 +23,7 @@
     "test": "echo 'no unit tests — run relay test . with relay installed'"
   },
   "peerDependencies": {
-    "@ganderbite/relay-core": "^0.2.0"
+    "@ganderbite/relay-core": "^0.3.0"
   },
   "devDependencies": {
     "@ganderbite/relay-core": "workspace:*",
