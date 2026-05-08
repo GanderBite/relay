@@ -367,6 +367,7 @@ export class Orchestrator {
           initialQueue: [...flow.graph.rootSteps],
           invocationCwd: worktree.worktreeCwd,
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
+          ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
       }
     } catch (caught) {
@@ -622,6 +623,7 @@ export class Orchestrator {
           initialQueue,
           invocationCwd: worktree.worktreeCwd,
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
+          ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
       }
     } catch (caught) {
@@ -990,6 +992,12 @@ export class Orchestrator {
      * callback are caught at the call site and never escape into the walker.
      */
     onStepComplete?: (stepId: string, result: StepResult) => void;
+    /**
+     * Verbose flag forwarded from RunOptions. Threaded into PromptStepExecContext
+     * so the per-step event log writer can capture the raw provider envelope
+     * alongside each translated InvocationEvent when set.
+     */
+    verbose?: boolean;
   }): Promise<'succeeded' | 'failed' | 'aborted'> {
     const {
       flow,
@@ -1009,6 +1017,7 @@ export class Orchestrator {
       initialQueue,
       invocationCwd,
       onStepComplete,
+      verbose,
     } = args;
 
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
@@ -1112,6 +1121,7 @@ export class Orchestrator {
               provider: stepProvider,
               inputVars,
               ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
+              ...(verbose !== undefined ? { verbose } : {}),
             });
           }
           case 'script':

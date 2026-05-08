@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { assemblePrompt, loadHandoffValues } from '../../context-inject.js';
 import type { CostTracker, StepMetrics } from '../../cost.js';
@@ -24,6 +24,7 @@ import type {
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { extractJson } from '../../util/json.js';
 import { z } from '../../zod.js';
+import { EventLogWriter } from '../event-log.js';
 import { writeLiveState } from '../live-state.js';
 import { renderOutputContract } from '../output-contract.js';
 
@@ -55,6 +56,14 @@ export interface PromptStepExecContext {
    * the parent cwd. The executor forwards this onto InvocationContext.cwd.
    */
   cwd?: string;
+  /**
+   * When true, the per-step event log writer reserves its raw envelope slot
+   * for downstream verbose rendering. The runProviderInvocation stream path
+   * passes the same flag through, but raw payload capture is handled inside
+   * the provider's own iterator — only the invoke() fallback path on this
+   * boundary records a synthesized stream.end record.
+   */
+  verbose?: boolean;
 }
 
 export interface PromptStepResult {
@@ -138,6 +147,7 @@ async function runProviderInvocation(args: {
   attempt: number;
   startedIso: string;
   logger: Logger;
+  verbose?: boolean;
 }): Promise<InvocationResponse> {
   const { provider, request, invocationCtx, runDir, stepId, attempt, startedIso, logger } = args;
 
@@ -161,6 +171,14 @@ async function runProviderInvocation(args: {
     }
   };
 
+  // Per-step NDJSON event log lives at <runDir>/events/<stepId>.jsonl. The
+  // mkdir is best-effort — a directory creation failure is silently absorbed,
+  // and the writer itself catches every IO error so a transient fault on the
+  // log never derails the in-flight provider invocation.
+  const eventsDir = join(runDir, 'events');
+  await mkdir(eventsDir, { recursive: true }).catch(() => undefined);
+  const writer = new EventLogWriter(eventsDir, stepId, attempt);
+
   if (typeof provider.stream === 'function') {
     const started = Date.now();
     let accumulatedText = '';
@@ -182,6 +200,9 @@ async function runProviderInvocation(args: {
     let capturedSessionId: string | undefined;
 
     const iterable = provider.stream(request, invocationCtx);
+    // Per-invocation sequence counter — resets to 0 on every retry so each
+    // attempt's event log is self-describing without consulting prior attempts.
+    let seq = 0;
     for await (const event of iterable) {
       switch (event.type) {
         case 'text.delta':
@@ -207,11 +228,20 @@ async function runProviderInvocation(args: {
           capturedSessionId = event.sessionId;
           break;
         case 'stream.error':
+          // Persist the terminal error event before re-throwing so the on-disk
+          // log records that the stream ended in error rather than appearing
+          // truncated to readers.
+          await writer.write(seq++, event, undefined);
+          await writer.flush();
           throw event.error;
         default:
           break;
       }
+      // Raw envelope is not exposed across provider.stream(); pass undefined
+      // unconditionally and let the verbose renderer reconstruct from events.
+      await writer.write(seq++, event, undefined);
     }
+    await writer.flush();
 
     return {
       text: accumulatedText,
@@ -231,6 +261,16 @@ async function runProviderInvocation(args: {
   if (result.isErr()) throw result.error;
   const response = result.value;
   await emitLive(response.usage, 0, response.model);
+  // Synthesize a terminal stream.end record so non-streaming providers still
+  // produce a parseable per-step event log. The aggregated response is the
+  // only signal available on this branch, so seq is always 0.
+  await writer.write(0, {
+    type: 'stream.end',
+    stopReason: response.stopReason ?? 'stream_completed',
+    ...(response.costUsd !== undefined ? { costUsd: response.costUsd } : {}),
+    ...(response.sessionId !== undefined ? { sessionId: response.sessionId } : {}),
+  });
+  await writer.flush();
   return response;
 }
 
@@ -410,6 +450,7 @@ export async function executePrompt(
       attempt,
       startedIso,
       logger: ctx.logger,
+      ...(ctx.verbose !== undefined ? { verbose: ctx.verbose } : {}),
     });
 
     // Record usage as soon as the provider returns so CostTracker captures
