@@ -25,7 +25,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { EventRecord, Flow, StepStatus } from '@ganderbite/relay-core';
+import type { Flow, ReplayedEventRecord, StepStatus } from '@ganderbite/relay-core';
 import { EventRecordSchema, z } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import type { FSWatcher } from 'chokidar';
@@ -506,7 +506,7 @@ export class ProgressDisplay<TInput = unknown> {
     // Everything up to and including the last newline is complete lines.
     tail.partial = text.slice(newlineIndex + 1);
     const completeText = text.slice(0, newlineIndex);
-    const newRecords: EventRecord[] = [];
+    const newRecords: ReplayedEventRecord[] = [];
 
     for (const line of completeText.split('\n')) {
       const trimmed = line.trim();
@@ -526,7 +526,7 @@ export class ProgressDisplay<TInput = unknown> {
         continue;
       }
 
-      const record = result.data as EventRecord;
+      const record = result.data;
       newRecords.push(record);
       this.#applyEventToAccumulator(acc, record);
     }
@@ -562,7 +562,7 @@ export class ProgressDisplay<TInput = unknown> {
    * (a) from FLAG-3: track text.delta position rather than always appending at
    * the bottom).
    */
-  #applyEventToAccumulator(acc: VerboseAccumulator, record: EventRecord): void {
+  #applyEventToAccumulator(acc: VerboseAccumulator, record: ReplayedEventRecord): void {
     const ev = record.event;
 
     if (ev.type === 'turn.start') {

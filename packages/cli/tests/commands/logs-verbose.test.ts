@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import logsCommand from '../../src/commands/logs.js';
-import { renderVerboseEvent } from '../../src/verboseStream.js';
+import { renderStreamingLine, renderVerboseEvent } from '../../src/verboseStream.js';
 
 // ---------------------------------------------------------------------------
 // Fixture data — 6 NDJSON event records matching the InvocationEvent union
@@ -353,5 +353,127 @@ describe('relay logs --verbose — multiple step files', () => {
     expect(idxSessA).toBeGreaterThanOrEqual(0);
     expect(idxTurn).toBeGreaterThanOrEqual(0);
     expect(idxSessA).toBeLessThan(idxTurn);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Streaming-line behavior — text.delta events (FLAG-4)
+// ---------------------------------------------------------------------------
+
+describe('relay logs --verbose — streaming-line behavior', () => {
+  it('[LOGS-VRB-011] interleaved text.delta events produce exactly one streaming line at the most-recent text.delta position', async () => {
+    const { eventsDir } = await mkRunDir(tmpBase);
+
+    // Fixture: turn.start → text.delta(50) → tool.call → text.delta(75) → stream.end
+    // Expected: one streaming line with charCount=125, positioned after tool.call
+    // (streamingLineIndex tracks the most-recent text.delta cluster = lines.length
+    // at the time of the second text.delta, which is after the tool.call line).
+    const records = [
+      {
+        seq: 0,
+        ts: '2026-05-08T10:00:00.000Z',
+        attempt: 1,
+        event: { type: 'turn.start', turn: 1 },
+      },
+      {
+        seq: 1,
+        ts: '2026-05-08T10:00:01.000Z',
+        attempt: 1,
+        event: { type: 'text.delta', delta: 'a'.repeat(50) },
+      },
+      {
+        seq: 2,
+        ts: '2026-05-08T10:00:02.000Z',
+        attempt: 1,
+        event: { type: 'tool.call', name: 'Bash', input: { cmd: 'ls' } },
+      },
+      {
+        seq: 3,
+        ts: '2026-05-08T10:00:03.000Z',
+        attempt: 1,
+        event: { type: 'text.delta', delta: 'b'.repeat(75) },
+      },
+      {
+        seq: 4,
+        ts: '2026-05-08T10:00:04.000Z',
+        attempt: 1,
+        event: { type: 'stream.end', stopReason: 'end_turn' },
+      },
+    ];
+    const ndjson = records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    await writeFile(join(eventsDir, 'step-one.jsonl'), ndjson);
+
+    process.argv = ['node', 'relay', 'logs', 'abc123', '--verbose'];
+
+    await logsCommand(['abc123'], {});
+
+    const calls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
+    const output = calls.join('');
+
+    const expectedStreamingLine = renderStreamingLine(125);
+
+    // Exactly one streaming line in the output.
+    const occurrences = output.split(expectedStreamingLine).length - 1;
+    expect(occurrences).toBe(1);
+
+    // The streaming line must appear after the tool.call line.
+    const toolLine = '    · Bash({"cmd":"ls"})';
+    const idxTool = output.indexOf(toolLine);
+    const idxStreaming = output.indexOf(expectedStreamingLine);
+    expect(idxTool).toBeGreaterThanOrEqual(0);
+    expect(idxStreaming).toBeGreaterThanOrEqual(0);
+    expect(idxStreaming).toBeGreaterThan(idxTool);
+  });
+
+  it('[LOGS-VRB-012] trailing-only text.delta events produce exactly one streaming line at the end of the buffer', async () => {
+    const { eventsDir } = await mkRunDir(tmpBase);
+
+    // Fixture: turn.start → text.delta(30) → stream.end
+    // Expected: one streaming line with charCount=30, at the end of output
+    // (streamingLineIndex = lines.length after turn.start line, since text.delta
+    // arrives after turn.start and before stream.end).
+    const records = [
+      {
+        seq: 0,
+        ts: '2026-05-08T10:00:00.000Z',
+        attempt: 1,
+        event: { type: 'turn.start', turn: 1 },
+      },
+      {
+        seq: 1,
+        ts: '2026-05-08T10:00:01.000Z',
+        attempt: 1,
+        event: { type: 'text.delta', delta: 'x'.repeat(30) },
+      },
+      {
+        seq: 2,
+        ts: '2026-05-08T10:00:02.000Z',
+        attempt: 1,
+        event: { type: 'stream.end', stopReason: 'end_turn' },
+      },
+    ];
+    const ndjson = records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    await writeFile(join(eventsDir, 'step-one.jsonl'), ndjson);
+
+    process.argv = ['node', 'relay', 'logs', 'abc123', '--verbose'];
+
+    await logsCommand(['abc123'], {});
+
+    const calls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
+    const output = calls.join('');
+
+    const expectedStreamingLine = renderStreamingLine(30);
+
+    // Exactly one streaming line in the output.
+    const occurrences = output.split(expectedStreamingLine).length - 1;
+    expect(occurrences).toBe(1);
+
+    // The streaming line must appear before the stream.end done line.
+    const doneLine = '    · done  end_turn';
+    const idxDone = output.indexOf(doneLine);
+    const idxStreaming = output.indexOf(expectedStreamingLine);
+    expect(idxStreaming).toBeGreaterThanOrEqual(0);
+    expect(idxDone).toBeGreaterThanOrEqual(0);
+    expect(idxStreaming).toBeLessThan(idxDone);
   });
 });

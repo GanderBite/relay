@@ -11,7 +11,7 @@
  *   - No new symbols introduced — only the existing SYMBOLS vocabulary from brand.ts.
  */
 
-import type { EventRecord } from '@ganderbite/relay-core';
+import type { ReplayedEventRecord } from '@ganderbite/relay-core';
 
 import { SYMBOLS } from './brand.js';
 import { gray, red } from './color.js';
@@ -22,14 +22,20 @@ import { fmtK } from './format.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Renders one EventRecord into a formatted CLI line (no trailing newline),
- * or returns null when the event type produces no output.
+ * Renders one ReplayedEventRecord into a formatted CLI line (no trailing
+ * newline), or returns null when the event type produces no output.
+ *
+ * Accepts ReplayedEventRecord (schema-parsed, on-disk shape) because both
+ * call sites — the live progress display and relay logs --verbose replay —
+ * feed records that have been round-tripped through JSON. stream.error.error
+ * is a plain SerializedStreamError object on this type, not a PipelineError
+ * instance. Only .message is accessed, so this is safe for both paths.
  *
  * The 4-space indent prefix is included in the returned string so both live
  * and retroactive callers get identical output.
  */
 export function renderVerboseEvent(
-  record: EventRecord,
+  record: ReplayedEventRecord,
   _opts?: { stripAnsi?: boolean },
 ): string | null {
   const ev = record.event;

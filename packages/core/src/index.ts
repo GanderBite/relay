@@ -236,9 +236,18 @@ export type { CreateLoggerOptions, LogEvent, Logger } from './logger.js';
  * `stripAnsi` removes ANSI escape sequences from a string.
  */
 export { CONSOLE_COLOR_DISABLED, createLogger, stripAnsi } from './logger.js';
-
 /** Per-step event record persisted to .relay/runs/<runId>/events/<stepId>.jsonl. */
-export type { EventRecord } from './orchestrator/event-log.js';
+/**
+ * Replayed variants of the event record — the on-disk shape after JSON
+ * round-trip. stream.error carries SerializedStreamError (a plain object),
+ * not a PipelineError instance.
+ */
+export type {
+  EventRecord,
+  ReplayedEventRecord,
+  ReplayedInvocationEvent,
+  SerializedStreamError,
+} from './orchestrator/event-log.js';
 /** Zod schema for validating EventRecord lines read from the events NDJSON file. */
 export { EventRecordSchema } from './orchestrator/event-log.js';
 

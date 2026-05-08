@@ -23,7 +23,7 @@ import { createReadStream, watch } from 'node:fs';
 import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { EventRecord } from '@ganderbite/relay-core';
+import type { ReplayedEventRecord } from '@ganderbite/relay-core';
 import { EventRecordSchema } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
@@ -72,12 +72,14 @@ function parseFlags(): LogFlags {
     }
     if (arg === '--step' && i + 1 < argv.length) {
       step = argv[i + 1];
+      i += 1;
     }
     if (arg === '--level' && i + 1 < argv.length) {
       const val = argv[i + 1];
       if (val !== undefined && val in LEVEL_ORDER) {
         minLevel = val;
       }
+      i += 1;
     }
   }
 
@@ -241,16 +243,17 @@ async function readFlowName(runDir: string): Promise<string> {
 // NDJSON line parser for EventRecord (events/*.jsonl)
 // ---------------------------------------------------------------------------
 
-// The Zod schema infers optional fields as `T | undefined` which conflicts
-// with exactOptionalPropertyTypes in the target EventRecord type. The schema
-// validates the shape at runtime; the cast bridges the two type representations.
-function toEventRecord(parsed: unknown): EventRecord | null {
+// EventRecordSchema parses on-disk records into ReplayedEventRecord — the
+// schema's inferred type is the authoritative shape for replayed events.
+// stream.error.error is a plain SerializedStreamError object after JSON
+// round-trip; consumers must not treat it as a PipelineError instance.
+function toEventRecord(parsed: unknown): ReplayedEventRecord | null {
   const result = EventRecordSchema.safeParse(parsed);
   if (!result.success) return null;
-  return result.data as unknown as EventRecord;
+  return result.data;
 }
 
-function parseEventLine(line: string): EventRecord | null {
+function parseEventLine(line: string): ReplayedEventRecord | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) return null;
   try {
@@ -297,7 +300,7 @@ async function replayVerbose(runDir: string, step: string | undefined): Promise<
   }
 
   // Read and parse all records, tagging each with its file index for sorting.
-  type TaggedRecord = { fileIdx: number; record: EventRecord };
+  type TaggedRecord = { fileIdx: number; record: ReplayedEventRecord };
   const taggedRecords: TaggedRecord[] = [];
   for (let fileIdx = 0; fileIdx < jsonlFiles.length; fileIdx++) {
     const filename = jsonlFiles[fileIdx];
@@ -325,27 +328,36 @@ async function replayVerbose(runDir: string, step: string | undefined): Promise<
 
   const allRecords = taggedRecords.map((t) => t.record);
 
-  // Render records.
-  let charCount = 0;
+  // Mirror the live render logic from progress.ts #applyEventToAccumulator /
+  // #buildAccumulatorLines: maintain a lines buffer, cumulative textDeltaChars,
+  // and streamingLineIndex tracking the most-recent text.delta cluster. One
+  // streaming line is emitted per replay, spliced at streamingLineIndex.
+  const lines: string[] = [];
+  let textDeltaChars = 0;
+  let streamingLineIndex = 0;
 
   for (const record of allRecords) {
     if (record.event.type === 'text.delta') {
-      charCount += record.event.delta.length;
+      textDeltaChars += record.event.delta.length;
+      // Track where this text.delta cluster sits so the streaming line
+      // appears at the correct conversational position.
+      streamingLineIndex = lines.length;
     } else {
-      if (charCount > 0) {
-        process.stdout.write(renderStreamingLine(charCount) + '\n');
-        charCount = 0;
-      }
       const line = renderVerboseEvent(record);
       if (line !== null) {
-        process.stdout.write(line + '\n');
+        lines.push(line);
       }
     }
   }
 
-  // Flush any remaining text delta chars.
-  if (charCount > 0) {
-    process.stdout.write(renderStreamingLine(charCount) + '\n');
+  // Splice the streaming line into the buffer at the tracked position,
+  // identical to progress.ts #buildAccumulatorLines.
+  if (textDeltaChars > 0) {
+    lines.splice(streamingLineIndex, 0, renderStreamingLine(textDeltaChars));
+  }
+
+  for (const line of lines) {
+    process.stdout.write(line + '\n');
   }
 }
 

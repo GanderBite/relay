@@ -28,17 +28,19 @@ import { z } from '../zod.js';
  * and are therefore omitted by JSON.stringify. This type names the fields
  * explicitly extracted before serialization so the reader always finds them.
  */
-type SerializedStreamError = {
+export type SerializedStreamError = {
   message: string;
   name: string;
-  code: string | undefined;
-  details: unknown;
+  code?: string;
+  details?: unknown;
 };
 
 /**
  * An on-disk InvocationEvent variant where stream.error carries a plain
  * SerializedStreamError instead of a PipelineError instance. All other
  * members of the union are unchanged.
+ *
+ * @internal kept for backward compatibility with EventLogWriter serialization
  */
 type SerializableInvocationEvent =
   | Exclude<InvocationEvent, { type: 'stream.error' }>
@@ -56,11 +58,13 @@ function normalizeForSerialization(event: InvocationEvent): SerializableInvocati
     return event;
   }
   const err = event.error;
+  const code = 'code' in err && typeof err.code === 'string' ? err.code : undefined;
+  const details = 'details' in err ? err.details : undefined;
   const serializedError: SerializedStreamError = {
     message: err.message,
     name: err.name,
-    code: 'code' in err && typeof err.code === 'string' ? err.code : undefined,
-    details: 'details' in err ? err.details : undefined,
+    ...(code !== undefined ? { code } : {}),
+    ...(details !== undefined ? { details } : {}),
   };
   return { type: 'stream.error', error: serializedError };
 }
@@ -74,9 +78,14 @@ export type EventRecord = {
 };
 
 /**
- * Zod schema for EventRecord — used by the CLI progress display to validate
- * NDJSON lines read from the events file before processing. Mirrors the
- * InvocationEvent discriminated union from providers/types.ts.
+ * Zod schema for replayed event records — validates NDJSON lines read from
+ * events/*.jsonl. Mirrors the InvocationEvent discriminated union from
+ * providers/types.ts, except stream.error carries a structured plain-object
+ * shape (SerializedStreamError) rather than a PipelineError instance, which
+ * is never preserved after JSON round-trip.
+ *
+ * ReplayedEventRecord and ReplayedInvocationEvent are derived from this
+ * schema via z.infer so the schema is the single source of truth.
  *
  * Uses safeParse so a malformed line is skipped without throwing.
  */
@@ -117,7 +126,12 @@ export const EventRecordSchema = z.object({
     }),
     z.object({
       type: z.literal('stream.error'),
-      error: z.object({ message: z.string() }).passthrough(),
+      error: z.object({
+        message: z.string(),
+        name: z.string(),
+        code: z.string().optional(),
+        details: z.unknown().optional(),
+      }),
     }),
     z.object({
       type: z.literal('system.init'),
@@ -129,6 +143,22 @@ export const EventRecordSchema = z.object({
   ]),
   raw: z.unknown().optional(),
 });
+
+/**
+ * The on-disk shape of an event record after round-tripping through
+ * JSON.stringify / JSON.parse. Derived from EventRecordSchema so the schema
+ * is the single source of truth. stream.error carries SerializedStreamError
+ * (a plain object), not a PipelineError instance. Use this type wherever
+ * records come from EventRecordSchema.safeParse.
+ */
+export type ReplayedEventRecord = z.infer<typeof EventRecordSchema>;
+
+/**
+ * The on-disk InvocationEvent variant derived from EventRecordSchema — the
+ * event field of ReplayedEventRecord. stream.error carries a plain
+ * SerializedStreamError, not a PipelineError instance.
+ */
+export type ReplayedInvocationEvent = ReplayedEventRecord['event'];
 
 function stderrMessage(prefix: string, caught: unknown): string {
   const detail = caught instanceof Error ? caught.message : String(caught);
