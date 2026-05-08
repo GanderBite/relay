@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`relay logs --verbose — full fixture replay > [LOGS-VRB-001] replays all 6 fixture events and output matches snapshot 1`] = `
+"●─▶●─▶●─▶●  logs for abc123  ·  test-flow
+
+    · model: claude-opus-4-5  session: sess1  tools: Bash
+    · turn 1
+    · Bash({"cmd":"ls"})
+    ✓ Bash returned
+    · usage  in: 120  out: 45  cache: 0
+    · done  end_turn  $0.0012
+"
+`;
