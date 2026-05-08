@@ -359,7 +359,11 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     result = await orchestrator.run(flow, input, runOpts);
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
-    await progress.stop();
+    try {
+      await progress.stop();
+    } catch {
+      /* cleanup error — original error wins */
+    }
     maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
