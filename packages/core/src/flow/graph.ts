@@ -391,6 +391,24 @@ function validateContextFrom(
     set.add(key);
   }
 
+  // Build a reverse-lookup: handoffName -> loopStepId, for handoffs that are
+  // produced exclusively inside a loop step's body. Used to produce a
+  // targeted error message when a step references such a handoff without the
+  // required dotted-notation address.
+  const loopBodyHandoffs = new Map<string, string>();
+  for (const key of keys) {
+    // Invariant: every `key` was inserted into `stepMap` by the caller.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+    if (step.kind !== 'loop') continue;
+    for (const bodyStep of Object.values(step.body)) {
+      if (bodyStep === undefined) continue;
+      const bodyHandoff = handoffNameOf(bodyStep);
+      if (bodyHandoff !== undefined && !loopBodyHandoffs.has(bodyHandoff)) {
+        loopBodyHandoffs.set(bodyHandoff, key);
+      }
+    }
+  }
+
   for (const key of keys) {
     // Invariant: every `key` was inserted into `stepMap` by the caller.
     const step = lookup(stepMap, key)._unsafeUnwrap();
@@ -420,6 +438,18 @@ function validateContextFrom(
         // scope handoff that this body cannot see. Skip the producer check
         // in that case; the runtime will handle resolution and absence.
         if (isBody && isOptional) continue;
+
+        // Check whether the handoff is produced inside a loop body. If so,
+        // emit a targeted message explaining the dotted-notation address.
+        const loopStepId = loopBodyHandoffs.get(required);
+        if (loopStepId !== undefined) {
+          return err(
+            new FlowDefinitionError(
+              `step "${key}" contextFrom references handoff "${required}" which is produced inside loop step "${loopStepId}". Address it as "${loopStepId}.${required}" to read the loop's latest output.`,
+            ),
+          );
+        }
+
         return err(
           new FlowDefinitionError(
             `step "${key}" contextFrom references unknown handoff "${required}". Remove "${required}" from step "${key}"'s contextFrom array or add an upstream prompt step whose output declares handoff: "${required}" in defineFlow(...).`,

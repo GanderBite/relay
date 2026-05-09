@@ -19,6 +19,7 @@ const KNOWN_COMMANDS = new Set([
   'logs',
   'config',
   'validate',
+  'dry-run',
   'help',
 ]);
 
@@ -53,6 +54,7 @@ const COMMAND_LOADERS: Record<
   glossary: () => import('./commands/glossary.js'),
   config: () => import('./commands/config.js'),
   validate: () => import('./commands/validate.js'),
+  'dry-run': () => import('./commands/dry-run.js'),
 };
 
 async function loadCommand(
@@ -290,6 +292,16 @@ export function buildProgram(): Command {
     .action(async (flow: string) => {
       const handler = await loadCommand('validate');
       await handler([flow], program.opts());
+    });
+
+  // ------------------------------------------------------------- dry-run --
+  program
+    .command('dry-run <flow> [input...]')
+    .description('validate a flow and preview what each step will do')
+    .allowUnknownOption(true)
+    .action(async (flow: string, input: string[]) => {
+      const handler = await loadCommand('dry-run');
+      await handler([flow, ...input], program.opts());
     });
 
   // ----------------------------------------------------------------- help --
