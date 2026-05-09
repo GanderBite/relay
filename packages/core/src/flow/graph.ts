@@ -222,7 +222,7 @@ function buildBodyGraph(loopStep: LoopStep): Result<FlowGraph, FlowDefinitionErr
       );
     }
   }
-  return buildGraphInternal(body, undefined, true);
+  return buildGraphInternal(body, loopStep.start, true);
 }
 
 function kahnTopoSort(

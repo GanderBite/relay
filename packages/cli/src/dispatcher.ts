@@ -18,6 +18,7 @@ const KNOWN_COMMANDS = new Set([
   'test',
   'logs',
   'config',
+  'validate',
   'help',
 ]);
 
@@ -51,6 +52,7 @@ const COMMAND_LOADERS: Record<
   logs: () => import('./commands/logs.js'),
   glossary: () => import('./commands/glossary.js'),
   config: () => import('./commands/config.js'),
+  validate: () => import('./commands/validate.js'),
 };
 
 async function loadCommand(
@@ -279,6 +281,15 @@ export function buildProgram(): Command {
         setAction: (key: string, value: string, opts: Record<string, unknown>) => Promise<void>;
       };
       await setAction(key, value, { ...program.opts() });
+    });
+
+  // ------------------------------------------------------------- validate --
+  program
+    .command('validate <flow>')
+    .description('load a flow and validate its step graph')
+    .action(async (flow: string) => {
+      const handler = await loadCommand('validate');
+      await handler([flow], program.opts());
     });
 
   // ----------------------------------------------------------------- help --
