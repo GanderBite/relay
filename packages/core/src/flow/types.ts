@@ -108,6 +108,7 @@ export interface LoopStepSpec extends StepBase {
   body: Record<string, Step>;
   until: LoopUntilCondition;
   maxIterations: number;
+  start?: string | undefined;
   dependsOn?: string[] | undefined;
   onFail?: 'abort' | string | undefined;
   maxRetries?: number | undefined;

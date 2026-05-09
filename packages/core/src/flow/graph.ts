@@ -151,6 +151,7 @@ function buildGraphInternal(
               ),
             );
           }
+          addEdge(key, value);
         }
       }
     }

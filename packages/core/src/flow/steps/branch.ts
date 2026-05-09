@@ -1,4 +1,5 @@
-import { toFlowDefError } from '../../errors.js';
+import { FlowDefinitionError, toFlowDefError } from '../../errors.js';
+import { detectShellMetachars } from '../../orchestrator/exec/shlex.js';
 import { branchStepSpecSchema } from '../schemas.js';
 import type { BranchStepSpec } from '../types.js';
 
@@ -24,6 +25,15 @@ export type BranchStepBuilderInput = Omit<BranchStepSpec, 'id' | 'kind'>;
 export function branchStep(spec: BranchStepBuilderInput): BranchStepBuilderOutput {
   const result = branchStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'branch' });
   if (!result.success) throw toFlowDefError(result.error, 'invalid branch step');
+
+  if (typeof spec.run === 'string') {
+    const meta = detectShellMetachars(spec.run);
+    if (meta !== undefined) {
+      throw new FlowDefinitionError(
+        `script step: run="${spec.run}" contains shell metacharacters. Use ['sh', '-c', '<pipeline>'] to run shell pipelines.`,
+      );
+    }
+  }
 
   return {
     ...spec,
