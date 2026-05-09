@@ -90,6 +90,10 @@ export async function executeScript(
   }
 
   if (result.exitCode !== 0) {
+    if (result.stderr && result.stderr.length > 0) {
+      const stderrPath = join(runDir, 'live', `${stepId}.stderr.txt`);
+      await atomicWriteText(stderrPath, result.stderr).unwrapOr(undefined);
+    }
     throw new StepFailureError(
       `step "${stepId}" exited with code ${result.exitCode}`,
       stepId,

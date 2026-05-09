@@ -22,7 +22,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "tsconfig.json"
   ],
   "sideEffects": false,
   "scripts": {

@@ -483,6 +483,8 @@ export async function executePrompt(
     // schema-mismatched response never lands on disk.
     const handoffs: string[] = [];
     const artifacts: string[] = [];
+    // Populated when a handoff is parsed so the artifact block can reuse it.
+    let handoffValue: unknown;
 
     if ('handoff' in step.output) {
       const handoffKey = step.output.handoff;
@@ -528,6 +530,7 @@ export async function executePrompt(
             { ...baseDetails, issues: validated.error.issues },
           );
         }
+        handoffValue = readResult.value;
         handoffs.push(handoffKey);
       } else {
         // Schemaless handoff: keep the legacy stdout-extract path. The model
@@ -543,16 +546,20 @@ export async function executePrompt(
 
         const writeResult = await ctx.handoffStore.write(handoffKey, parsedJson.value);
         if (writeResult.isErr()) throw writeResult.error;
+        handoffValue = parsedJson.value;
         handoffs.push(handoffKey);
       }
     }
 
-    // Artifact routing: write the response text verbatim to
-    // <runDir>/artifacts/<name>. atomicWriteText creates parent directories.
+    // Artifact routing: write to <runDir>/artifacts/<name> atomically.
+    // When a handoff coexists, write the structured handoff JSON rather than
+    // the raw response text so the artifact reflects the validated payload.
     if ('artifact' in step.output) {
       const artifactName = step.output.artifact;
       const artifactPath = join(ctx.runDir, 'artifacts', artifactName);
-      const writeResult = await atomicWriteText(artifactPath, response.text);
+      const content =
+        'handoff' in step.output ? JSON.stringify(handoffValue, null, 2) : response.text;
+      const writeResult = await atomicWriteText(artifactPath, content);
       if (writeResult.isErr()) throw writeResult.error;
       artifacts.push(artifactPath);
     }

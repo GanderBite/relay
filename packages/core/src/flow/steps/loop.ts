@@ -13,14 +13,16 @@ export type LoopStepBuilderOutput = Omit<LoopStepSpec, 'id'> & { kind: 'loop' };
 /**
  * Input shape for the loop builder. The `body` field accepts builder outputs
  * (without `id`) rather than compiled `Step` values — the builder injects ids
- * from the record keys. `id`, `kind`, and `bodyGraph` are excluded: `id` comes
- * from the flow record key, `kind` is injected by this builder, and `bodyGraph`
- * is filled in by the graph compiler.
+ * from the record keys. `id`, `kind`, `bodyGraph`, and `body` are excluded:
+ * `id` comes from the flow record key, `kind` is injected by this builder,
+ * `bodyGraph` is filled in by the graph compiler, and `body` is replaced with
+ * the builder-shaped override below so the override wins without intersection
+ * conflicts.
  *
  * Nested loops are excluded from the body type so the compiler rejects them at
  * the call site rather than relying on a runtime kind check.
  */
-export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph'> & {
+export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph' | 'body'> & {
   body: Record<string, Exclude<StepBuilderOutput, LoopStepBuilderOutput>>;
 };
 

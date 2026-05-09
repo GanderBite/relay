@@ -74,6 +74,19 @@ relay run . --topic="the subject to analyze"
 The `topic` input is required and is echoed through the prep handoff into
 both branches.
 
+## Development
+
+To run the flow locally from its directory:
+
+```bash
+pnpm install --ignore-workspace  # required inside a pnpm workspace root
+relay run .
+```
+
+If `pnpm install` appears to install nothing, you are inside a pnpm workspace
+that does not declare this directory as a member. The `--ignore-workspace`
+flag installs dependencies for this package in isolation.
+
 ## Configuration
 
 The flow accepts these inputs:

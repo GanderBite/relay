@@ -31,6 +31,19 @@ relay install {{pkgName}}
 relay run {{pkgName}} --task="describe the change you want made"
 ```
 
+## Development
+
+To run the flow locally from its directory:
+
+```bash
+pnpm install --ignore-workspace  # required inside a pnpm workspace root
+relay run .
+```
+
+If `pnpm install` appears to install nothing, you are inside a pnpm workspace
+that does not declare this directory as a member. The `--ignore-workspace`
+flag installs dependencies for this package in isolation.
+
 ## Configuration
 
 The flow accepts these inputs:
