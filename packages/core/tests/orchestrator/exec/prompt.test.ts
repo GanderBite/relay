@@ -273,6 +273,61 @@ describe('executePrompt (sprint 5 task_33)', () => {
     expect(bytes).toContain('<html>');
   });
 
+  it('[EXEC-PROMPT-ARTIFACT-001] artifact file contains handoff JSON when both handoff and artifact are set', async () => {
+    const handoffId = 'summary';
+    // A schema is required so the executor reads from the handoff file rather
+    // than extracting JSON from response.text.
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: {
+        handoff: handoffId,
+        artifact: 'summary.json',
+        schema: z.object({ title: z.string(), count: z.number() }),
+      },
+    });
+    const handoffsDir = join(tmp, 'handoffs');
+    const handoffPayload = { title: 'hello', count: 3 };
+    const provider = new MockProvider({
+      responses: {
+        [s.id || 'p']: async () => {
+          await mkdir(handoffsDir, { recursive: true });
+          await writeFile(
+            join(handoffsDir, `${handoffId}.json`),
+            JSON.stringify(handoffPayload),
+            'utf8',
+          );
+          // response.text differs from handoff content to confirm the artifact
+          // uses the validated handoff JSON, not the raw provider text.
+          return { ...canned, text: 'raw model output that is not the artifact' };
+        },
+      },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+    const artifactBytes = await readFile(join(tmp, 'artifacts', 'summary.json'), 'utf8');
+    const parsed = JSON.parse(artifactBytes) as unknown;
+    expect(parsed).toEqual(handoffPayload);
+    // Must not contain the raw provider text
+    expect(artifactBytes).not.toContain('raw model output');
+  });
+
+  it('[EXEC-PROMPT-ARTIFACT-002] artifact file contains response.text when only artifact is set (no handoff)', async () => {
+    const s = step.prompt({
+      promptFile: 'prompts/p.md',
+      output: { artifact: 'output.txt' },
+    });
+    const responseText = 'This is the raw model response for the artifact.';
+    const provider = new MockProvider({
+      responses: { [s.id || 'p']: { ...canned, text: responseText } },
+    });
+    const ctx = { ...makeCtxBase(), stepId: s.id || 'p', step: s, provider, attempt: 1 };
+    await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+    const artifactBytes = await readFile(join(tmp, 'artifacts', 'output.txt'), 'utf8');
+    expect(artifactBytes).toBe(responseText);
+  });
+
   it('[EXEC-PROMPT-005] records StepMetrics via costTracker', async () => {
     const s = step.prompt({ promptFile: 'prompts/p.md', output: { handoff: 'x' } });
     const ctxBase = makeCtxBase();

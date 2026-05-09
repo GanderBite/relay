@@ -307,6 +307,54 @@ describe('buildGraph — DAG construction', () => {
     });
   });
 
+  describe('onExit implicit dependency edges', () => {
+    it('[DAG-016] branch onExit target receives an implicit predecessor edge — no dependsOn needed', () => {
+      // A branch step routes to 'step-b' via onExit. The graph compiler must
+      // add an edge from 'checker' to 'step-b', so 'step-b' is not a root
+      // step and does not need a dependsOn declaration.
+      const steps: Record<string, Step> = {
+        a: promptStep('a', { output: { handoff: 'a-out' } }),
+        checker: branchStep('checker', { '0': 'step-b', '1': 'abort' }),
+        'step-b': promptStep('step-b', { output: { handoff: 'b-out' } }),
+      };
+      // checker has no dependsOn but 'a' has no successors yet — use explicit start.
+      const result = buildGraph(steps, 'a');
+      expect(result.isOk()).toBe(true);
+      const graph = result._unsafeUnwrap();
+
+      // 'step-b' must be a successor of 'checker' in the graph.
+      expect(graph.successors.get('checker')?.has('step-b')).toBe(true);
+      // 'checker' must be a predecessor of 'step-b'.
+      expect(graph.predecessors.get('step-b')?.has('checker')).toBe(true);
+      // 'step-b' must not be in rootSteps — it has a predecessor.
+      expect(graph.rootSteps).not.toContain('step-b');
+    });
+
+    it('[DAG-017] onExit target using contextFrom on an upstream handoff is accepted', () => {
+      // 'a' produces handoff 'a-out'. 'checker' depends on 'a' and routes to
+      // 'step-b' via onExit. The onExit edge makes 'checker' a predecessor of
+      // 'step-b', so 'a' becomes a transitive ancestor of 'step-b'
+      // (a → checker → step-b). validateContextFrom must accept step-b's
+      // contextFrom: ['a-out'] without error.
+      const steps: Record<string, Step> = {
+        a: promptStep('a', { output: { handoff: 'a-out' } }),
+        checker: {
+          id: 'checker',
+          kind: 'branch',
+          run: 'true',
+          dependsOn: ['a'],
+          onExit: { '0': 'step-b', '1': 'abort' },
+        } satisfies BranchStep,
+        'step-b': promptStep('step-b', {
+          contextFrom: ['a-out'],
+          output: { handoff: 'b-out' },
+        }),
+      };
+      const result = buildGraph(steps);
+      expect(result.isOk()).toBe(true);
+    });
+  });
+
   // Satisfy the unused-import checker — keep scriptStep available for future tests.
   it('scriptStep helper is wired', () => {
     const s = scriptStep('s');

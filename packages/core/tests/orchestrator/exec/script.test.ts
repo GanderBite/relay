@@ -3,11 +3,11 @@
  * References packages/core/src/orchestrator/exec/script.ts and branch.ts — not yet implemented.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TimeoutError } from '../../../src/errors.js';
+import { StepFailureError, TimeoutError } from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { createLogger } from '../../../src/logger.js';
 import { executeBranch } from '../../../src/orchestrator/exec/branch.js';
@@ -25,6 +25,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   function ctxBase() {
     return {
       runDir: tmp,
+      runId: 'r',
       logger: createLogger({ flowName: 'f', runId: 'r' }),
       abortSignal: new AbortController().signal,
       attempt: 1,
@@ -86,5 +87,56 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
     const asObj = result as Record<string, unknown>;
     expect(asObj.stdout).toBeUndefined();
     expect((result as { next?: string }).next).toBe('nextStep');
+  });
+
+  it('[EXEC-SCRIPT-007] writes <runDir>/live/<stepId>.stderr.txt when script exits non-zero with stderr', async () => {
+    // Use array run to avoid shell-metachar rejection.
+    const s = step.script({
+      run: ['node', '-e', 'process.stderr.write("fatal error\\n"); process.exit(1)'],
+    });
+    const stepId = s.id || 's';
+    await expect(executeScript(s, { ...ctxBase(), stepId, step: s })).rejects.toBeInstanceOf(
+      StepFailureError,
+    );
+
+    const stderrFile = join(tmp, 'live', `${stepId}.stderr.txt`);
+    const content = await readFile(stderrFile, 'utf8');
+    expect(content).toContain('fatal error');
+  });
+
+  it('[EXEC-SCRIPT-008] does not write stderr sidecar file when script exits 0', async () => {
+    // Use array run to avoid shell-metachar rejection.
+    const s = step.script({
+      run: ['node', '-e', 'process.stderr.write("info\\n"); process.exit(0)'],
+    });
+    const stepId = s.id || 's';
+    const result = await executeScript(s, { ...ctxBase(), stepId, step: s });
+    expect(result.exitCode).toBe(0);
+
+    const stderrFile = join(tmp, 'live', `${stepId}.stderr.txt`);
+    await expect(access(stderrFile)).rejects.toThrow();
+  });
+
+  it('[EXEC-SCRIPT-009] StepFailureError is still thrown even if the stderr sidecar write fails', async () => {
+    // Use a runDir path whose live/ sub-directory cannot be created — we use a
+    // file as the parent so mkdir fails with ENOTDIR.
+    const { writeFile: fsWriteFile } = await import('node:fs/promises');
+    const blockingFile = join(tmp, 'live');
+    await fsWriteFile(blockingFile, 'blocker', 'utf8');
+
+    const s = step.script({
+      run: ['node', '-e', 'process.stderr.write("err\\n"); process.exit(1)'],
+    });
+    const stepId = s.id || 's';
+    const ctx = {
+      ...ctxBase(),
+      runDir: tmp,
+      stepId,
+      step: s,
+    };
+
+    // The executor swallows the sidecar write failure (unwrapOr) and must
+    // still throw StepFailureError for the non-zero exit.
+    await expect(executeScript(s, ctx)).rejects.toBeInstanceOf(StepFailureError);
   });
 });
