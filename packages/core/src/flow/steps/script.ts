@@ -1,5 +1,5 @@
 import { FlowDefinitionError, toFlowDefError } from '../../errors.js';
-import { detectShellMetachars } from '../../orchestrator/exec/shlex.js';
+import { detectShellMetachars, shellMetacharErrorMessage } from '../../orchestrator/exec/shlex.js';
 import { scriptStepSpecSchema } from '../schemas.js';
 import type { ScriptStepSpec } from '../types.js';
 
@@ -29,9 +29,7 @@ export function scriptStep(spec: ScriptStepBuilderInput): ScriptStepBuilderOutpu
   if (typeof spec.run === 'string') {
     const meta = detectShellMetachars(spec.run);
     if (meta !== undefined) {
-      throw new FlowDefinitionError(
-        `script step: run="${spec.run}" contains shell metacharacters. Use ['sh', '-c', '<pipeline>'] to run shell pipelines.`,
-      );
+      throw new FlowDefinitionError(shellMetacharErrorMessage('script', spec.run));
     }
   }
 

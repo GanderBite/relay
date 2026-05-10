@@ -20,6 +20,15 @@ export function detectShellMetachars(run: string): string | undefined {
 }
 
 /**
+ * Builds the standard error message for shell-metacharacter rejection.
+ * `kindLabel` identifies the step kind so the message names the correct
+ * call site — e.g. "branch step:" vs "script step:".
+ */
+export function shellMetacharErrorMessage(kindLabel: 'script' | 'branch', run: string): string {
+  return `${kindLabel} step: run="${run}" contains shell metacharacters. Use ['sh', '-c', '<pipeline>'] to run shell pipelines.`;
+}
+
+/**
  * Minimal shell-lexer: splits a command string into [cmd, ...args] respecting
  * single- and double-quoted segments. No shell interpolation is performed —
  * callers use shell: false for safety and determinism.

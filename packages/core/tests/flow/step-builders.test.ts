@@ -120,3 +120,27 @@ describe('branchStep — shell metacharacter rejection', () => {
     expect(spec.run).toBe('./check.sh');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Prefix accuracy — each step kind names itself in the error message
+// ---------------------------------------------------------------------------
+
+describe('shell metacharacter error message prefix matches step kind', () => {
+  it('[META-026] scriptStep error starts with "script step:" and branchStep error starts with "branch step:"', () => {
+    let scriptMsg = '';
+    try {
+      scriptStep({ run: 'check && verify' });
+    } catch (e) {
+      scriptMsg = (e as Error).message;
+    }
+    expect(scriptMsg).toMatch(/^script step:/);
+
+    let branchMsg = '';
+    try {
+      branchStep({ run: 'check && verify', onExit: { '0': 'next', '1': 'abort' } });
+    } catch (e) {
+      branchMsg = (e as Error).message;
+    }
+    expect(branchMsg).toMatch(/^branch step:/);
+  });
+});
