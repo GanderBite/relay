@@ -121,6 +121,41 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
     await expect(access(stderrFile)).rejects.toThrow();
   });
 
+  it('[EXEC-SCRIPT-ENV-001] {{input.repo}} in string-form run expands before splitShell', async () => {
+    const s = step.script({ run: 'node -e "console.log(process.argv[1])" {{input.repo}}' });
+    const result = await executeScript(s, {
+      ...ctxBase(),
+      stepId: s.id || 's',
+      step: s,
+      input: { repo: 'my-repo' },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '')).toContain('my-repo');
+  });
+
+  it('[EXEC-SCRIPT-ENV-002] RELAY_RUN_DIR is set in the process env passed to spawn', async () => {
+    // The script reads RELAY_RUN_DIR from its own process.env; we verify the
+    // executor injected it by printing it to stdout.
+    const s = step.script({
+      run: 'node -e "console.log(process.env.RELAY_RUN_DIR)"',
+    });
+    const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+    // tmp is the runDir; RELAY_RUN_DIR must equal it.
+    expect(String(result.stdout ?? '').trim()).toBe(tmp);
+  });
+
+  it('[EXEC-SCRIPT-ENV-003] step env value overrides RELAY_RUN_DIR', async () => {
+    const overrideValue = '/custom/run/dir';
+    const s = step.script({
+      run: 'node -e "console.log(process.env.RELAY_RUN_DIR)"',
+      env: { RELAY_RUN_DIR: overrideValue },
+    });
+    const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe(overrideValue);
+  });
+
   it('[EXEC-SCRIPT-009] StepFailureError is still thrown even if the stderr sidecar write fails', async () => {
     // Use a runDir path whose live/ sub-directory cannot be created — we use a
     // file as the parent so mkdir fails with ENOTDIR.

@@ -88,6 +88,46 @@ Rules:
 - The flow's `name` should match the package's bare name (`codebase-discovery`).
 - The flow's `version` is independent from the package's version, but typically tracks it.
 
+## Script steps — env declarations and auto-injected vars
+
+A `step.script({ run, env, ... })` step runs a shell command in a child process. Its `env` map accepts entries in two forms — collectively typed `ScriptEnvValueSpec`:
+
+```ts
+step.script({
+  env: {
+    // String form — rendered as a Handlebars template against the runtime
+    // context. {{input.*}} and {{<handoff>.*}} are available.
+    BUILD_LABEL: '{{input.repo}}-{{plan.title}}',
+
+    // Structured form — ScriptEnvFromSpec — declares a source path and
+    // optional flags.
+    REPO:  { from: 'input.repo', required: true },
+    TITLE: { from: 'handoff.plan.title' },
+    PATH:  { from: 'input.outDir', resolve: 'fromCwd' },
+  },
+  run: ['bash', 'scripts/build.sh'],
+});
+```
+
+`ScriptEnvFromSpec` fields:
+
+| Field | Meaning |
+|---|---|
+| `from` | Required. Either `input.<dot.path>` or `handoff.<step>.<dot.path>`. |
+| `required` | If `true`, an `undefined` or `null` resolution aborts the step with a `FlowDefinitionError`. Default `false` — missing values render as the empty string. |
+| `resolve` | Either `'fromCwd'` (resolve as a path against `process.cwd()`) or `'absolute'` (treat as already absolute). Default unset — value is used verbatim. |
+
+**RELAY_* auto-injected vars.** Every script step receives these four environment variables, set by the runtime before the user-supplied `env` map is merged in:
+
+| Var | Value |
+|---|---|
+| `RELAY_RUN_DIR` | The current run's working directory (`<flowDir>/.relay/runs/<runId>/`). |
+| `RELAY_FLOW_DIR` | The flow package directory (where `flow.ts` lives). |
+| `RELAY_HANDOFFS_DIR` | The handoffs subdirectory (`<runDir>/handoffs/`). |
+| `RELAY_INPUT_JSON` | Path to a JSON file containing the flow's parsed input — read this instead of re-parsing argv. |
+
+Script steps that need structured input should `cat "$RELAY_INPUT_JSON"` and parse it; steps that emit artifacts should write under `$RELAY_RUN_DIR`.
+
 ## README.md (§7.4 — ordered sections)
 
 Every flow's README MUST contain these sections, in this order:
