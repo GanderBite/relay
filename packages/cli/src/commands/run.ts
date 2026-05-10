@@ -37,7 +37,7 @@ import {
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
-import { exitCodeFor, formatError } from '../exit-codes.js';
+import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { parseInputFromArgv } from '../input-parser.js';
 import { renderPausedBanner } from '../paused-banner.js';
@@ -426,6 +426,19 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     });
 
     process.exit(0);
+  } else if (result.status === 'paused') {
+    // A step.ask halted execution — render the paused banner with the answer
+    // hint so the user knows the next command. Telemetry is skipped: paused is
+    // not a terminal outcome and extending the RunEvent status union for a
+    // transient state adds more complexity than it removes.
+    await renderPausedBanner(
+      flow.name,
+      result.runId,
+      result.runDir,
+      flow.stepOrder,
+      result.pausedStepId !== undefined ? { stepId: result.pausedStepId } : undefined,
+    );
+    process.exit(EXIT_CODES.paused);
   } else if (result.status === 'aborted' && wasInterrupted) {
     // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
     // This is not an error: state is saved, the run can be resumed.
