@@ -15,6 +15,10 @@ export { generateRegistryJson } from './registry.js';
 // Indent for --version continuation lines: mark.length (11) + 1 space = 12 chars.
 const VERSION_INDENT = ' '.repeat(MARK.length + 1);
 
+// Injected at build time by tsup `define` — the version of @ganderbite/relay-core
+// whose source was inlined into this CLI bundle. See packages/cli/tsup.config.ts.
+declare const __RELAY_CORE_VERSION__: string;
+
 // Read version from the package.json sitting one level above dist/cli.js.
 // createRequire('@ganderbite/relay/package.json') cannot resolve the package by
 // its own scoped name from within its own dist directory.
@@ -42,8 +46,9 @@ function resolveClaudeVersion(): string {
 
 function printVersion(): void {
   const cliVer = resolveVersion();
-  // relay-core is bundled inline — its version always matches the CLI.
-  const coreVer = cliVer;
+  // relay-core is bundled inline; this constant is replaced at build time with
+  // the version of @ganderbite/relay-core that was actually inlined.
+  const coreVer = typeof __RELAY_CORE_VERSION__ === 'string' ? __RELAY_CORE_VERSION__ : 'unknown';
   const nodeVer = process.version.replace(/^v/, '');
   const claudeVer = resolveClaudeVersion();
 
