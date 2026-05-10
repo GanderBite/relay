@@ -1,4 +1,4 @@
-import { StepFailureError } from '../../errors.js';
+import { PipelineError, StepFailureError } from '../../errors.js';
 import type { ParallelStepSpec } from '../../flow/types.js';
 import type { Logger } from '../../logger.js';
 
@@ -90,20 +90,32 @@ export async function executeParallel(
   );
 
   if (failures.length > 0) {
-    const branchFailures = failures.map(({ branchId, reason }) => {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      return { branch: branchId, message, cause: reason };
-    });
+    const branchFailures = failures.map(
+      ({
+        branchId,
+        reason,
+      }): { branch: string; cause: PipelineError | { code: string; message: string } } => {
+        if (reason instanceof PipelineError) {
+          return { branch: branchId, cause: reason };
+        }
+        const message = reason instanceof Error ? reason.message : String(reason);
+        const code =
+          reason !== null &&
+          typeof reason === 'object' &&
+          'code' in reason &&
+          typeof (reason as { code: unknown }).code === 'string'
+            ? (reason as { code: string }).code
+            : 'UNKNOWN';
+        return { branch: branchId, cause: { code, message } };
+      },
+    );
 
     throw new StepFailureError(
       `parallel step "${step.id}" failed: ${failures.length} of ${step.branches.length} branch(es) failed`,
       ctx.stepId,
       ctx.attempt,
       {
-        branchFailures: branchFailures.map(({ branch, message }) => ({
-          branch,
-          message,
-        })),
+        branchFailures,
         runId: ctx.runId,
       },
     );

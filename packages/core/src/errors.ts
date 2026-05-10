@@ -133,6 +133,21 @@ export class FlowImportError extends FlowDefinitionError {
 }
 
 /**
+ * Discriminated union describing why a run was aborted.
+ *
+ * - `signal` — aborted by a POSIX signal delivered to the process.
+ * - `sibling-failure` — aborted because a sibling step failed and the run
+ *   policy does not allow partial continuation.
+ * - `timeout` — aborted because the run exceeded its configured time limit.
+ * - `unknown` — the abort source could not be determined.
+ */
+export type AbortReason =
+  | { kind: 'signal'; signal: string }
+  | { kind: 'sibling-failure'; stepId: string }
+  | { kind: 'timeout' }
+  | { kind: 'unknown' };
+
+/**
  * Typed details for `StepFailureError`.
  *
  * Covers the fields attached by the executors, the claude-cli classifier, and
@@ -155,7 +170,10 @@ export interface StepFailureDetails extends Record<string, unknown> {
   /** URL for users to report unexpected failures. */
   reportUrl?: string;
   /** Per-branch failure summary for parallel steps. */
-  branchFailures?: Array<{ branch: string; message: string }>;
+  branchFailures?: Array<{
+    branch: string;
+    cause: PipelineError | { code: string; message: string };
+  }>;
   /**
    * Run id of the enclosing run, attached by the orchestrator so CLI
    * remediation hints (`relay logs <runId>`, `relay resume <runId>`) can

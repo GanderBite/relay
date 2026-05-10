@@ -6,6 +6,8 @@ import type { PromptStepResult } from './exec/prompt.js';
 import type { ScriptStepResult } from './exec/script.js';
 import type { TerminalStepResult } from './exec/terminal.js';
 
+export type { AbortReason } from '../errors.js';
+
 /**
  * Unified return shape for every step executor. Discriminated by the `kind`
  * field on the variants that carry one; script and branch keep their

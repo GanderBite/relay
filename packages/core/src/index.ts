@@ -37,6 +37,7 @@ export { CostTracker } from './cost.js';
 /** Union of all stable error code strings emitted by `PipelineError` subclasses. */
 /** Typed details interfaces for `PipelineError` subclasses. Pattern-match on `error.details` with these types. */
 export type {
+  AbortReason,
   AtomicWriteDetails,
   ClaudeAuthDetails,
   ErrorCode,

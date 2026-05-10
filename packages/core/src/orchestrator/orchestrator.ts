@@ -5,6 +5,7 @@ import type { Result } from 'neverthrow';
 
 import { CostTracker } from '../cost.js';
 import {
+  type AbortReason,
   type AtomicWriteError,
   AuthTimeoutError,
   AwaitingInputSignal,
@@ -178,6 +179,12 @@ export interface RunResult {
    * (`relay answer <runId>`) without re-reading state.json.
    */
   pausedStepId?: string | undefined;
+  /**
+   * When `status === 'aborted'`, the typed reason for the abort.
+   * Populated at the two abort-logging sites in `run()` and `resume()`.
+   * Undefined for every other terminal status.
+   */
+  abortReason?: AbortReason | undefined;
 }
 
 /**
@@ -329,13 +336,13 @@ export class Orchestrator {
     const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
-    let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
+    let abortSource: AbortReason | null = null;
     const onSigint = (): void => {
-      if (abortSource === null) abortSource = 'SIGINT';
+      if (abortSource === null) abortSource = { kind: 'signal', signal: 'SIGINT' };
       abortController.abort();
     };
     const onSigterm = (): void => {
-      if (abortSource === null) abortSource = 'SIGTERM';
+      if (abortSource === null) abortSource = { kind: 'signal', signal: 'SIGTERM' };
       abortController.abort();
     };
     process.on('SIGINT', onSigint);
@@ -426,7 +433,10 @@ export class Orchestrator {
     stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
-      logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
+      logger.warn(
+        { event: 'run.aborted', runId, source: abortSource ?? { kind: 'unknown' } },
+        'run aborted',
+      );
     }
 
     const summary = costTracker.summary();
@@ -435,6 +445,8 @@ export class Orchestrator {
       if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
     }
 
+    const abortReason: AbortReason | undefined =
+      runStatus === 'aborted' ? (abortSource ?? { kind: 'unknown' }) : undefined;
     return {
       runId,
       runDir,
@@ -444,6 +456,7 @@ export class Orchestrator {
       durationMs: Date.now() - start,
       ...(firstError !== undefined ? { firstError } : {}),
       ...(pausedStepId !== undefined ? { pausedStepId } : {}),
+      ...(abortReason !== undefined ? { abortReason } : {}),
     };
   }
 
@@ -622,13 +635,13 @@ export class Orchestrator {
     const uniqueProviders = new Set<Provider>([provider, ...providerByStep.values()]);
 
     const abortController = new AbortController();
-    let abortSource: 'SIGINT' | 'SIGTERM' | null = null;
+    let abortSource: AbortReason | null = null;
     const onSigint = (): void => {
-      if (abortSource === null) abortSource = 'SIGINT';
+      if (abortSource === null) abortSource = { kind: 'signal', signal: 'SIGINT' };
       abortController.abort();
     };
     const onSigterm = (): void => {
-      if (abortSource === null) abortSource = 'SIGTERM';
+      if (abortSource === null) abortSource = { kind: 'signal', signal: 'SIGTERM' };
       abortController.abort();
     };
     process.on('SIGINT', onSigint);
@@ -721,7 +734,10 @@ export class Orchestrator {
     stateMachine.clearStepResults();
 
     if (runStatus === 'aborted') {
-      logger.warn({ event: 'run.aborted', runId, source: abortSource ?? 'unknown' }, 'run aborted');
+      logger.warn(
+        { event: 'run.aborted', runId, source: abortSource ?? { kind: 'unknown' } },
+        'run aborted',
+      );
     }
 
     const summary = costTracker.summary();
@@ -730,6 +746,8 @@ export class Orchestrator {
       if (state.artifacts !== undefined) artifacts.push(...state.artifacts);
     }
 
+    const abortReason: AbortReason | undefined =
+      runStatus === 'aborted' ? (abortSource ?? { kind: 'unknown' }) : undefined;
     return {
       runId,
       runDir,
@@ -739,6 +757,7 @@ export class Orchestrator {
       durationMs: Date.now() - start,
       ...(firstError !== undefined ? { firstError } : {}),
       ...(pausedStepId !== undefined ? { pausedStepId } : {}),
+      ...(abortReason !== undefined ? { abortReason } : {}),
     };
   }
 
