@@ -35,6 +35,7 @@ import {
   mockLoadFlowSettings,
   mockLoadGlobalSettings,
   mockRegisterDefaultProviders,
+  mockResolveAndAuthenticate,
   mockResolveProvider,
   registryRef,
   runDirRef,
@@ -187,6 +188,10 @@ beforeEach(async () => {
   mockLoadGlobalSettings.mockResolvedValue(ok(null));
   mockLoadFlowSettings.mockResolvedValue(ok(null));
   mockResolveProvider.mockReturnValue(ok(provider));
+  mockResolveAndAuthenticate.mockResolvedValue({
+    provider,
+    authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+  });
 
   capturedExitCode = undefined;
   vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined) => {
@@ -234,6 +239,10 @@ describe('run-end-to-end — failure path', () => {
     });
     setupRegistry(failingProvider);
     mockResolveProvider.mockReturnValue(ok(failingProvider));
+    mockResolveAndAuthenticate.mockResolvedValue({
+      provider: failingProvider,
+      authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+    });
 
     await runCommand([flowDir], { worktree: false, provider: 'mock' });
 

@@ -19,6 +19,7 @@ const mockRegisterDefaultProviders = vi.hoisted(() => vi.fn());
 const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
 const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
 const mockResolveProvider = vi.hoisted(() => vi.fn());
+const mockResolveAndAuthenticate = vi.hoisted(() => vi.fn());
 const mockRenderStartBanner = vi.hoisted(() => vi.fn());
 const mockRenderSuccessBanner = vi.hoisted(() => vi.fn());
 
@@ -30,6 +31,7 @@ vi.mock('@ganderbite/relay-core', async (importOriginal) => {
     loadGlobalSettings: () => mockLoadGlobalSettings(),
     loadFlowSettings: (_dir: string) => mockLoadFlowSettings(_dir),
     resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
+    resolveAndAuthenticate: (...args: unknown[]) => mockResolveAndAuthenticate(...args),
     Orchestrator: class MockOrchestrator {
       run = mockRunnerRun;
     },
@@ -78,7 +80,7 @@ vi.mock('../../src/exit-codes.js', async (importOriginal) => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-import { err, NoProviderConfiguredError, ok } from '@ganderbite/relay-core';
+import { NoProviderConfiguredError, ok } from '@ganderbite/relay-core';
 import { renderFailureBanner } from '../../src/banner.js';
 import runCommand from '../../src/commands/run.js';
 import { renderPausedBanner } from '../../src/paused-banner.js';
@@ -135,6 +137,10 @@ beforeEach(() => {
   mockLoadGlobalSettings.mockResolvedValue(ok(null));
   mockLoadFlowSettings.mockResolvedValue(ok(null));
   mockResolveProvider.mockReturnValue(ok(provider));
+  mockResolveAndAuthenticate.mockResolvedValue({
+    provider,
+    authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+  });
   mockRenderStartBanner.mockReturnValue('');
   mockRenderSuccessBanner.mockReturnValue('');
   mockRunnerRun.mockResolvedValue(makeRunResult());
@@ -198,7 +204,7 @@ describe('relay run — --provider flag forwarding', () => {
 
 describe('relay run — provider resolution failure', () => {
   it('[TC-020] exits early when no provider is configured (NoProviderConfiguredError)', async () => {
-    mockResolveProvider.mockReturnValue(err(new NoProviderConfiguredError()));
+    mockResolveAndAuthenticate.mockRejectedValue(new NoProviderConfiguredError());
 
     await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
 

@@ -41,6 +41,7 @@ export const mockRegisterDefaultProviders = vi.fn();
 export const mockLoadGlobalSettings = vi.fn();
 export const mockLoadFlowSettings = vi.fn();
 export const mockResolveProvider = vi.fn();
+export const mockResolveAndAuthenticate = vi.fn();
 
 // ---------------------------------------------------------------------------
 // @ganderbite/relay-core — WrappedOrchestrator
@@ -91,6 +92,7 @@ vi.mock('@ganderbite/relay-core', async (importOriginal) => {
     loadGlobalSettings: () => mockLoadGlobalSettings(),
     loadFlowSettings: (_dir: string) => mockLoadFlowSettings(_dir),
     resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
+    resolveAndAuthenticate: (...args: unknown[]) => mockResolveAndAuthenticate(...args),
   };
 });
 

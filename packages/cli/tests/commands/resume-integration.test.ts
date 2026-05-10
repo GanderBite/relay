@@ -30,6 +30,7 @@ import {
   mockLoadFlowSettings,
   mockLoadGlobalSettings,
   mockRegisterDefaultProviders,
+  mockResolveAndAuthenticate,
   mockResolveProvider,
   registryRef,
   runDirRef,
@@ -261,6 +262,10 @@ describe('resume-integration', () => {
     });
     setupRegistry(phase2Provider);
     mockResolveProvider.mockReturnValue(ok(phase2Provider));
+    mockResolveAndAuthenticate.mockResolvedValue({
+      provider: phase2Provider,
+      authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+    });
 
     await resumeCommand([runId], { worktree: false, provider: 'mock' });
 
@@ -312,6 +317,10 @@ describe('resume-integration', () => {
     });
     setupRegistry(phase2Provider);
     mockResolveProvider.mockReturnValue(ok(phase2Provider));
+    mockResolveAndAuthenticate.mockResolvedValue({
+      provider: phase2Provider,
+      authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+    });
 
     await resumeCommand([runId], { worktree: false, provider: 'mock' });
 

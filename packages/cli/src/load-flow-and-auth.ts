@@ -10,12 +10,10 @@ import type { AuthState, FlowDefinitionError, Provider, Result } from '@ganderbi
 import {
   defaultRegistry,
   err,
-  loadFlowSettings,
-  loadGlobalSettings,
   ok,
-  type PipelineError,
+  PipelineError,
   registerDefaultProviders,
-  resolveProvider,
+  resolveAndAuthenticate,
 } from '@ganderbite/relay-core';
 import type { FlowLoadError, LoadedFlow } from './flow-loader.js';
 import { loadFlow } from './flow-loader.js';
@@ -36,12 +34,15 @@ export async function loadFlowOnly({
 }
 
 /**
- * Resolve a provider from the three-tier settings chain and authenticate.
- * Settings failures are non-fatal — treated as null at that tier.
+ * Resolve a provider from the three-tier settings chain and authenticate it
+ * with a 30-second wall-clock cap. Delegates to `resolveAndAuthenticate` from
+ * core so settings IO failures, timeout, and abort are all handled identically
+ * to the orchestrator's auth bootstrap — including propagating corrupt-settings
+ * diagnostics rather than silently falling back to `NoProviderConfiguredError`.
  */
 export async function authenticateProvider({
   provider: flagProvider,
-  cwd,
+  cwd: _cwd,
   flowDir,
 }: {
   provider?: string;
@@ -50,33 +51,34 @@ export async function authenticateProvider({
 }): Promise<Result<{ resolvedProvider: Provider; authState: AuthState }, PipelineError>> {
   registerDefaultProviders();
 
-  const [globalResult, flowResult] = await Promise.all([
-    loadGlobalSettings(),
-    loadFlowSettings(flowDir),
-  ]);
+  const controller = new AbortController();
+  try {
+    const { provider, authState } = await resolveAndAuthenticate({
+      ...(flagProvider !== undefined ? { flagProvider } : {}),
+      flowDir,
+      registry: defaultRegistry,
+      authTimeoutMs: 30_000,
+      signal: controller.signal,
+    });
 
-  const globalSettings = globalResult.isOk() ? globalResult.value : null;
-  const flowSettings = flowResult.isOk() ? flowResult.value : null;
+    if (authState === undefined) {
+      // authState is only undefined when a preAuthedState cache hit occurs.
+      // We never pass preAuthedState here, so this branch is unreachable at
+      // runtime. Guard it to satisfy strict null checks.
+      throw new Error('resolveAndAuthenticate returned undefined authState without preAuthedState');
+    }
 
-  const resolveResult = resolveProvider({
-    ...(flagProvider !== undefined ? { flagProvider } : {}),
-    flowSettings: flowSettings ?? null,
-    globalSettings: globalSettings ?? null,
-    registry: defaultRegistry,
-  });
-
-  if (resolveResult.isErr()) return err(resolveResult.error);
-
-  const resolvedProvider = resolveResult.value;
-  const authResult = await resolvedProvider.authenticate();
-  if (authResult.isErr()) return err(authResult.error);
-
-  return ok({ resolvedProvider, authState: authResult.value });
+    return ok({ resolvedProvider: provider, authState });
+  } catch (caught) {
+    if (caught instanceof PipelineError) return err(caught);
+    throw caught;
+  }
 }
 
 /**
  * Load a flow package, resolve a provider, and authenticate.
- * Returns the first error encountered; settings failures are non-fatal.
+ * Returns the first error encountered. Settings IO failures are propagated as
+ * typed errors rather than silently swallowed.
  */
 export async function loadFlowAndAuth({
   provider: flagProvider,

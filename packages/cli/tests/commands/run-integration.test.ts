@@ -24,6 +24,7 @@ import {
   mockLoadGlobalSettings,
   mockParseInputFromArgv,
   mockRegisterDefaultProviders,
+  mockResolveAndAuthenticate,
   mockResolveProvider,
   registryRef,
   runDirRef,
@@ -128,6 +129,10 @@ beforeEach(async () => {
   mockLoadGlobalSettings.mockResolvedValue(ok(null));
   mockLoadFlowSettings.mockResolvedValue(ok(null));
   mockResolveProvider.mockReturnValue(ok(provider));
+  mockResolveAndAuthenticate.mockResolvedValue({
+    provider,
+    authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+  });
 
   const flow = makeFixtureFlow();
   mockLoadFlow.mockResolvedValue(ok({ flow, dir: flowDir, pkg: {}, source: 'path' as const }));
