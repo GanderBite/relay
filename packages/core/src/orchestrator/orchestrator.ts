@@ -1176,6 +1176,14 @@ export class Orchestrator {
               attempt,
               abortSignal: abortController.signal,
               logger: stepLogger,
+              input: inputVars,
+              // Handoffs are not auto-injected into script template context yet;
+              // a future change will load `contextFrom` for script steps the
+              // way prompt steps do. Pass an empty record so {{handoff_id}}
+              // references render to empty rather than throwing.
+              handoffs: {},
+              flowDir,
+              handoffsDir: join(runDir, 'handoffs'),
             });
           case 'branch':
             return executeBranch(step, {

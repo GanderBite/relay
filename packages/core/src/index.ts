@@ -229,6 +229,7 @@ export type {
   TerminalStep,
   TerminalStepSpec,
 } from './flow/types.js';
+export { isScriptEnvFromSpec } from './flow/types.js';
 /** Union of error types returned by `HandoffStore.write`. */
 export type { WriteError } from './handoffs.js';
 /**

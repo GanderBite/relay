@@ -2,6 +2,7 @@ import { FlowDefinitionError, toFlowDefError } from '../../errors.js';
 import { detectShellMetachars, shellMetacharErrorMessage } from '../../orchestrator/exec/shlex.js';
 import { scriptStepSpecSchema } from '../schemas.js';
 import type { ScriptStepSpec } from '../types.js';
+import { isScriptEnvFromSpec } from '../types.js';
 
 /**
  * The shape returned by the script builder before the flow compiler assigns an
@@ -25,6 +26,16 @@ export type ScriptStepBuilderInput = Omit<ScriptStepSpec, 'id' | 'kind'>;
 export function scriptStep(spec: ScriptStepBuilderInput): ScriptStepBuilderOutput {
   const result = scriptStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'script' });
   if (!result.success) throw toFlowDefError(result.error, 'invalid script step');
+
+  for (const [key, value] of Object.entries(spec.env ?? {})) {
+    if (isScriptEnvFromSpec(value)) {
+      if (!value.from.startsWith('input.') && !value.from.startsWith('handoff.')) {
+        throw new FlowDefinitionError(
+          `env key "${key}": from "${value.from}" must start with 'input.' or 'handoff.'`,
+        );
+      }
+    }
+  }
 
   if (typeof spec.run === 'string') {
     const meta = detectShellMetachars(spec.run);

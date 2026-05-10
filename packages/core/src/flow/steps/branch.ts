@@ -2,6 +2,7 @@ import { FlowDefinitionError, toFlowDefError } from '../../errors.js';
 import { detectShellMetachars, shellMetacharErrorMessage } from '../../orchestrator/exec/shlex.js';
 import { branchStepSpecSchema } from '../schemas.js';
 import type { BranchStepSpec } from '../types.js';
+import { isScriptEnvFromSpec } from '../types.js';
 
 /**
  * The shape returned by the branch builder before the flow compiler assigns an
@@ -25,6 +26,16 @@ export type BranchStepBuilderInput = Omit<BranchStepSpec, 'id' | 'kind'>;
 export function branchStep(spec: BranchStepBuilderInput): BranchStepBuilderOutput {
   const result = branchStepSpecSchema.safeParse({ id: '_', ...spec, kind: 'branch' });
   if (!result.success) throw toFlowDefError(result.error, 'invalid branch step');
+
+  for (const [key, value] of Object.entries(spec.env ?? {})) {
+    if (isScriptEnvFromSpec(value)) {
+      if (!value.from.startsWith('input.') && !value.from.startsWith('handoff.')) {
+        throw new FlowDefinitionError(
+          `env key "${key}": from "${value.from}" must start with 'input.' or 'handoff.'`,
+        );
+      }
+    }
+  }
 
   if (typeof spec.run === 'string') {
     const meta = detectShellMetachars(spec.run);

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { StepFailureError } from '../../errors.js';
 import type { ScriptStepSpec } from '../../flow/types.js';
 import type { Logger } from '../../logger.js';
+import { renderTemplate } from '../../template.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { runProcess } from './process.js';
 import { splitShell } from './shlex.js';
@@ -14,6 +15,18 @@ export interface ScriptExecContext {
   attempt: number;
   abortSignal: AbortSignal;
   logger: Logger;
+  // Flow input record templated into `run` argv via {{input.x}}. Plain object
+  // when the flow declared no input schema or the input was non-object.
+  input: Record<string, unknown>;
+  // Loaded handoff values keyed by handoff id. Spread into the template root
+  // so authors can reference {{my_handoff.field}} in run argv.
+  handoffs: Record<string, unknown>;
+  // Flow package directory — exposed as {{flowDir}} so scripts can address
+  // bundled helper paths under the flow's own tree.
+  flowDir: string;
+  // Per-run handoffs directory (typically <runDir>/handoffs) — exposed as
+  // {{handoffsDir}} so scripts can read raw handoff files when needed.
+  handoffsDir: string;
 }
 
 export interface ScriptStepResult {
@@ -29,7 +42,33 @@ export async function executeScript(
 ): Promise<ScriptStepResult> {
   const { runDir, runId, stepId, attempt, abortSignal, logger } = ctx;
 
-  const rawArgs = Array.isArray(step.run) ? step.run : splitShell(step.run);
+  // Template context for run argv. `input` is namespaced (`{{input.repo}}`)
+  // while handoff values are spread at the root so authors can reference
+  // `{{my_handoff_id}}` directly — matching the prompt-step convention.
+  const templateCtx: Record<string, unknown> = {
+    input: ctx.input,
+    ...ctx.handoffs,
+    runDir: ctx.runDir,
+    flowDir: ctx.flowDir,
+    handoffsDir: ctx.handoffsDir,
+  };
+
+  const renderOrThrow = (raw: string): string => {
+    const rendered = renderTemplate(raw, templateCtx);
+    if (rendered.isErr()) {
+      throw new StepFailureError(
+        `step "${stepId}" run template render failed: ${rendered.error.message}`,
+        stepId,
+        attempt,
+        { runId },
+      );
+    }
+    return rendered.value;
+  };
+
+  const rawArgs = Array.isArray(step.run)
+    ? step.run.map(renderOrThrow)
+    : splitShell(renderOrThrow(step.run));
   const [cmd, ...args] = rawArgs;
   if (cmd === undefined) {
     throw new StepFailureError(`step "${stepId}" has an empty run command`, stepId, attempt, {

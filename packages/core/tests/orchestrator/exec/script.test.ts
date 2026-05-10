@@ -29,6 +29,10 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
       logger: createLogger({ flowName: 'f', runId: 'r' }),
       abortSignal: new AbortController().signal,
       attempt: 1,
+      input: {},
+      handoffs: {},
+      flowDir: tmp,
+      handoffsDir: join(tmp, 'handoffs'),
     };
   }
 

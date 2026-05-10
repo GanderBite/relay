@@ -13,6 +13,15 @@ export interface ScriptEnvFromSpec {
 export type ScriptEnvValueSpec = string | ScriptEnvFromSpec;
 
 /**
+ * Type guard that narrows a `ScriptEnvValueSpec` to `ScriptEnvFromSpec`.
+ * Used by the runtime resolver and the builder validation loop to distinguish
+ * dynamic from-path references from static string literals.
+ */
+export function isScriptEnvFromSpec(v: ScriptEnvValueSpec): v is ScriptEnvFromSpec {
+  return typeof v === 'object';
+}
+
+/**
  * The minimum fields shared by every step type.
  * Each per-kind spec explicitly opts in to the additional fields (retry,
  * timeout, contextFrom, onFail, etc.) that apply to it — nothing is silently
