@@ -19,6 +19,8 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { AnswerMap, AwaitingInput, Question, RunState } from '@ganderbite/relay-core';
 import {
+  askAnswerHandoffKey,
+  askAnswerHandoffPath,
   atomicWriteJson,
   loadState,
   Orchestrator,
@@ -30,21 +32,6 @@ import { gray, red, yellow } from '../color.js';
 import { EXIT_CODES } from '../exit-codes.js';
 
 // ---------------------------------------------------------------------------
-// Key construction — mirrors askAnswerHandoffKey in core/orchestrator/exec/ask.ts
-// but replicated here because HandoffStore.write rejects ids starting with '_'.
-// We write directly via atomicWriteJson so the orchestrator's executeAsk can
-// read the file on the next resume sweep.
-// ---------------------------------------------------------------------------
-
-function askAnswerHandoffKey(stepId: string): string {
-  return `__ask_${stepId}__`;
-}
-
-function answerHandoffPath(runDir: string, stepId: string): string {
-  return join(runDir, 'handoffs', `${askAnswerHandoffKey(stepId)}.json`);
-}
-
-// ---------------------------------------------------------------------------
 // Interactive prompting helpers
 // ---------------------------------------------------------------------------
 
@@ -54,7 +41,7 @@ function makeReadline(): ReturnType<typeof createInterface> {
 
 async function promptText(rl: ReturnType<typeof createInterface>, label: string): Promise<string> {
   return new Promise((resolve) => {
-    rl.question(`  ${label}: `, (answer) => resolve(answer));
+    rl.question(`${SYMBOLS.dot} ${label}: `, (answer) => resolve(answer));
   });
 }
 
@@ -100,7 +87,7 @@ async function askQuestion(rl: ReturnType<typeof createInterface>, q: Question):
     }
 
     case 'select': {
-      process.stdout.write(`  ${q.label}\n`);
+      process.stdout.write(`${SYMBOLS.dot} ${q.label}\n`);
       q.options.forEach((opt, i) => {
         process.stdout.write(`    ${i + 1}. ${opt}\n`);
       });
@@ -116,7 +103,7 @@ async function askQuestion(rl: ReturnType<typeof createInterface>, q: Question):
     }
 
     case 'multiselect': {
-      process.stdout.write(`  ${q.label}\n`);
+      process.stdout.write(`${SYMBOLS.dot} ${q.label}\n`);
       q.options.forEach((opt, i) => {
         process.stdout.write(`    ${i + 1}. ${opt}\n`);
       });
@@ -299,7 +286,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   // HandoffStore.write rejects. The file lands at the exact same path that
   // HandoffStore.read (in executeAsk) resolves to, so the orchestrator's
   // resume sweep picks it up correctly.
-  const handoffPath = answerHandoffPath(runDir, pausedStepId);
+  const handoffPath = askAnswerHandoffPath(runDir, pausedStepId);
   const writeResult = await atomicWriteJson(handoffPath, answers);
   if (writeResult.isErr()) {
     process.stderr.write(
