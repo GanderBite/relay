@@ -149,6 +149,7 @@ export async function listAction(_opts: Record<string, unknown> = {}): Promise<v
   const result = await loadGlobalSettings();
 
   if (result.isErr()) {
+    // usage-error: formatError does not apply — settings I/O error is not a PipelineError type
     process.stderr.write(`${red(SYMBOLS.fail)} failed to load settings: ${result.error.message}\n`);
     process.exit(1);
   }
@@ -189,6 +190,7 @@ export async function getAction(key: string, _opts: Record<string, unknown> = {}
   const result = await loadGlobalSettings();
 
   if (result.isErr()) {
+    // usage-error: formatError does not apply — settings I/O error is not a PipelineError type
     process.stderr.write(`${red(SYMBOLS.fail)} failed to load settings: ${result.error.message}\n`);
     process.exit(1);
   }
@@ -221,6 +223,7 @@ export async function setAction(
 
   const coerced = coerceValue(key, rawValue);
   if (!coerced.ok) {
+    // usage-error: formatError does not apply — invalid config value is not a PipelineError type
     process.stderr.write(`${red(SYMBOLS.fail)} invalid value for ${key}: ${coerced.reason}\n`);
     process.exit(1);
   }
@@ -228,6 +231,7 @@ export async function setAction(
   // Load existing settings (null → treat as empty object).
   const loadResult = await loadGlobalSettings();
   if (loadResult.isErr()) {
+    // usage-error: formatError does not apply — settings I/O error is not a PipelineError type
     process.stderr.write(
       `${red(SYMBOLS.fail)} failed to load settings: ${loadResult.error.message}\n`,
     );
@@ -244,6 +248,7 @@ export async function setAction(
 
   const writeResult = await atomicWriteJson(settingsPath, merged);
   if (writeResult.isErr()) {
+    // usage-error: formatError does not apply — settings I/O error is not a PipelineError type
     process.stderr.write(
       `${red(SYMBOLS.fail)} failed to write settings: ${writeResult.error.message}\n`,
     );
@@ -258,6 +263,7 @@ export async function setAction(
 // ---------------------------------------------------------------------------
 
 function printUnknownKey(key: string): void {
+  // usage-error: formatError does not apply — invalid CLI argument, not a PipelineError type
   process.stderr.write(`${red(SYMBOLS.fail)} unknown key '${key}'\n`);
   process.stderr.write('\n');
   process.stderr.write(`  valid keys: ${VALID_KEYS.join(', ')}\n`);

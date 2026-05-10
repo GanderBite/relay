@@ -233,6 +233,7 @@ function printFixtureResult(result: FixtureResult): void {
   if (result.passed) {
     process.stdout.write(` ${green(SYMBOLS.ok)} ${namePadded}\n`);
   } else {
+    // usage-error: formatError does not apply — fixture test result display, not a PipelineError type
     process.stdout.write(` ${red(SYMBOLS.fail)} ${namePadded}\n`);
     if (result.reason !== undefined) {
       process.stdout.write(`     ${result.reason}\n`);

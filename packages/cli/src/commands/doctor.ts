@@ -59,6 +59,7 @@ function okRow(label: string, value: string): string {
 }
 
 function failRow(label: string, value: string): string {
+  // usage-error: formatError does not apply — display helper for doctor check rows, not a PipelineError type
   return red(` ${SYMBOLS.fail} ${label.padEnd(LABEL_WIDTH)}${value}`);
 }
 
@@ -182,6 +183,7 @@ async function authProbeRow(provider: Provider): Promise<CheckResult> {
   const name = provider.name.padEnd(PROVIDER_NAME_WIDTH);
 
   if (result.isErr()) {
+    // usage-error: formatError does not apply — auth probe check row display, not a PipelineError type
     return {
       line: red(`  ${SYMBOLS.fail} ${name}${DOT} ${result.error.message}`),
       blocked: true,
@@ -237,12 +239,14 @@ async function checkResolver(
   const flowSettingsResult = await loadFlowSettings(flowDir);
 
   if (globalResult.isErr()) {
+    // usage-error: formatError does not apply — settings load error displayed as a check row, not a PipelineError type
     return {
       lines: [red(`  ${SYMBOLS.fail} ${globalResult.error.message}`)],
       blocked: true,
     };
   }
   if (flowSettingsResult.isErr()) {
+    // usage-error: formatError does not apply — settings load error displayed as a check row, not a PipelineError type
     return {
       lines: [red(`  ${SYMBOLS.fail} ${flowSettingsResult.error.message}`)],
       blocked: true,
@@ -263,6 +267,7 @@ async function checkResolver(
         blocked: true,
       };
     }
+    // usage-error: formatError does not apply — provider resolution error displayed as a check row, not a PipelineError type
     return {
       lines: [red(`  ${SYMBOLS.fail} ${resolved.error.message}`)],
       blocked: true,

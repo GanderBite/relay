@@ -128,6 +128,7 @@ function statusSymbol(status: FlowStatus | string): string {
     case 'succeeded':
       return green(SYMBOLS.ok);
     case 'failed':
+      // usage-error: formatError does not apply — status icon display helper, not a PipelineError type
       return red(SYMBOLS.fail);
     case 'aborted':
       return gray(SYMBOLS.cancelled);

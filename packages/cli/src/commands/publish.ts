@@ -112,6 +112,7 @@ export default async function publishCommand(args: unknown[], opts: unknown): Pr
   const rawPath = typeof args[0] === 'string' ? args[0].trim() : '';
 
   if (rawPath === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(red(`${SYMBOLS.fail} usage: relay publish <path> [--dry-run]`) + '\n');
     process.exit(1);
   }
@@ -133,6 +134,7 @@ export default async function publishCommand(args: unknown[], opts: unknown): Pr
   const lintResult = await lintRacePackage(dir);
 
   if (lintResult.isErr()) {
+    // usage-error: formatError does not apply — lint failure is not a PipelineError type
     process.stderr.write(red(` ${SYMBOLS.fail} lint failed: ${lintResult.error.message}`) + '\n');
     process.stderr.write('\n');
     process.stderr.write(`  → check the directory exists: relay publish <path>\n`);
@@ -148,6 +150,7 @@ export default async function publishCommand(args: unknown[], opts: unknown): Pr
 
   // Print errors (blocking)
   for (const e of report.errors) {
+    // usage-error: formatError does not apply — lint finding display is not a PipelineError type
     printFinding(red(` ${SYMBOLS.fail} `), e);
   }
 
@@ -193,6 +196,7 @@ export default async function publishCommand(args: unknown[], opts: unknown): Pr
             ? buildErr.message
             : String(buildErr);
 
+      // usage-error: formatError does not apply — build subprocess failure is not a PipelineError type
       process.stderr.write(red(` ${SYMBOLS.fail} build failed`) + '\n');
       if (stderr.trim().length > 0) {
         process.stderr.write(gray(stderr.trim()) + '\n');
@@ -242,6 +246,7 @@ export default async function publishCommand(args: unknown[], opts: unknown): Pr
           ? publishErr.message
           : String(publishErr);
 
+    // usage-error: formatError does not apply — npm publish failure is not a PipelineError type
     process.stdout.write(`  ${red(SYMBOLS.fail)}  publish failed\n`);
     if (stderr.trim().length > 0) {
       const lines = stderr.trim().split('\n');

@@ -75,7 +75,8 @@ async function discoverFlows(flowsDir: string): Promise<string[] | null> {
 // Single-flow upgrade
 // ---------------------------------------------------------------------------
 
-interface UpgradeOutcome {
+/** Exported for testing. */
+export interface UpgradeOutcome {
   name: string;
   status: 'updated' | 'current' | 'failed';
   before: string;
@@ -125,11 +126,14 @@ const NAME_COL = 22;
  *   current:   "  ·  <name>  v0.1.0 → v0.1.0 (up to date)"  (gray)
  *   downgrade: "  ✓  <name>  v0.1.1 → v0.1.0"   (red arrow + old ver)
  *   failed:    "  ✕  <name>  failed: <reason>"   (red)
+ *
+ * Exported for testing.
  */
-function renderOutcome(outcome: UpgradeOutcome): string {
+export function renderOutcome(outcome: UpgradeOutcome): string {
   const namePad = outcome.name.padEnd(NAME_COL);
 
   if (outcome.status === 'failed') {
+    // usage-error: formatError does not apply — upgrade outcome display helper, not a PipelineError type
     const reason = outcome.reason ?? 'unknown error';
     return `  ${red(SYMBOLS.fail)}  ${namePad}${red(`failed: ${reason}`)}`;
   }

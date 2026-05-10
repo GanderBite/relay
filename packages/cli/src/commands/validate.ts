@@ -24,6 +24,7 @@ export default async function validateCommand(args: unknown[], _opts: unknown): 
   const nameOrPath = typeof args[0] === 'string' ? args[0] : '';
 
   if (nameOrPath === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(red(`${SYMBOLS.fail}  usage: relay validate <flow>`) + '\n');
     process.exit(EXIT_CODES.runner_failure);
   }

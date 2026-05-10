@@ -242,6 +242,7 @@ export default async function dryRunCommand(args: unknown[], _opts: unknown): Pr
   const inputArgv: string[] = stringArgs.slice(1);
 
   if (nameOrPath === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(
       red(`${SYMBOLS.fail}  usage: relay dry-run <flow> [input options...]`) + '\n',
     );
@@ -266,6 +267,7 @@ export default async function dryRunCommand(args: unknown[], _opts: unknown): Pr
   // Step 2 — parse input from remaining argv. Failure exits 2.
   const parseResult = parseInputFromArgv(flow.input, inputArgv);
   if (parseResult.isErr()) {
+    // usage-error: formatError does not apply — input parse errors are not PipelineError types
     process.stderr.write(red(`${SYMBOLS.fail}  ${parseResult.error.message}`) + '\n');
     process.exit(EXIT_CODES.definition_error);
   }

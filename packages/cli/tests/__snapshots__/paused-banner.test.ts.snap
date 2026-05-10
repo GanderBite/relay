@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderPausedBanner — top-level ask pause (awaitingInput, no loop) > shows "answer: relay answer <runId>" instead of resume hint 1`] = `
+"^C
+
+●─▶●─▶●─▶●  my-flow · run-xyz  (paused)
+
+ · gather          awaiting input
+ ○ process         not started
+
+state saved. $0.0000 spent.
+
+answer: relay answer run-xyz
+"
+`;
+
+exports[`renderPausedBanner — top-level pause (Ctrl-C, no ask) > renders header, step grid, and resume hint when no awaitingInput 1`] = `
+"^C
+
+●─▶●─▶●─▶●  codebase-discovery · f9c3a2  (paused)
+
+ ✓ inventory       sonnet     2.1s     $0.0050
+ ⊘ entities        cancelled mid-step (turn 2)
+ ○ report          not started
+
+state saved. $0.0050 spent.
+
+resume: relay resume f9c3a2
+"
+`;

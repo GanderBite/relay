@@ -172,6 +172,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   // ---- (1) Parse runId ----
   const runId = typeof args[0] === 'string' ? args[0] : undefined;
   if (runId === undefined || runId.trim() === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(red(`  ${SYMBOLS.fail} relay answer requires a run id`) + '\n');
     process.stderr.write(gray('  relay runs') + '\n');
     process.exit(1);
@@ -184,9 +185,11 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   if (stateResult.isErr()) {
     const e = stateResult.error;
     if (e instanceof StateNotFoundError) {
+      // usage-error: formatError does not apply — StateNotFoundError is not a PipelineError type
       process.stderr.write(red(`  ${SYMBOLS.fail} no run found at ${runId}`) + '\n');
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     } else {
+      // usage-error: formatError does not apply — generic I/O error reading state, no PipelineError type
       process.stderr.write(
         red(`  ${SYMBOLS.fail} could not read run state for ${runId}: ${e.message}`) + '\n',
       );
@@ -226,6 +229,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
 
   if (pausedStepId === undefined) {
+    // usage-error: formatError does not apply — corrupt/unexpected state shape, not a PipelineError type
     process.stderr.write(
       red(`  ${SYMBOLS.fail} run ${runId} is paused but has no awaiting step`) + '\n',
     );
@@ -244,11 +248,13 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     try {
       parsed = JSON.parse(options.json);
     } catch {
+      // usage-error: formatError does not apply — bad CLI flag value, not a PipelineError type
       process.stderr.write(red(`  ${SYMBOLS.fail} --json value is not valid JSON`) + '\n');
       process.exit(1);
     }
 
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      // usage-error: formatError does not apply — bad CLI flag value shape, not a PipelineError type
       process.stderr.write(red(`  ${SYMBOLS.fail} --json value must be a JSON object`) + '\n');
       process.exit(1);
     }
@@ -257,6 +263,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
     const missing = collectMissingRequired(questions, answers);
     if (missing.length > 0) {
+      // usage-error: formatError does not apply — missing required answer fields, not a PipelineError type
       process.stderr.write(
         red(`  ${SYMBOLS.fail} missing answers for: ${missing.join(', ')}`) + '\n',
       );
@@ -314,6 +321,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
   const writeResult = await atomicWriteJson(handoffPath, answers);
   if (writeResult.isErr()) {
+    // usage-error: formatError does not apply — AtomicWriteError from atomicWriteJson is not a PipelineError type
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not write answer handoff: ${writeResult.error.message}`) + '\n',
     );
@@ -326,6 +334,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   const resumeResult = machine.resumePausedStep(pausedStepId);
   if (resumeResult.isErr()) {
+    // usage-error: formatError does not apply — StateMachine transition error is not a PipelineError type
     process.stderr.write(
       red(
         `  ${SYMBOLS.fail} could not transition step ${pausedStepId} to pending: ${resumeResult.error.message}`,
@@ -336,6 +345,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   const saveResult = await machine.save();
   if (saveResult.isErr()) {
+    // usage-error: formatError does not apply — AtomicWriteError from machine.save is not a PipelineError type
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not persist run state: ${saveResult.error.message}`) + '\n',
     );
@@ -363,6 +373,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
       process.stdout.write(`  ${SYMBOLS.ok} run ${runId} completed\n`);
     } else {
       // failed or aborted
+      // usage-error: formatError does not apply — run terminal status (failed/aborted) is not a PipelineError type
       process.stderr.write(
         red(`  ${SYMBOLS.fail} run ${runId} ${result.status} after resume`) + '\n',
       );
@@ -371,6 +382,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     }
   } catch (caught) {
     const msg = caught instanceof Error ? caught.message : String(caught);
+    // usage-error: formatError does not apply — unknown thrown value from orchestrator.resume, no PipelineError type
     process.stderr.write(red(`  ${SYMBOLS.fail} resume error: ${msg}`) + '\n');
     exitCode = 1;
   }

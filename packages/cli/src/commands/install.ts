@@ -269,6 +269,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   const rawArg = typeof args[0] === 'string' ? args[0].trim() : '';
 
   if (rawArg === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(red(`${SYMBOLS.fail} usage: relay install <flow>[@<version>]`) + '\n');
     process.exit(1);
   }
@@ -408,6 +409,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
             : buildErr instanceof Error
               ? buildErr.message
               : String(buildErr);
+        // usage-error: formatError does not apply — build subprocess failure is not a PipelineError type
         process.stderr.write(red(` ${SYMBOLS.fail} build failed: ${msg.trim()}`) + '\n');
         process.exit(1);
       }
@@ -432,6 +434,7 @@ export default async function installCommand(args: unknown[], _opts: unknown): P
   }
 
   if (validationError !== null) {
+    // usage-error: formatError does not apply — flow validation error is not a PipelineError type
     process.stdout.write(red(` ${SYMBOLS.fail} validation failed: ${validationError}`) + '\n');
     process.exit(2);
   }

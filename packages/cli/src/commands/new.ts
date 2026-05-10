@@ -56,6 +56,7 @@ function printModeA(): void {
 }
 
 function printInvalidName(name: string): void {
+  // usage-error: formatError does not apply — invalid CLI argument, not a PipelineError type
   process.stderr.write(
     `${red(`${SYMBOLS.fail} invalid flow name: "${name}"`)}\n` +
       '\n' +
@@ -84,6 +85,7 @@ function printModeB(
   if (installed) {
     lines.push(` ${green(SYMBOLS.ok)} installed dev dependencies`);
   } else {
+    // usage-error: formatError does not apply — npm install failure is not a PipelineError type
     lines.push(` ${red(SYMBOLS.fail)} could not install dev dependencies`);
     lines.push('');
     lines.push(`  run: cd ${name} && npm install`);
@@ -119,6 +121,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
   // Mode B: skill not installed, or --template was passed.
   const templateRaw = options.template ?? 'blank';
   if (!isTemplateId(templateRaw)) {
+    // usage-error: formatError does not apply — invalid CLI argument, not a PipelineError type
     process.stderr.write(
       `${red(`${SYMBOLS.fail} unknown template: "${templateRaw}"`)}\n` +
         '\n' +
@@ -142,6 +145,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
   if (result.isErr()) {
     const e = result.error;
     if (e.kind === 'file-exists') {
+      // usage-error: formatError does not apply — scaffold I/O error is not a PipelineError type
       process.stderr.write(
         `${red(`${SYMBOLS.fail} directory already exists: ${e.path}`)}\n` +
           '\n' +
@@ -151,6 +155,7 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
       );
       process.exit(EXIT_CODES.runner_failure);
     } else if (e.kind === 'template-not-found') {
+      // usage-error: formatError does not apply — scaffold error is not a PipelineError type
       process.stderr.write(
         `${red(`${SYMBOLS.fail} template not found: "${e.template}"`)}\n` +
           '\n' +
@@ -158,10 +163,12 @@ export default async function newCommand(args: unknown[], opts: unknown): Promis
       );
       process.exit(EXIT_CODES.definition_error);
     } else if (e.kind === 'missing-token') {
+      // usage-error: formatError does not apply — scaffold template error is not a PipelineError type
       process.stderr.write(`${red(`${SYMBOLS.fail} missing token ${e.token} in ${e.path}`)}\n`);
       process.exit(EXIT_CODES.definition_error);
     } else {
       // e.kind === 'io-error'
+      // usage-error: formatError does not apply — scaffold I/O error is not a PipelineError type
       const msg = e.cause instanceof Error ? e.cause.message : String(e.cause);
       process.stderr.write(`${red(`${SYMBOLS.fail} scaffold failed: ${msg}`)}\n`);
       process.exit(EXIT_CODES.runner_failure);

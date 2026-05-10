@@ -69,8 +69,10 @@ function fmtUsd(usd: number): string {
 /**
  * Find the first step in topoOrder that is not succeeded/skipped.
  * This is the "picking up from:" step.
+ *
+ * Exported for testing.
  */
-function firstPendingStepId(
+export function firstPendingStepId(
   topoOrder: readonly string[],
   steps: Record<string, StepState>,
 ): string {
@@ -235,6 +237,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // ---- (1) Parse runId ----
   const runId = typeof args[0] === 'string' ? args[0] : undefined;
   if (runId === undefined || runId.trim() === '') {
+    // usage-error: formatError does not apply — missing argument is not a PipelineError type
     process.stderr.write(red(`  ${SYMBOLS.fail} relay resume requires a run id`) + '\n');
     process.stderr.write(gray('  relay runs') + '\n');
     process.exit(1);
@@ -247,9 +250,11 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   if (stateResult.isErr()) {
     const e = stateResult.error;
     if (e instanceof StateNotFoundError) {
+      // usage-error: formatError does not apply — StateNotFoundError is not a PipelineError type
       process.stderr.write(red(`  ${SYMBOLS.fail} no resumable run at ${runId}`) + '\n');
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     } else {
+      // usage-error: formatError does not apply — generic I/O error reading state, no PipelineError type
       process.stderr.write(
         red(`  ${SYMBOLS.fail} could not read run state for ${runId}: ${e.message}`) + '\n',
       );
@@ -288,6 +293,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // usage-error: formatError does not apply — malformed or missing flow-ref.json, not a PipelineError type
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${msg}`) + '\n',
     );
@@ -296,6 +302,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   }
 
   if (flowRef.flowPath === null) {
+    // usage-error: formatError does not apply — missing flowPath in persisted ref, not a PipelineError type
     process.stderr.write(
       red(`  ${SYMBOLS.fail} run ${runId} has no recorded flow path — cannot resume`) + '\n',
     );
@@ -306,6 +313,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // ---- (4) Load the flow module ----
   const flowResult = await loadFlow(flowRef.flowPath, process.cwd());
   if (flowResult.isErr()) {
+    // usage-error: formatError does not apply — FlowLoadError from loadFlow is surfaced via the error message directly
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not load flow for run ${runId}: ${flowResult.error.message}`) +
         '\n',

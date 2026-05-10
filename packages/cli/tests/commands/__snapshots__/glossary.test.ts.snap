@@ -1,0 +1,12 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`relay help glossary — output content > [GLO-005] snapshot matches full output 1`] = `
+"●─▶●─▶●─▶●  glossary
+
+flow        a named, versioned sequence of steps you can run
+step        one node in a flow (prompt, script, branch, parallel)
+handoff     the JSON one step produces and a later step consumes
+run         one execution of a flow; identified by a run id
+checkpoint  the saved state of a run after each step completes
+"
+`;
