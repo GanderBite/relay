@@ -8,6 +8,7 @@ import {
   StateTransitionError,
   StateVersionMismatchError,
 } from '../src/errors.js';
+import type { Question } from '../src/flow/question.js';
 import type { RunState } from '../src/flow/types.js';
 import { loadState, StateMachine, verifyCompatibility } from '../src/state.js';
 
@@ -149,6 +150,59 @@ describe('StateMachine — transitions + persistence', () => {
     const err = r._unsafeUnwrapErr();
     expect(err.details?.attempted).toBe('reset');
     expect(err.details?.from).toBe('succeeded');
+  });
+
+  it('[STATE-008b] pauseStep + resumePausedStep round-trip leaves attempts net-unchanged', async () => {
+    const sm = await freshInit(['ask']);
+    const questions: Question[] = [{ id: 'name', kind: 'text', label: 'What is your name?' }];
+
+    // First dispatch — startStep increments attempts pending -> running.
+    const start1 = sm.startStep('ask');
+    expect(start1.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.attempts).toBe(1);
+
+    // Pause preserves the incremented counter and flips status to paused.
+    const pauseR = sm.pauseStep('ask', questions, '2026-01-01T00:00:00.000Z');
+    expect(pauseR.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.status).toBe('paused');
+    expect(sm.getState().steps.ask.attempts).toBe(1);
+    expect(sm.getState().status).toBe('paused');
+    expect(sm.getState().awaitingInput?.stepId).toBe('ask');
+
+    // Resume decrements by 1 so the paused dispatch (which never ran the
+    // executor to completion) is no longer counted.
+    const resumeR = sm.resumePausedStep('ask');
+    expect(resumeR.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.status).toBe('pending');
+    expect(sm.getState().steps.ask.attempts).toBe(0);
+    expect(sm.getState().awaitingInput).toBeUndefined();
+
+    // Re-dispatch — startStep increments attempts back to 1, matching the
+    // count a fresh first dispatch would record (not the inflated 2 that
+    // the pre-fix behavior would have produced).
+    const start2 = sm.startStep('ask');
+    expect(start2.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.attempts).toBe(1);
+  });
+
+  it('[STATE-008c] resumePausedStep clamps attempts at zero (defensive)', async () => {
+    const sm = await freshInit(['ask']);
+    sm.startStep('ask');
+    sm.pauseStep('ask', [], '2026-01-01T00:00:00.000Z');
+    // Force-replay resumePausedStep twice. The second call would see attempts
+    // already at zero before the decrement; the Math.max guard keeps it there.
+    const r1 = sm.resumePausedStep('ask');
+    expect(r1.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.attempts).toBe(0);
+    // Re-pause from running so we can resume from a paused state where
+    // attempts is already 0 after the prior decrement (startStep would push
+    // it to 1, then pause preserves, then resume decrements to 0 again).
+    sm.startStep('ask');
+    expect(sm.getState().steps.ask.attempts).toBe(1);
+    sm.pauseStep('ask', [], '2026-01-01T00:00:00.000Z');
+    const r2 = sm.resumePausedStep('ask');
+    expect(r2.isOk()).toBe(true);
+    expect(sm.getState().steps.ask.attempts).toBe(0);
   });
 
   it('[STATE-009] markRun(aborted) sweeps dangling running steps to failed', async () => {

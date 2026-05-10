@@ -282,9 +282,12 @@ export class StateMachine {
 
   /**
    * Flip a paused interactive step back to pending so the Orchestrator can
-   * re-dispatch it on resume. Preserves `attempts` so retry budgets carry
-   * across the pause boundary, drops the `startedAt` timestamp (the next
-   * dispatch records a fresh one), and clears `awaitingInput` from the
+   * re-dispatch it on resume. Decrements `attempts` by one (clamped at zero)
+   * so the counter keeps tracking dispatches that actually invoked the
+   * executor — the paused dispatch never finished running because no answer
+   * was supplied, and the next dispatch's startStep will re-increment the
+   * counter back to where it was. Drops the `startedAt` timestamp (the next
+   * dispatch records a fresh one) and clears `awaitingInput` from the
    * run-level state when it points at this step. Caller is responsible for
    * invoking save() to persist the snapshot atomically.
    */
@@ -303,7 +306,7 @@ export class StateMachine {
     }
     const next: StepState = {
       status: 'pending',
-      attempts: step.attempts,
+      attempts: Math.max(0, step.attempts - 1),
     };
     const clearAwaiting = this.#state.awaitingInput?.stepId === id;
     const nextSteps = { ...this.#state.steps, [id]: next };
