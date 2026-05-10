@@ -119,6 +119,5 @@ vi.mock('../../src/progress.js', () => ({
 }));
 
 vi.mock('../../src/telemetry.js', () => ({
-  maybySendRunEvent: vi.fn(),
   maybeSendRunEvent: vi.fn(),
 }));
