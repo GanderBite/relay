@@ -1,17 +1,16 @@
 /**
  * Opt-in telemetry for relay run.
  *
- * Reads ~/.relay/config.json at call time. When telemetry.enabled is true,
- * POSTs one anonymized event per run to the telemetry endpoint. All failures
- * are swallowed silently — telemetry must never affect the run's exit code.
+ * Reads the telemetry key from ~/.relay/settings.json at call time. When
+ * telemetry.enabled is true, POSTs one anonymized event per run to the
+ * telemetry endpoint. All failures are swallowed silently — telemetry must
+ * never affect the run's exit code.
  *
  * No flow input data, no prompt content, no path strings are sent. The only
  * fields that tie a run to the catalog are flowName and flowVersion.
  */
 
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { loadGlobalSettings } from '@ganderbite/relay-core';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -19,7 +18,6 @@ import { join } from 'node:path';
 
 const TELEMETRY_ENDPOINT = 'https://telemetry.relay.dev/runs';
 const TELEMETRY_TIMEOUT_MS = 2_000;
-const CONFIG_PATH = join(homedir(), '.relay', 'config.json');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,27 +44,14 @@ export interface RunEvent {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true only when ~/.relay/config.json exists, is valid JSON, and
- * has telemetry.enabled set to true. Any read or parse failure returns false.
- * Synchronous so callers can guard cheaply without async overhead.
+ * Returns true only when ~/.relay/settings.json exists, is valid, and has
+ * telemetry.enabled set to true. Any read, parse, or validation failure
+ * returns false — telemetry is disabled by default.
  */
-export function isEnabled(): boolean {
-  try {
-    const raw = readFileSync(CONFIG_PATH, 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const p = parsed as Record<string, unknown>;
-      const telemetry = p['telemetry'];
-      if (telemetry !== null && typeof telemetry === 'object' && !Array.isArray(telemetry)) {
-        const t = telemetry as Record<string, unknown>;
-        return t['enabled'] === true;
-      }
-      return false;
-    }
-    return false;
-  } catch {
-    return false;
-  }
+export async function isEnabled(): Promise<boolean> {
+  const result = await loadGlobalSettings();
+  if (result.isErr()) return false;
+  return result.value?.telemetry?.enabled === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +64,7 @@ export function isEnabled(): boolean {
  * returns an error. Uses a 2-second AbortController timeout.
  */
 export async function maybeSendRunEvent(evt: RunEvent): Promise<void> {
-  if (!isEnabled()) return;
+  if (!(await isEnabled())) return;
 
   const controller = new AbortController();
   const timer = setTimeout(() => {

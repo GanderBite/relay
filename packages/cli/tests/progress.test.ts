@@ -47,7 +47,6 @@ function makeFlow(stepIds: string[]): Flow<unknown> {
     version: '1.0.0',
     input: z.object({}),
     steps,
-    stepOrder: stepIds,
     rootSteps: stepIds.slice(0, 1),
     graph: {
       successors: new Map(),
@@ -264,7 +263,7 @@ class GuardAwareDisplay extends ProgressDisplay<unknown> {
 
   constructor(runDir: string, flow: Flow<unknown>, auth: AuthInfo) {
     super(runDir, flow, auth);
-    this.#validIds = new Set(flow.stepOrder);
+    this.#validIds = new Set(flow.graph.topoOrder);
   }
 
   override updateRunnerMetrics(

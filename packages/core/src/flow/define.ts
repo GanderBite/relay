@@ -92,7 +92,6 @@ export function defineFlow<TInput>(spec: FlowInput<TInput>): Flow<TInput> {
     ...spec,
     steps,
     graph,
-    stepOrder: [...graph.topoOrder],
     rootSteps: [...graph.rootSteps],
   });
 }

@@ -89,7 +89,6 @@ function makeFlow() {
     name: 'test-flow',
     version: '0.1.0',
     input: { safeParse: (v: unknown) => ({ success: true, data: v }) },
-    stepOrder: ['step1'],
     steps: {},
     graph: { topoOrder: ['step1'], rootSteps: ['step1'], predecessors: new Map() },
   };

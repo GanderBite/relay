@@ -176,7 +176,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   const flowPath = join(flowDir, 'dist', 'flow.js');
 
   // Derive runner count and ETA from race metadata.
-  const stepCount = flow.stepOrder.length;
+  const stepCount = flow.graph.topoOrder.length;
   const flowMeta = flow as unknown as Record<string, unknown>;
   const etaMin =
     typeof flowMeta['etaMin'] === 'number' ? (flowMeta['etaMin'] as number) : stepCount * 2;
@@ -369,7 +369,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       flowVersion: flow.version,
       status: 'failure',
       durationMs: Date.now() - startMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.graph.topoOrder.length,
       totalCostUsd: 0,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -390,7 +390,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // ---------------------------------------------------------------------------
 
   if (result.status === 'succeeded') {
-    const stepRows = await buildSuccessStepRows(result.runDir, flow.stepOrder);
+    const stepRows = await buildSuccessStepRows(result.runDir, [...flow.graph.topoOrder]);
     const outputPath =
       result.artifacts.length > 0
         ? (result.artifacts[0] ?? `./.relay/runs/${result.runId}`)
@@ -418,7 +418,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       flowVersion: flow.version,
       status: 'success',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.graph.topoOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -435,21 +435,21 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       flow.name,
       result.runId,
       result.runDir,
-      flow.stepOrder,
+      flow.graph.topoOrder,
       result.pausedStepId !== undefined ? { stepId: result.pausedStepId } : undefined,
     );
     process.exit(EXIT_CODES.paused);
   } else if (result.status === 'aborted' && wasInterrupted) {
     // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
     // This is not an error: state is saved, the run can be resumed.
-    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.stepOrder);
+    await renderPausedBanner(flow.name, result.runId, result.runDir, flow.graph.topoOrder);
 
     maybeSendRunEvent({
       flowName: flow.name,
       flowVersion: flow.version,
       status: 'aborted',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.graph.topoOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),
@@ -459,7 +459,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     process.exit(130);
   } else {
     // failed or aborted (non-interactive)
-    const failureRows = await buildFailureStepRows(result.runDir, flow.stepOrder);
+    const failureRows = await buildFailureStepRows(result.runDir, [...flow.graph.topoOrder]);
     const failureBanner = renderFailureBanner({
       flowName: flow.name,
       runId: result.runId,
@@ -474,7 +474,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       flowVersion: flow.version,
       status: result.status === 'aborted' ? 'aborted' : 'failure',
       durationMs: result.durationMs,
-      stepsCount: flow.stepOrder.length,
+      stepsCount: flow.graph.topoOrder.length,
       totalCostUsd: result.cost.totalUsd,
       relayVersion,
       nodeVersion: process.version.replace(/^v/, ''),

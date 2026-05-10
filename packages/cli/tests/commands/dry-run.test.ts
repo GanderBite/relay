@@ -67,7 +67,6 @@ function makeFlowWithScriptStep(stepId: string, run: string, env?: Record<string
     name: 'my-flow',
     version: '1.0.0',
     steps: { [stepId]: step },
-    stepOrder: [stepId],
     graph: {
       topoOrder: [stepId],
       rootSteps: [stepId],
@@ -84,7 +83,6 @@ function makeFlowWithPromptStep(stepId: string, promptFile: string) {
     name: 'my-flow',
     version: '1.0.0',
     steps: { [stepId]: step },
-    stepOrder: [stepId],
     graph: {
       topoOrder: [stepId],
       rootSteps: [stepId],

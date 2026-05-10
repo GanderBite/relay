@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { GITHUB_ISSUES_URL } from '../constants.js';
 import { FlowDefinitionError } from '../errors.js';
-import { lookup } from '../util/map-utils.js';
+import { lookupOrThrow } from '../util/map-utils.js';
 import type { FlowGraph, LoopStep, Step } from './types.js';
 
 export type { FlowGraph } from './types.js';
@@ -64,7 +64,7 @@ function buildGraphInternal(
 
   for (const key of keys) {
     // Invariant: `key` was just inserted into stepMap above.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const step = lookupOrThrow(stepMap, key, '`key` was just inserted into stepMap above');
 
     if (step.dependsOn !== undefined) {
       for (const dep of step.dependsOn) {
@@ -163,7 +163,11 @@ function buildGraphInternal(
 
   const rootSteps = keys
     // Invariant: every key in `keys` was initialised in `predecessors`.
-    .filter((k) => lookup(predecessors, k)._unsafeUnwrap().size === 0)
+    .filter(
+      (k) =>
+        lookupOrThrow(predecessors, k, 'every key in `keys` was initialised in `predecessors`')
+          .size === 0,
+    )
     .sort();
 
   const entryResult = resolveEntry(stepMap, rootSteps, start);
@@ -185,8 +189,14 @@ function buildGraphInternal(
   const frozenPredecessors = new Map<string, ReadonlySet<string>>();
   for (const key of keys) {
     // Invariant: every key in `keys` was initialised in both maps.
-    frozenSuccessors.set(key, lookup(successors, key)._unsafeUnwrap());
-    frozenPredecessors.set(key, lookup(predecessors, key)._unsafeUnwrap());
+    frozenSuccessors.set(
+      key,
+      lookupOrThrow(successors, key, 'every key in `keys` was initialised in both maps'),
+    );
+    frozenPredecessors.set(
+      key,
+      lookupOrThrow(predecessors, key, 'every key in `keys` was initialised in both maps'),
+    );
   }
 
   // Compile a nested mini-graph for each loop step's body. Body steps live
@@ -196,7 +206,11 @@ function buildGraphInternal(
   if (!isBody) {
     for (const key of topoOrder) {
       // Invariant: every key in topoOrder was inserted into stepMap above.
-      const step = lookup(stepMap, key)._unsafeUnwrap();
+      const step = lookupOrThrow(
+        stepMap,
+        key,
+        'every key in topoOrder was inserted into stepMap above',
+      );
       if (step.kind !== 'loop') continue;
       const bodyResult = buildBodyGraph(step);
       if (bodyResult.isErr()) return err(bodyResult.error);
@@ -239,7 +253,11 @@ function kahnTopoSort(
   const inDegree = new Map<string, number>();
   for (const key of keys) {
     // Invariant: `key` was initialised in `predecessors` by the caller.
-    inDegree.set(key, lookup(predecessors, key)._unsafeUnwrap().size);
+    inDegree.set(
+      key,
+      lookupOrThrow(predecessors, key, '`key` was initialised in `predecessors` by the caller')
+        .size,
+    );
   }
 
   const ready = keys.filter((k) => inDegree.get(k) === 0).sort();
@@ -251,10 +269,21 @@ function kahnTopoSort(
     order.push(next);
 
     // Invariant: `next` originated from `ready`, which is seeded from `keys`.
-    const nextSuccessors = Array.from(lookup(successors, next)._unsafeUnwrap()).sort();
+    const nextSuccessors = Array.from(
+      lookupOrThrow(
+        successors,
+        next,
+        '`next` originated from `ready`, which is seeded from `keys`',
+      ),
+    ).sort();
     for (const succ of nextSuccessors) {
       // Invariant: `succ` is a key from `successors`, so it has an inDegree entry.
-      const deg = lookup(inDegree, succ)._unsafeUnwrap() - 1;
+      const deg =
+        lookupOrThrow(
+          inDegree,
+          succ,
+          '`succ` is a key from `successors`, so it has an inDegree entry',
+        ) - 1;
       inDegree.set(succ, deg);
       if (deg === 0) {
         insertSorted(ready, succ);
@@ -406,7 +435,11 @@ function buildProducerMaps(
 
   for (const key of keys) {
     // Invariant: every `key` was inserted into `stepMap` by the caller.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const step = lookupOrThrow(
+      stepMap,
+      key,
+      'every `key` was inserted into `stepMap` by the caller',
+    );
 
     const name = handoffNameOf(step);
     if (name !== undefined) {
@@ -442,14 +475,22 @@ function validateContextFrom(
 
   for (const key of keys) {
     // Invariant: every `key` was inserted into `stepMap` by the caller.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const step = lookupOrThrow(
+      stepMap,
+      key,
+      'every `key` was inserted into `stepMap` by the caller',
+    );
 
     // Only prompt steps declare `contextFrom`. Narrow before reading.
     if (step.kind !== 'prompt') continue;
     if (step.contextFrom === undefined || step.contextFrom.length === 0) continue;
 
     // Invariant: every `key` has an entry in `ancestorSets` (computed in topo order).
-    const ancestors = lookup(ancestorSets, key)._unsafeUnwrap();
+    const ancestors = lookupOrThrow(
+      ancestorSets,
+      key,
+      'every `key` has an entry in `ancestorSets` (computed in topo order)',
+    );
 
     for (const raw of step.contextFrom) {
       // Dotted ids name a handoff in a different scope (e.g. parent flow or
@@ -533,7 +574,11 @@ function validateAskQuestionSources(
   const { producers, loopBodyHandoffs } = buildProducerMaps(keys, stepMap);
 
   for (const key of keys) {
-    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const step = lookupOrThrow(
+      stepMap,
+      key,
+      'every `key` was inserted into `stepMap` by the caller',
+    );
     if (step.kind !== 'ask') continue;
     if (Array.isArray(step.questions)) continue;
 
@@ -558,7 +603,11 @@ function validateAskQuestionSources(
     }
 
     // Invariant: every `key` has an entry in `ancestorSets` (computed in topo order).
-    const ancestors = lookup(ancestorSets, key)._unsafeUnwrap();
+    const ancestors = lookupOrThrow(
+      ancestorSets,
+      key,
+      'every `key` has an entry in `ancestorSets` (computed in topo order)',
+    );
     let hasAncestorWriter = false;
     for (const writer of writers) {
       if (ancestors.has(writer)) {
@@ -592,7 +641,11 @@ function validateParallelAskQuota(
   successors: Map<string, Set<string>>,
 ): Result<void, FlowDefinitionError> {
   for (const parallelId of topoOrder) {
-    const parallel = lookup(stepMap, parallelId)._unsafeUnwrap();
+    const parallel = lookupOrThrow(
+      stepMap,
+      parallelId,
+      'every `parallelId` in topoOrder was inserted into stepMap above',
+    );
     if (parallel.kind !== 'parallel') continue;
 
     const reachable = new Set<string>();
@@ -619,7 +672,11 @@ function validateParallelAskQuota(
 
     const askIds: string[] = [];
     for (const id of reachable) {
-      const step = lookup(stepMap, id)._unsafeUnwrap();
+      const step = lookupOrThrow(
+        stepMap,
+        id,
+        'every `id` in reachable was confirmed to exist in stepMap before being added',
+      );
       if (step.kind === 'ask') {
         askIds.push(id);
         continue;

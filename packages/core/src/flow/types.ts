@@ -185,7 +185,6 @@ export interface FlowSpec<TInput> {
 
 export interface Flow<TInput> extends FlowSpec<TInput> {
   graph: FlowGraph;
-  stepOrder: string[];
   rootSteps: string[];
 }
 

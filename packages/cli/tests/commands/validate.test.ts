@@ -48,7 +48,6 @@ function makeFlow(name = 'my-flow', version = '1.0.0') {
     name,
     version,
     steps: {},
-    stepOrder: [],
     graph: { topoOrder: [], rootSteps: [], predecessors: new Map(), successors: new Map() },
     input: undefined,
   };

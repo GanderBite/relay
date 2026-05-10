@@ -244,7 +244,7 @@ export class ProgressDisplay<TInput = unknown> {
     this.#runId = runId;
     this.#runStartedAt = new Date().toISOString();
 
-    for (const runnerId of this.#flow.stepOrder) {
+    for (const runnerId of this.#flow.graph.topoOrder) {
       const step = this.#flow.steps[runnerId];
       this.#steps.set(runnerId, {
         id: runnerId,

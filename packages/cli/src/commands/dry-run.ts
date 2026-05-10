@@ -190,8 +190,8 @@ async function renderPlan(
 
   const counts: PlanCounts = { script: 0, prompt: 0, branch: 0, other: 0 };
 
-  for (let i = 0; i < flow.stepOrder.length; i++) {
-    const stepId = flow.stepOrder[i];
+  for (let i = 0; i < flow.graph.topoOrder.length; i++) {
+    const stepId = flow.graph.topoOrder[i];
     if (stepId === undefined) continue;
     const step = flow.steps[stepId];
     if (step === undefined) continue;
@@ -215,7 +215,7 @@ async function renderPlan(
     lines.push('');
   }
 
-  const total = flow.stepOrder.length;
+  const total = flow.graph.topoOrder.length;
   lines.push(
     dim(
       `${total} ${total === 1 ? 'step' : 'steps'} · ${counts.script} script · ${counts.prompt} prompt · ${counts.branch} branch`,

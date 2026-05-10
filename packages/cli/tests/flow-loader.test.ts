@@ -57,7 +57,6 @@ const flow = {
     get: (id) => undefined,
     has: (id) => false,
   },
-  stepOrder: [],
   rootSteps: [],
   input: undefined,
 };
