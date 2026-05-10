@@ -15,7 +15,7 @@ The flow emits three handoffs per iteration: `implementation` (`{ summary, files
 ## Estimated cost and duration
 
 - **Cost:** $0.10–$1.00 per run on the default sonnet model (billed to your subscription on Pro/Max). Cost scales linearly with the number of iterations.
-- **Duration:** 5–30 minutes — one to five iterations of two prompts plus one human pause each.
+- **Duration:** dominated by operator response time. Each iteration pauses on `feedback` and stays paused until you run `relay answer <runId>` — wall-clock for a full run is `iterations × (model time + your response time)`. Model time is roughly 1–3 minutes per iteration on sonnet; the rest is up to you.
 
 Update these numbers after your first few runs — the CLI prints actuals.
 
@@ -33,13 +33,19 @@ relay run {{pkgName}} --task="describe the change you want made"
 
 ### Pause and answer each iteration
 
-Each iteration of the loop pauses after `implement` and waits for you to answer one question — `comments`, a free-form note on the implementation. The CLI prints the run id and the prompt; in another terminal, answer with:
+Each iteration of the loop pauses after `implement` and waits for you to answer one question — `comments`, a free-form note on the implementation. The CLI prints the run id and the prompt; in another terminal, answer interactively with:
 
 ```bash
-relay answer <run-id> --comments "looks good, tighten the error handling"
+relay answer <runId>
 ```
 
-Leave the answer blank to approve the iteration without notes — `review` will still run and decide `continue` or `done`. The answers are published as the `feedback` handoff and read by the next `implement` iteration along with the prior `review.feedback`.
+Or pass the answer non-interactively:
+
+```bash
+relay answer <runId> --json '{"comments":"looks good, tighten the error handling"}'
+```
+
+Leave the `comments` field empty (`--json '{"comments":""}'` or hit Enter at the interactive prompt) to approve the iteration without notes — `review` will still run and decide `continue` or `done`. The answers are published as the `feedback` handoff and read by the next `implement` iteration along with the prior `review.feedback`.
 
 ## Development
 
