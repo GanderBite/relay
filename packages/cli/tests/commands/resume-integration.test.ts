@@ -22,81 +22,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// Shared mutable refs — hoisted so mock factories can read current-test values.
+// Shared harness — imports hoisted refs and registers all vi.mock factories.
 // ---------------------------------------------------------------------------
 
-const runDirRef = vi.hoisted(() => ({ current: '' }));
-const registryRef = vi.hoisted(() => ({ current: null as unknown }));
-
-// ---------------------------------------------------------------------------
-// CLI-layer stubs
-// ---------------------------------------------------------------------------
-
-const mockLoadFlow = vi.hoisted(() => vi.fn());
-const mockRegisterDefaultProviders = vi.hoisted(() => vi.fn());
-const mockLoadGlobalSettings = vi.hoisted(() => vi.fn());
-const mockLoadFlowSettings = vi.hoisted(() => vi.fn());
-const mockResolveProvider = vi.hoisted(() => vi.fn());
-
-vi.mock('@ganderbite/relay-core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
-  // Wrap the Orchestrator so that when the CLI creates `new Orchestrator({
-  // runDir })` (without a providers option), the constructor injects the
-  // per-test registry from registryRef. When the test itself calls
-  // createOrchestrator({ providers: explicitRegistry, ... }), the explicit
-  // providers take precedence (opts.providers !== undefined).
-  const WrappedOrchestrator = class extends actual.Orchestrator {
-    constructor(opts?: ConstructorParameters<typeof actual.Orchestrator>[0]) {
-      const effectiveProviders =
-        (opts as { providers?: unknown } | undefined)?.providers !== undefined
-          ? (opts as { providers: unknown }).providers
-          : (registryRef.current as InstanceType<typeof actual.ProviderRegistry>);
-      super({
-        ...(opts ?? {}),
-        providers: effectiveProviders as InstanceType<typeof actual.ProviderRegistry>,
-      });
-    }
-  };
-  return {
-    ...actual,
-    Orchestrator: WrappedOrchestrator,
-    registerDefaultProviders: () => mockRegisterDefaultProviders(),
-    loadGlobalSettings: () => mockLoadGlobalSettings(),
-    loadFlowSettings: (_dir: string) => mockLoadFlowSettings(_dir),
-    resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
-  };
-});
-
-vi.mock('../../src/flow-loader.js', () => ({
-  loadFlow: (...args: unknown[]) => mockLoadFlow(...args),
-}));
-
-vi.mock('../../src/input-parser.js', () => ({
-  parseInputFromArgv: vi.fn(),
-  normalizeArgvInput: (_argv: string[]) => ({ inputPrimary: '.', inputExtras: [] }),
-}));
-
-vi.mock('../../src/banner.js', () => ({
-  renderStartBanner: vi.fn(() => ''),
-  renderSuccessBanner: vi.fn(() => ''),
-  renderFailureBanner: vi.fn(() => ''),
-}));
-
-vi.mock('../../src/paused-banner.js', () => ({
-  renderPausedBanner: vi.fn(),
-}));
-
-vi.mock('../../src/progress.js', () => ({
-  ProgressDisplay: class MockProgress {
-    start = vi.fn();
-    stop = vi.fn();
-    updateRunnerMetrics = vi.fn();
-  },
-}));
-
-vi.mock('../../src/telemetry.js', () => ({
-  maybeSendRunEvent: vi.fn(),
-}));
+import {
+  mockLoadFlow,
+  mockLoadFlowSettings,
+  mockLoadGlobalSettings,
+  mockRegisterDefaultProviders,
+  mockResolveProvider,
+  registryRef,
+  runDirRef,
+} from './_resume-harness.js';
 
 // ---------------------------------------------------------------------------
 // Imports (after vi.mock declarations)

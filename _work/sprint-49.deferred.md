@@ -10,10 +10,5 @@ Each entry was marked `fix later` (or interpreted as such from the finding body)
 - **Why deferred:** User decision: "this is already an improvement good enough for me." The cycle/roots/context-from/compose overruns are within ~20% of the cap and not worth churn.
 - **Suggested fix:** Split `ask-questions.ts` (167 lines) into `ask-question-sources.ts` (validateAskQuestionSources + the dotted-handoff loop-body helper, ~85 lines) and `parallel-ask-quota.ts` (validateParallelAskQuota + collectLoopBodyAsks, ~80 lines), and update `compose.ts:6` to import from both. Leave the smaller overruns in place.
 
-## FLAG-11 · Integration tests rely on extensive `vi.mock(...)` factories; refactoring brittleness is acceptable
+<!-- FLAG-11 was deferred initially but later addressed: see commit that introduces packages/cli/tests/commands/_run-harness.ts and _resume-harness.ts. -->
 
-- **Severity:** FLAG
-- **File:** `packages/cli/tests/commands/run-integration.test.ts:41-95`, `packages/cli/tests/commands/resume-integration.test.ts:41-100`
-- **Section:** E.5
-- **Why deferred:** Decision field was left blank; finding body explicitly states "None for now... Defer." The pattern is consistent with the rest of the CLI test suite, and the brittleness is a future-author footgun rather than a current defect.
-- **Suggested fix:** Adopt a thin "test harness" helper that constructs the wrapped Orchestrator and the standard mock set in one call, so each new integration test does not re-derive the boilerplate.
