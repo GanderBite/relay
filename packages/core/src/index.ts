@@ -316,13 +316,6 @@ export type {
   TerminalStepResult,
 } from './orchestrator/index.js';
 /**
- * Resolves a provider via the three-tier settings chain (flag → flow settings →
- * global settings → registry) and authenticates it with a wall-clock cap.
- * Propagates settings IO failures as thrown errors — corrupt or inaccessible
- * settings files surface an actionable diagnostic rather than falling back
- * silently to `NoProviderConfiguredError`.
- */
-/**
  * `Orchestrator` drives the execution of a compiled `Flow`.
  *
  * `createOrchestrator(opts?)` is the preferred factory. A single instance may
