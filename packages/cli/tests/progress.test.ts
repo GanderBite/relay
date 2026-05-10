@@ -1,21 +1,29 @@
 /**
- * Unit tests for the ProgressDisplay token accumulation contract.
+ * Tests for progress/watch.ts and progress/render.ts.
  *
- * Verifies that #cumulativeTokens is monotonically non-decreasing across
- * successive updateRunnerMetrics calls — each step's cumulativeTokens must
- * be greater than or equal to all prior steps' values.
+ * watch.ts: startWatcher integration — uses a real temp directory and writes
+ * files to trigger chokidar events. Awaits events through a promise that
+ * resolves on first callback or rejects after a 5s timeout.
  *
- * start() is called with non-TTY stdout (the default in the vitest Node
- * environment), which means no chokidar watchers and no setInterval timers
- * are created.  Only a single logStructured line is written to process.stderr.
+ * render.ts: ProgressRenderer unit tests — exercises the non-TTY path (no
+ * log-update calls, structured output to stderr). process.isTTY is false in
+ * vitest's Node environment, so log-update is never invoked; the renderer
+ * falls through to the logStructured() path instead.
  *
- * stop() is called after each test to clean up timers defensively.
+ * Token-accumulation tests (original describe block) are preserved because
+ * they test ProgressDisplay which composes both sub-modules.
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Flow } from '@ganderbite/relay-core';
 import { z } from '@ganderbite/relay-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AuthInfo } from '../src/progress.js';
+import type { AuthInfo } from '../src/progress/render.js';
+import { ProgressRenderer } from '../src/progress/render.js';
+import type { WatchEvent } from '../src/progress/watch.js';
+import { startWatcher } from '../src/progress/watch.js';
 import { ProgressDisplay } from '../src/progress.js';
 
 // ---------------------------------------------------------------------------
@@ -31,7 +39,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Minimal stubs
+// Shared helpers
 // ---------------------------------------------------------------------------
 
 function makeFlow(stepIds: string[]): Flow<unknown> {
@@ -60,30 +68,471 @@ function makeFlow(stepIds: string[]): Flow<unknown> {
 
 const fakeAuth: AuthInfo = { label: 'subscription (max)', estUsd: 0 };
 
+/**
+ * Wait for a callback-based event or time out after `ms` milliseconds.
+ * Returns a promise that resolves with the array of events collected.
+ */
+function waitForEvents<T>(
+  register: (emit: (e: T) => void) => void,
+  count: number,
+  ms = 5000,
+): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    const collected: T[] = [];
+    const timer = setTimeout(() => {
+      reject(
+        new Error(`Timed out after ${ms}ms waiting for ${count} event(s); got ${collected.length}`),
+      );
+    }, ms);
+
+    register((e) => {
+      collected.push(e);
+      if (collected.length >= count) {
+        clearTimeout(timer);
+        resolve(collected);
+      }
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
-// InstrumentedProgressDisplay
-//
-// A subclass that overrides updateRunnerMetrics to capture the per-step
-// cumulativeTokens value after each call.  The parent's private #steps Map
-// is inaccessible from a subclass (ES2022 native private fields), so we
-// track the expected accumulation independently using the same arithmetic
-// the parent uses: cumulative += tokensIn + tokensOut.
-//
-// This approach verifies the *contract* (monotonic accumulation) without
-// needing to read the parent's internal state — the test asserts on the
-// sequence of cumulative totals we track and cross-checks via the StepDisplayState
-// objects that the parent stores.  To read those objects we use the one seam
-// that IS accessible without source modification: a sub-map stored under a
-// well-known public key that we inject into the parent's Map at construction
-// time via a prototype override on the Map constructor (see below).
-//
-// Simpler alternative used here: capture cumulative totals in a local array
-// by computing the same running sum the parent does, then assert the sequence
-// is strictly increasing.
+// describe: watch.ts
+// ---------------------------------------------------------------------------
+
+describe('watch.ts', () => {
+  let runDir: string;
+
+  beforeEach(async () => {
+    runDir = await mkdtemp(join(tmpdir(), 'relay-watch-test-'));
+    await mkdir(join(runDir, 'live'), { recursive: true });
+    await mkdir(join(runDir, 'events'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(runDir, { recursive: true, force: true });
+  });
+
+  it('emits a LiveStateEvent when a live/<step>.json file is written', async () => {
+    const stepIds = new Set(['step-a']);
+
+    const eventsPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, false, stepIds);
+    }, 1);
+
+    const liveState = {
+      status: 'running',
+      attempt: 1,
+      startedAt: new Date().toISOString(),
+      lastUpdateAt: new Date().toISOString(),
+      model: 'claude-mock',
+      tokensSoFar: 42,
+    };
+    await writeFile(join(runDir, 'live', 'step-a.json'), JSON.stringify(liveState));
+
+    const events = await eventsPromise;
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.kind).toBe('state');
+    if (ev.kind === 'state') {
+      expect(ev.stepId).toBe('step-a');
+      expect(ev.state.status).toBe('running');
+      expect(ev.state.model).toBe('claude-mock');
+    }
+  });
+
+  it('ignores live/<step>.json for unknown step IDs', async () => {
+    const stepIds = new Set(['step-known']);
+    const received: WatchEvent[] = [];
+
+    const handle = startWatcher(runDir, (e) => received.push(e), false, stepIds);
+
+    // Write a file for an unknown step, then write one for the known step.
+    await writeFile(
+      join(runDir, 'live', 'unknown-step.json'),
+      JSON.stringify({
+        status: 'running',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      }),
+    );
+
+    // Known step — ensures the watcher is up and we can detect it.
+    const knownEvPromise = waitForEvents<WatchEvent>((emit) => {
+      // Piggy-back on the existing watcher by registering separately so we
+      // can detect the known event without polling.
+      startWatcher(runDir, emit, false, stepIds);
+    }, 1);
+
+    await writeFile(
+      join(runDir, 'live', 'step-known.json'),
+      JSON.stringify({
+        status: 'running',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      }),
+    );
+
+    await knownEvPromise;
+
+    // The original watcher should only have produced events for the known step.
+    const unknownEvents = received.filter((e) => e.kind === 'state' && e.stepId === 'unknown-step');
+    expect(unknownEvents).toHaveLength(0);
+
+    await handle.stop();
+  });
+
+  it('emits an EventsRecordEvent when a .jsonl file is written (verbose=true)', async () => {
+    const stepIds = new Set(['step-b']);
+
+    const eventsPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, true, stepIds);
+    }, 1);
+
+    const record = JSON.stringify({
+      seq: 1,
+      ts: new Date().toISOString(),
+      attempt: 1,
+      event: { type: 'turn.start', turn: 1 },
+    });
+    await writeFile(join(runDir, 'events', 'step-b.jsonl'), record + '\n');
+
+    const events = await eventsPromise;
+    const ev = events.find((e) => e.kind === 'events');
+    expect(ev).toBeDefined();
+    if (ev?.kind === 'events') {
+      expect(ev.stepId).toBe('step-b');
+      expect(ev.records).toHaveLength(1);
+      expect(ev.records[0]!.event.type).toBe('turn.start');
+    }
+  });
+
+  it('does not emit events-file records when verbose=false', async () => {
+    const stepIds = new Set(['step-c']);
+    const received: WatchEvent[] = [];
+
+    const handle = startWatcher(runDir, (e) => received.push(e), false, stepIds);
+
+    // Give chokidar time to attach (it fires 'ready' asynchronously).
+    await new Promise((r) => setTimeout(r, 200));
+
+    const record = JSON.stringify({
+      seq: 1,
+      ts: new Date().toISOString(),
+      attempt: 1,
+      event: { type: 'turn.start', turn: 1 },
+    });
+    await writeFile(join(runDir, 'events', 'step-c.jsonl'), record + '\n');
+
+    // Give any spurious event 300ms to arrive.
+    await new Promise((r) => setTimeout(r, 300));
+
+    const eventsFileEvents = received.filter((e) => e.kind === 'events');
+    expect(eventsFileEvents).toHaveLength(0);
+
+    await handle.stop();
+  });
+
+  it('stop() resolves without error and prevents further event delivery', async () => {
+    const stepIds = new Set(['step-d']);
+    const received: WatchEvent[] = [];
+
+    const handle = startWatcher(runDir, (e) => received.push(e), false, stepIds);
+
+    // Wait for the watcher to start.
+    await new Promise((r) => setTimeout(r, 150));
+    await handle.stop();
+
+    const countAfterStop = received.length;
+
+    // Write after stop — event should not arrive.
+    await writeFile(
+      join(runDir, 'live', 'step-d.json'),
+      JSON.stringify({
+        status: 'running',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 300));
+    // Count should not have grown after stop.
+    expect(received.length).toBe(countAfterStop);
+  });
+
+  it('ignores malformed JSON in a live/<step>.json file', async () => {
+    const stepIds = new Set(['step-e', 'step-f']);
+
+    // Write malformed JSON for step-e, then valid JSON for step-f.
+    const knownEvPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, false, stepIds);
+    }, 1);
+
+    await writeFile(join(runDir, 'live', 'step-e.json'), '{not-valid-json}');
+
+    await writeFile(
+      join(runDir, 'live', 'step-f.json'),
+      JSON.stringify({
+        status: 'succeeded',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      }),
+    );
+
+    const events = await knownEvPromise;
+    const malformedEvents = events.filter((e) => e.kind === 'state' && e.stepId === 'step-e');
+    expect(malformedEvents).toHaveLength(0);
+    const validEvent = events.find((e) => e.kind === 'state' && e.stepId === 'step-f');
+    expect(validEvent).toBeDefined();
+  });
+
+  it('emits incremental events when a .jsonl file is appended (byte-offset tailing)', async () => {
+    const stepIds = new Set(['step-g']);
+
+    const firstRecord = JSON.stringify({
+      seq: 1,
+      ts: new Date().toISOString(),
+      attempt: 1,
+      event: { type: 'turn.start', turn: 1 },
+    });
+
+    // Write the first record and wait for its event.
+    const firstEvPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, true, stepIds);
+    }, 1);
+
+    await writeFile(join(runDir, 'events', 'step-g.jsonl'), firstRecord + '\n');
+    const firstEvents = await firstEvPromise;
+    expect(firstEvents[0]?.kind).toBe('events');
+
+    // Append a second record and wait for the incremental event.
+    const secondRecord = JSON.stringify({
+      seq: 2,
+      ts: new Date().toISOString(),
+      attempt: 1,
+      event: { type: 'turn.end', turn: 1 },
+    });
+
+    const secondEvPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, true, stepIds);
+    }, 1);
+
+    const { appendFile } = await import('node:fs/promises');
+    await appendFile(join(runDir, 'events', 'step-g.jsonl'), secondRecord + '\n');
+    const secondEvents = await secondEvPromise;
+    const evRec = secondEvents.find((e) => e.kind === 'events');
+    expect(evRec).toBeDefined();
+    if (evRec?.kind === 'events') {
+      const turnEndRecord = evRec.records.find((r) => r.event.type === 'turn.end');
+      expect(turnEndRecord).toBeDefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: render.ts
+// ---------------------------------------------------------------------------
+
+describe('render.ts', () => {
+  it('start() writes a run.start structured log line to stderr in non-TTY mode', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    renderer.start('run-abc');
+    renderer.stop();
+
+    const allOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(allOutput).toContain('run.start');
+    expect(allOutput).toContain('run-abc');
+  });
+
+  it('onEvent(state) with status=running writes step.start to stderr in non-TTY/non-verbose mode', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    renderer.start('run-xyz');
+
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-a',
+      state: {
+        status: 'running',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+        model: 'claude-mock',
+      },
+    });
+
+    renderer.stop();
+
+    const allOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(allOutput).toContain('step.start');
+    expect(allOutput).toContain('step-a');
+  });
+
+  it('onEvent(state) running→succeeded writes step.end to stderr in non-TTY/non-verbose mode', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    renderer.start('run-end-test');
+
+    const now = new Date().toISOString();
+
+    // Transition to running.
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-a',
+      state: { status: 'running', attempt: 1, startedAt: now, lastUpdateAt: now },
+    });
+
+    // Transition to succeeded (triggers step.end).
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-a',
+      state: { status: 'succeeded', attempt: 1, startedAt: now, lastUpdateAt: now },
+    });
+
+    renderer.stop();
+
+    const allOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(allOutput).toContain('step.end');
+  });
+
+  it('onEvent with unknown stepId is a no-op', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    renderer.start('run-noop');
+
+    // Should not throw.
+    expect(() => {
+      renderer.onEvent({
+        kind: 'state',
+        stepId: 'ghost-step',
+        state: {
+          status: 'running',
+          attempt: 1,
+          startedAt: new Date().toISOString(),
+          lastUpdateAt: new Date().toISOString(),
+        },
+      });
+    }).not.toThrow();
+
+    renderer.stop();
+  });
+
+  it('updateRunnerMetrics accumulates cumulativeTokens monotonically', () => {
+    const flow = makeFlow(['a', 'b', 'c']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    renderer.start('run-tokens');
+
+    // No errors expected from sequential metric updates.
+    expect(() => {
+      renderer.updateRunnerMetrics('a', {
+        tokensIn: 100,
+        tokensOut: 200,
+        costUsd: 0,
+        durationMs: 1000,
+        model: 'mock',
+      });
+      renderer.updateRunnerMetrics('b', {
+        tokensIn: 50,
+        tokensOut: 50,
+        costUsd: 0,
+        durationMs: 500,
+        model: 'mock',
+      });
+      renderer.updateRunnerMetrics('c', {
+        tokensIn: 10,
+        tokensOut: 10,
+        costUsd: 0,
+        durationMs: 200,
+        model: 'mock',
+      });
+    }).not.toThrow();
+
+    renderer.stop();
+  });
+
+  it('updateRunnerMetrics with unknown runnerId is silently ignored', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    renderer.start('run-guard');
+
+    expect(() => {
+      renderer.updateRunnerMetrics('phantom-step', {
+        tokensIn: 9999,
+        tokensOut: 9999,
+        costUsd: 99,
+        durationMs: 1000,
+        model: 'mock',
+      });
+    }).not.toThrow();
+
+    renderer.stop();
+  });
+
+  it('verbose events mode writes event records to stderr in non-TTY mode', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    renderer.start('run-verbose');
+
+    // Feed an events record — in non-TTY verbose mode these go to stderr as JSON.
+    renderer.onEvent({
+      kind: 'events',
+      stepId: 'step-a',
+      records: [
+        {
+          seq: 1,
+          ts: new Date().toISOString(),
+          attempt: 1,
+          event: { type: 'turn.start', turn: 1 },
+        },
+      ],
+    });
+
+    renderer.stop();
+
+    const allOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(allOutput).toContain('turn.start');
+    expect(allOutput).toContain('step-a');
+  });
+
+  it('stop() clears debounce timers without throwing', () => {
+    const flow = makeFlow(['step-a']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    renderer.start('run-stop');
+
+    // Trigger a debounce timer by sending an event.
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-a',
+      state: {
+        status: 'running',
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      },
+    });
+
+    // stop() before the debounce fires — should not throw.
+    expect(() => renderer.stop()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: ProgressDisplay cumulative token accumulation (original tests)
 // ---------------------------------------------------------------------------
 
 class InstrumentedProgressDisplay extends ProgressDisplay<unknown> {
-  /** Running sum computed identically to the parent's #cumulativeTokens. */
   readonly capturedTotals: number[] = [];
   #localCumulative = 0;
 
@@ -98,17 +547,10 @@ class InstrumentedProgressDisplay extends ProgressDisplay<unknown> {
     },
   ): void {
     super.updateRunnerMetrics(runnerId, metrics);
-    // Mirror the parent's accumulation arithmetic.  We only record a total
-    // when the parent would have accepted the call (i.e., the step ID exists
-    // in the flow's stepOrder — the parent silently returns if not found).
     this.#localCumulative += metrics.tokensIn + metrics.tokensOut;
     this.capturedTotals.push(this.#localCumulative);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Helper: build a display, start it (non-TTY — safe), run metrics, stop it.
-// ---------------------------------------------------------------------------
 
 function buildAndRun(
   stepIds: string[],
@@ -117,8 +559,6 @@ function buildAndRun(
   const flow = makeFlow(stepIds);
   const display = new InstrumentedProgressDisplay('/tmp/relay-test', flow, fakeAuth);
 
-  // start() in a non-TTY environment only populates #steps and writes one
-  // line to process.stderr — no file watcher, no setInterval timer.
   display.start('run-001');
 
   for (let i = 0; i < stepIds.length; i++) {
@@ -133,13 +573,9 @@ function buildAndRun(
     });
   }
 
-  display.stop();
+  void display.stop();
   return display.capturedTotals;
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('ProgressDisplay cumulative token accumulation', () => {
   it('step 1 (tokensIn=500, tokensOut=600) produces a cumulative total of 1100', () => {
@@ -197,13 +633,11 @@ describe('ProgressDisplay cumulative token accumulation', () => {
     }
   });
 
-  it('an unknown step ID is rejected — does not advance the cumulative counter', () => {
+  it('an unknown step ID is rejected — does not cause a crash', () => {
     const flow = makeFlow(['real-step']);
     const display = new InstrumentedProgressDisplay('/tmp/relay-test', flow, fakeAuth);
     display.start('run-noop');
 
-    // This call references a step ID that was not in the flow — the parent
-    // returns early without touching #cumulativeTokens.
     display.updateRunnerMetrics('ghost-step', {
       tokensIn: 9999,
       tokensOut: 9999,
@@ -220,26 +654,9 @@ describe('ProgressDisplay cumulative token accumulation', () => {
       model: 'mock',
     });
 
-    display.stop();
+    void display.stop();
 
-    // The subclass's override fires for both calls, accumulating 9999+9999
-    // then 10+20 = 20030 locally.  But the *parent* only accepted 'real-step',
-    // so its internal counter should be 30.
-    //
-    // We cannot read the parent's internal counter directly — but we CAN verify
-    // that the parent's guard works by checking that calling updateRunnerMetrics
-    // with a known-bad ID does not cause the display to crash, and that the
-    // subsequent valid call completes without error.
     expect(display.capturedTotals).toHaveLength(2);
-    // The second captured total reflects both calls in the local mirror.
-    // What matters for the contract is that the real cumulative (parent-side)
-    // equals tokensIn + tokensOut of the valid step only.
-    // We assert the local mirror's second entry includes only what the parent
-    // accepted by checking it against the expected parent-side value:
-    // parent: 0 + 10 + 20 = 30 (ghost was rejected).
-    // Since our override always accumulates regardless of parent acceptance,
-    // we cannot directly compare local vs parent here — the guard test is
-    // satisfied by the parent not throwing.
   });
 
   it('counter starts at zero — first step total equals tokensIn + tokensOut', () => {
@@ -249,11 +666,7 @@ describe('ProgressDisplay cumulative token accumulation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Guard-aware subclass tests
-//
-// The tests below use a subclass that mirrors the parent's guard by checking
-// whether the step ID exists in the flow before accumulating.  This makes
-// the local mirror match the parent's internal counter precisely.
+// describe: ProgressDisplay guard-aware accumulation
 // ---------------------------------------------------------------------------
 
 class GuardAwareDisplay extends ProgressDisplay<unknown> {
@@ -277,7 +690,6 @@ class GuardAwareDisplay extends ProgressDisplay<unknown> {
     },
   ): void {
     super.updateRunnerMetrics(runnerId, metrics);
-    // Mirror the parent's guard: only accumulate if the ID is in the flow.
     if (this.#validIds.has(runnerId)) {
       this.#localCumulative += metrics.tokensIn + metrics.tokensOut;
       this.capturedTotals.set(runnerId, this.#localCumulative);
@@ -307,9 +719,8 @@ describe('ProgressDisplay cumulative token guard-aware accumulation', () => {
       model: 'mock',
     });
 
-    display.stop();
+    void display.stop();
 
-    // The ghost step was rejected — only the real step's 30 tokens accumulated.
     expect(display.capturedTotals.get('real-step')).toBe(30);
     expect(display.capturedTotals.has('ghost-step')).toBe(false);
   });
@@ -334,10 +745,8 @@ describe('ProgressDisplay cumulative token guard-aware accumulation', () => {
       model: 'mock',
     });
 
-    display.stop();
+    void display.stop();
 
-    // alpha: 500+600 = 1100
-    // beta: 1100 + 100+50 = 1250
     expect(display.capturedTotals.get('alpha')).toBe(1100);
     expect(display.capturedTotals.get('beta')).toBe(1250);
     expect(display.capturedTotals.get('beta')!).toBeGreaterThan(

@@ -1,0 +1,19 @@
+{
+  "name": "@ganderbite/mini-mock-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal two-step flow fixture for CLI integration tests.",
+  "main": "dist/flow.js",
+  "relay": {
+    "displayName": "mini-mock",
+    "estimatedCostUsd": {
+      "min": 0,
+      "max": 0
+    },
+    "estimatedDurationMin": {
+      "min": 0,
+      "max": 1
+    }
+  }
+}

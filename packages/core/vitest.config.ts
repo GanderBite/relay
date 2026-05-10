@@ -10,7 +10,8 @@ export default defineConfig({
     hookTimeout: 10_000,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      // json-summary writes coverage/coverage-summary.json for CI gating.
+      reporter: ['text', 'html', 'json-summary'],
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.d.ts', 'src/testing/**', 'src/index.ts'],
       thresholds: { lines: 80, functions: 80 },
