@@ -56,7 +56,7 @@ export async function readMetrics(runDir: string): Promise<Map<string, RawMetric
     const entries = parseResult.success ? parseResult.data : [];
     for (const entry of entries) {
       if (typeof entry.stepId === 'string') {
-        map.set(entry.stepId, entry as unknown as RawMetrics);
+        map.set(entry.stepId, entry);
       }
     }
   } catch {
