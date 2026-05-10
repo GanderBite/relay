@@ -14,6 +14,7 @@
  */
 
 import { access } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import type { BranchStep, Flow, PromptStep, ScriptStep, Step } from '@ganderbite/relay-core';
 import { FlowDefinitionError } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from '../brand.js';
@@ -54,15 +55,21 @@ interface PlanCounts {
 // Per-step plan printers
 // ---------------------------------------------------------------------------
 
-async function printPromptStep(num: number, step: PromptStep, lines: string[]): Promise<void> {
+async function printPromptStep(
+  num: number,
+  step: PromptStep,
+  lines: string[],
+  dir: string,
+): Promise<void> {
   lines.push(
     `  ${dim(String(num).padStart(2, ' '))}  ${green(step.id.padEnd(24))}  ${dim('prompt')}`,
   );
 
   const file = step.promptFile;
+  const fullPath = isAbsolute(file) ? file : join(dir, file);
   let exists = false;
   try {
-    await access(file);
+    await access(fullPath);
     exists = true;
   } catch {
     exists = false;
@@ -104,7 +111,7 @@ function printOtherStep(num: number, step: Step, lines: string[]): void {
 // Plan renderer
 // ---------------------------------------------------------------------------
 
-async function renderPlan(flow: Flow<unknown>): Promise<string> {
+async function renderPlan(flow: Flow<unknown>, dir: string): Promise<string> {
   const lines: string[] = [];
 
   lines.push(`${MARK}  ${flow.name}  ${dim('dry-run')}`);
@@ -121,7 +128,7 @@ async function renderPlan(flow: Flow<unknown>): Promise<string> {
     const num = i + 1;
 
     if (step.kind === 'prompt') {
-      await printPromptStep(num, step, lines);
+      await printPromptStep(num, step, lines, dir);
       counts.prompt++;
     } else if (step.kind === 'script') {
       printScriptLikeStep(num, step, lines);
@@ -159,7 +166,7 @@ async function renderPlan(flow: Flow<unknown>): Promise<string> {
  * @param _opts Parsed option flags from the dispatcher (unused)
  */
 export default async function dryRunCommand(args: unknown[], _opts: unknown): Promise<void> {
-  const stringArgs = (args as unknown[]).map(String);
+  const stringArgs = args.map(String);
   const nameOrPath: string = stringArgs[0] ?? '';
   const inputArgv: string[] = stringArgs.slice(1);
 
@@ -183,7 +190,7 @@ export default async function dryRunCommand(args: unknown[], _opts: unknown): Pr
     process.exit(code);
   }
 
-  const { flow } = loadResult.value;
+  const { flow, dir } = loadResult.value;
 
   // Step 2 — parse input from remaining argv. Failure exits 2.
   const parseResult = parseInputFromArgv(flow.input, inputArgv);
@@ -193,7 +200,7 @@ export default async function dryRunCommand(args: unknown[], _opts: unknown): Pr
   }
 
   // Step 3 — render the step-by-step plan.
-  const plan = await renderPlan(flow as Flow<unknown>);
+  const plan = await renderPlan(flow as Flow<unknown>, dir);
   process.stdout.write(plan);
 
   process.exit(EXIT_CODES.success);

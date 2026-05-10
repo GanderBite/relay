@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockLoadFlow = vi.hoisted(() => vi.fn());
 const mockParseInputFromArgv = vi.hoisted(() => vi.fn());
+const mockAccess = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('../../src/flow-loader.js', () => ({
   loadFlow: (...args: unknown[]) => mockLoadFlow(...args),
@@ -40,7 +41,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
-    access: vi.fn().mockResolvedValue(undefined),
+    access: mockAccess,
   };
 });
 
@@ -186,6 +187,20 @@ describe('relay dry-run — step plan rendering', () => {
     expect(stdoutOutput).toContain('/prompts/analyze.md');
     expect(stdoutOutput).toContain('prompt');
   });
+
+  it('[DRY-007] prompt file existence is resolved against the flow dir, not cwd', async () => {
+    const flow = makeFlowWithPromptStep('review', 'prompts/review.md');
+    // The flow lives at /tmp/flow-dir; cwd is something else entirely.
+    mockLoadFlow.mockResolvedValue(ok({ flow, dir: '/tmp/flow-dir' }));
+    mockAccess.mockResolvedValue(undefined);
+
+    await expect(dryRunCommand(['my-flow'], {})).rejects.toThrow('process.exit called');
+
+    // access() must have been called with the absolute path joining dir + promptFile.
+    expect(mockAccess).toHaveBeenCalledWith('/tmp/flow-dir/prompts/review.md');
+    // The relative path is still printed for readability.
+    expect(stdoutOutput).toContain('prompts/review.md');
+  });
 });
 
 describe('relay dry-run — env secret redaction', () => {
@@ -281,15 +296,18 @@ describe('relay dry-run — error paths', () => {
     await expect(dryRunCommand(['bad-flow'], {})).rejects.toThrow('process.exit called');
 
     expect(stderrOutput).toContain('missing');
+    expect(stderrOutput).toContain('✕');
     expect(process.exit).toHaveBeenCalledWith(2);
   });
 
-  it('[DRY-031] FlowLoadError (not found) exits 1', async () => {
+  it('[DRY-031] FlowLoadError (not found) exits 1 and writes message to stderr', async () => {
     const loadErr = new FlowLoadError('flow "no-such" not found', 'FLOW_NOT_FOUND');
     mockLoadFlow.mockResolvedValue(err(loadErr));
 
     await expect(dryRunCommand(['no-such'], {})).rejects.toThrow('process.exit called');
 
+    expect(stderrOutput).toContain('not found');
+    expect(stderrOutput).toContain('✕');
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
@@ -305,7 +323,9 @@ describe('relay dry-run — error paths', () => {
   it('[DRY-033] input parse error exits 2 and writes message to stderr', async () => {
     const flow = makeFlowWithScriptStep('build', 'make');
     mockLoadFlow.mockResolvedValue(ok({ flow, dir: '/tmp/my-flow' }));
-    mockParseInputFromArgv.mockReturnValue(err(new Error('required input field "target" missing')));
+    mockParseInputFromArgv.mockReturnValue(
+      err(new FlowDefinitionError('required input field "target" missing')),
+    );
 
     await expect(dryRunCommand(['my-flow', '--target'], {})).rejects.toThrow('process.exit called');
 

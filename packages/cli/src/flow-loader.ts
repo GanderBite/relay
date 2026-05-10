@@ -10,14 +10,21 @@
  *      dist/flow.js.
  *   4. Not found — return err instructing the user to run `relay install`.
  *
- * Returns Result<LoadedFlow, FlowLoadError>.
+ * Returns Result<LoadedFlow, FlowLoadError | FlowDefinitionError>.
  * Never throws — all failure paths are captured as err().
  */
 
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Flow, Result } from '@ganderbite/relay-core';
-import { ERROR_CODES, err, ok, PipelineError, z } from '@ganderbite/relay-core';
+import {
+  ERROR_CODES,
+  err,
+  FlowDefinitionError,
+  ok,
+  PipelineError,
+  z,
+} from '@ganderbite/relay-core';
 import { looksLikePath } from './util/path.js';
 
 // ---------------------------------------------------------------------------
@@ -135,13 +142,16 @@ async function readPkg(dir: string): Promise<Record<string, unknown>> {
 async function importFlow(
   dir: string,
   source: FlowSource,
-): Promise<Result<LoadedFlow, FlowLoadError>> {
+): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError>> {
   const entryPath = join(dir, 'dist', 'flow.js');
 
   let mod: unknown;
   try {
     mod = await import(entryPath);
   } catch (importErr) {
+    if (importErr instanceof FlowDefinitionError) {
+      return err(importErr);
+    }
     const detail = importErr instanceof Error ? importErr.message : String(importErr);
     return err(
       new FlowLoadError(`failed to import flow from ${entryPath}: ${detail}`, 'FLOW_INVALID'),
@@ -184,7 +194,7 @@ async function importFlow(
 export async function loadFlow(
   nameOrPath: string,
   cwd: string,
-): Promise<Result<LoadedFlow, FlowLoadError>> {
+): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError>> {
   // ---- (1) Path-like: resolve to absolute and import directly ----
   if (looksLikePath(nameOrPath)) {
     const absPath = resolve(cwd, nameOrPath);
