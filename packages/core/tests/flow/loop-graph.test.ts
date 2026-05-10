@@ -172,7 +172,8 @@ describe('loop graph compiler', () => {
 
     it('[LOOP-015] multi-root body without start throws FlowDefinitionError', () => {
       // Two independent body steps produce two roots. Without `start` the
-      // graph compiler cannot pick an entry and must throw FlowDefinitionError.
+      // builder now rejects this at build time (inside step.loop), which still
+      // surfaces as a FlowDefinitionError within the defineFlow call expression.
       expect(() => {
         defineFlow({
           name: 'ambiguous-entry-flow',
@@ -197,6 +198,62 @@ describe('loop graph compiler', () => {
           },
         });
       }).toThrow(FlowDefinitionError);
+    });
+
+    it('[LOOP-017] start naming a non-existent body step throws synchronously from the builder', () => {
+      // step.loop(...) itself must throw before defineFlow is involved.
+      expect(() => {
+        step.loop({
+          body: {
+            a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
+            b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' }, dependsOn: ['a'] }),
+          },
+          until: { from: 'a_out', when: { decision: 'done' } },
+          maxIterations: 3,
+          start: 'nope',
+        });
+      }).toThrow(FlowDefinitionError);
+
+      let caught: unknown;
+      try {
+        step.loop({
+          body: {
+            a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
+            b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' }, dependsOn: ['a'] }),
+          },
+          until: { from: 'a_out', when: { decision: 'done' } },
+          maxIterations: 3,
+          start: 'nope',
+        });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(FlowDefinitionError);
+      expect((caught as FlowDefinitionError).message).toMatch(/nope/);
+      expect((caught as FlowDefinitionError).message).toMatch(/\ba\b/);
+      expect((caught as FlowDefinitionError).message).toMatch(/\bb\b/);
+    });
+
+    it('[LOOP-018] multi-root body without start throws synchronously from the builder, naming root ids', () => {
+      // step.loop(...) must throw before defineFlow is involved.
+      let caught: unknown;
+      try {
+        step.loop({
+          body: {
+            step_a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
+            step_b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' } }),
+          },
+          until: { from: 'b_out', when: { decision: 'done' } },
+          maxIterations: 3,
+          // No `start` and no dependsOn — two roots.
+        });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(FlowDefinitionError);
+      expect((caught as FlowDefinitionError).message).toMatch(/step_a/);
+      expect((caught as FlowDefinitionError).message).toMatch(/step_b/);
+      expect((caught as FlowDefinitionError).message).toMatch(/multiple root/);
     });
   });
 

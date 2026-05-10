@@ -80,6 +80,10 @@ function compileBodySteps(
  * - `until.from` must match the `output.handoff` of at least one prompt step
  *   in the body.
  * - `maxIterations` must be a positive integer.
+ * - `start`, when provided, must name a key that exists in `body`.
+ * - When `start` is absent and the body has no `dependsOn` edges that reduce
+ *   the roots to one, the builder rejects the ambiguous entry immediately
+ *   rather than deferring to the graph compiler.
  * - The assembled spec must pass the loopStepSpecSchema parse.
  */
 export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
@@ -133,6 +137,31 @@ export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
 
   if (!Number.isInteger(spec.maxIterations) || spec.maxIterations <= 0) {
     throw new FlowDefinitionError('loop step maxIterations must be a positive integer');
+  }
+
+  if (spec.start !== undefined && spec.body[spec.start] === undefined) {
+    throw new FlowDefinitionError(
+      `loop step start "${spec.start}" does not match a body step id. Set start to one of: ${bodyKeys.join(', ')}.`,
+    );
+  }
+
+  if (spec.start === undefined) {
+    const referencedByDependsOn = new Set<string>();
+    for (const key of bodyKeys) {
+      const s = spec.body[key];
+      if (s === undefined) continue;
+      if ('dependsOn' in s && Array.isArray(s.dependsOn)) {
+        for (const dep of s.dependsOn as string[]) {
+          referencedByDependsOn.add(dep);
+        }
+      }
+    }
+    const roots = bodyKeys.filter((k) => !referencedByDependsOn.has(k));
+    if (roots.length > 1) {
+      throw new FlowDefinitionError(
+        `loop step body has multiple root steps (${roots.join(', ')}). Add dependsOn or set start on the loop to declare the entry point.`,
+      );
+    }
   }
 
   const compiledBody = compileBodySteps(spec.body);
