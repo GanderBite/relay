@@ -33,12 +33,7 @@ import {
   resolveProvider,
   StateNotFoundError,
 } from '@ganderbite/relay-core';
-import {
-  type FailureStepRow,
-  renderFailureBanner,
-  renderSuccessBanner,
-  type SuccessStepRow,
-} from '../banner.js';
+import { renderFailureBanner, renderSuccessBanner } from '../banner.js';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
 import { exitCodeFor, formatError } from '../exit-codes.js';
@@ -46,6 +41,7 @@ import { loadFlow } from '../flow-loader.js';
 import { kvLine, STEP_NAME_WIDTH } from '../layout.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
+import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
 
 // ---------------------------------------------------------------------------
 // FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
@@ -460,23 +456,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
 
     // ---- (9) Post-resume banner ----
     if (result.status === 'succeeded') {
-      // Re-read the final state for accurate per-step timing.
-      const finalStateResult = await loadState(runDir);
-      const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
-
-      const stepRows: SuccessStepRow[] = flow.graph.topoOrder.map((runnerId) => {
-        const stepState = finalState.steps[runnerId];
-        return {
-          name: runnerId,
-          model: 'sonnet',
-          durationMs:
-            stepState?.completedAt !== undefined && stepState.startedAt !== undefined
-              ? new Date(stepState.completedAt).getTime() - new Date(stepState.startedAt).getTime()
-              : 0,
-          costUsd: 0,
-        };
-      });
-
+      const stepRows = await buildSuccessStepRows(runDir, [...flow.graph.topoOrder]);
       const outputPath = result.artifacts[0] ?? `.relay/runs/${runId}`;
 
       process.stdout.write(
@@ -496,29 +476,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       await renderPausedBanner(flowRef.flowName, runId, runDir, flow.graph.topoOrder);
       process.exit(130);
     } else {
-      // Re-read final state for accurate step statuses after the run.
-      const finalStateResult = await loadState(runDir);
-      const finalState = finalStateResult.isOk() ? finalStateResult.value : state;
-
-      const failureSteps: FailureStepRow[] = flow.graph.topoOrder.map((runnerId) => {
-        const stepState = finalState.steps[runnerId];
-        const stepStatus: FailureStepRow['status'] =
-          stepState?.status === 'succeeded'
-            ? 'succeeded'
-            : stepState?.status === 'failed'
-              ? 'failed'
-              : 'skipped';
-        return {
-          name: runnerId,
-          status: stepStatus,
-          model: 'sonnet',
-          durationMs:
-            stepState?.completedAt !== undefined && stepState.startedAt !== undefined
-              ? new Date(stepState.completedAt).getTime() - new Date(stepState.startedAt).getTime()
-              : 0,
-          costUsd: 0,
-        };
-      });
+      const failureSteps = await buildFailureStepRows(runDir, [...flow.graph.topoOrder]);
 
       process.stdout.write(
         renderFailureBanner({

@@ -25,7 +25,10 @@ import { errorRegistry } from './registry.js';
 export function exitCodeFor(err: unknown): number {
   if (err instanceof CommanderError) return err.exitCode;
   if (err instanceof PipelineError) {
-    return errorRegistry.get(err.code)?.exitCode ?? EXIT_CODES.runner_failure;
+    const entry = errorRegistry.get(err.code);
+    if (entry !== undefined) return entry.exitCode;
+    console.error('relay: unmapped error code ' + err.code + ' — defaulting to exit 1');
+    return EXIT_CODES.runner_failure;
   }
   if (err instanceof Error) return EXIT_CODES.runner_failure;
   return EXIT_CODES.runner_failure;

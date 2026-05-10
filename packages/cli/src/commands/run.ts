@@ -20,7 +20,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
@@ -32,16 +32,16 @@ import {
   type RunResult,
   registerDefaultProviders,
   resolveProvider,
-  z,
 } from '@ganderbite/relay-core';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
 import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
-import { parseInputFromArgv } from '../input-parser.js';
+import { normalizeArgvInput, parseInputFromArgv } from '../input-parser.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
+import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
 import { maybeSendRunEvent } from '../telemetry.js';
 
 // ---------------------------------------------------------------------------
@@ -193,45 +193,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   // ---------------------------------------------------------------------------
 
   // Separate positional args from --flag args for the banner display.
-  // Positionals (no leading --) → first one is inputPrimary.
-  // Named flags (--key value or --key=value) → reshaped as "key=value" extras.
-  const positionals: string[] = [];
-  const namedExtras: string[] = [];
-
-  let i = 0;
-  while (i < inputArgv.length) {
-    const arg = inputArgv[i];
-    if (arg === undefined) {
-      i++;
-      continue;
-    }
-    if (arg.startsWith('--')) {
-      const body = arg.slice(2);
-      const eqIdx = body.indexOf('=');
-      if (eqIdx !== -1) {
-        // --key=value → "key=value"
-        namedExtras.push(body);
-        i++;
-      } else {
-        const next = inputArgv[i + 1];
-        if (next !== undefined && !next.startsWith('--')) {
-          // --key value → "key=value"
-          namedExtras.push(`${body}=${next}`);
-          i += 2;
-        } else {
-          // boolean flag with no value → "key=true"
-          namedExtras.push(`${body}=true`);
-          i++;
-        }
-      }
-    } else {
-      positionals.push(arg);
-      i++;
-    }
-  }
-
-  const inputPrimary = positionals[0] ?? '.';
-  const inputExtras = namedExtras;
+  const { inputPrimary, inputExtras } = normalizeArgvInput(inputArgv);
 
   const startBanner = renderStartBanner({
     flowName: flow.name,
@@ -492,136 +454,6 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
 
     process.exit(1);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Per-step data builders
-//
-// After the run, step timing comes from state.json (StepState.startedAt /
-// completedAt) and per-runner cost from metrics.json (RunnerMetrics.costUsd).
-// Both are read once here; missing data falls back to safe zero values.
-// ---------------------------------------------------------------------------
-
-const RawStepStateSchema = z.object({
-  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
-  attempts: z.number().optional(),
-  startedAt: z.string().optional(),
-  completedAt: z.string().optional(),
-  errorMessage: z.string().optional(),
-  artifacts: z.array(z.string()).optional(),
-  handoffs: z.array(z.string()).optional(),
-});
-
-type RawStepState = z.infer<typeof RawStepStateSchema>;
-
-interface RawMetrics {
-  stepId: string;
-  durationMs?: number;
-  costUsd?: number;
-  model?: string;
-}
-
-const RawStateJsonSchema = z.object({
-  steps: z.record(z.string(), RawStepStateSchema).optional(),
-});
-
-const RawMetricsSchema = z.object({
-  stepId: z.string(),
-  durationMs: z.number().optional(),
-  costUsd: z.number().optional(),
-  model: z.string().optional(),
-});
-
-const RawMetricsArraySchema = z.array(RawMetricsSchema);
-
-async function readStateSteps(runDir: string): Promise<Record<string, RawStepState>> {
-  try {
-    const raw = await readFile(join(runDir, 'state.json'), 'utf8');
-    const result = RawStateJsonSchema.safeParse(JSON.parse(raw));
-    return result.success ? (result.data.steps ?? {}) : {};
-  } catch {
-    return {};
-  }
-}
-
-async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
-  const map = new Map<string, RawMetrics>();
-  try {
-    const raw = await readFile(join(runDir, 'metrics.json'), 'utf8');
-    const parseResult = RawMetricsArraySchema.safeParse(JSON.parse(raw));
-    const entries = parseResult.success ? parseResult.data : [];
-    for (const entry of entries) {
-      if (typeof entry.stepId === 'string') {
-        map.set(entry.stepId, entry as unknown as RawMetrics);
-      }
-    }
-  } catch {
-    // metrics.json may not exist for very short runs — fall back to zeros.
-  }
-  return map;
-}
-
-function stepDurationMs(stepState: RawStepState): number {
-  if (typeof stepState.startedAt === 'string' && typeof stepState.completedAt === 'string') {
-    const start = Date.parse(stepState.startedAt);
-    const end = Date.parse(stepState.completedAt);
-    if (Number.isFinite(start) && Number.isFinite(end)) return Math.max(0, end - start);
-  }
-  return 0;
-}
-
-async function buildSuccessStepRows(
-  runDir: string,
-  stepOrder: string[],
-): Promise<SuccessStepRow[]> {
-  const stateSteps = await readStateSteps(runDir);
-  const metrics = await readMetrics(runDir);
-
-  return stepOrder.map((runnerId): SuccessStepRow => {
-    const stepState = stateSteps[runnerId];
-    const metric = metrics.get(runnerId);
-    const durationMs = metric?.durationMs ?? (stepState ? stepDurationMs(stepState) : 0);
-    const model = metric?.model ?? 'sonnet';
-    const costUsd = metric?.costUsd ?? 0;
-    return { name: runnerId, model, durationMs, costUsd };
-  });
-}
-
-async function buildFailureStepRows(
-  runDir: string,
-  stepOrder: string[],
-): Promise<FailureStepRow[]> {
-  const stateSteps = await readStateSteps(runDir);
-  const metrics = await readMetrics(runDir);
-
-  return stepOrder.map((runnerId): FailureStepRow => {
-    const stepState = stateSteps[runnerId];
-    const metric = metrics.get(runnerId);
-    const status = stepState?.status;
-    const durationMs = metric?.durationMs ?? (stepState ? stepDurationMs(stepState) : 0);
-    const model = metric?.model ?? 'sonnet';
-    const costUsd = metric?.costUsd ?? 0;
-
-    if (status === 'succeeded') {
-      return { name: runnerId, status: 'succeeded', model, durationMs, costUsd };
-    }
-    if (status === 'failed') {
-      const errorMsg = stepState?.errorMessage;
-      const errorLines: [string, string] | undefined =
-        errorMsg !== undefined ? [errorMsg.slice(0, 80), ''] : undefined;
-      return {
-        name: runnerId,
-        status: 'failed',
-        model,
-        durationMs,
-        costUsd,
-        exitCode: 1,
-        ...(errorLines !== undefined ? { errorLines } : {}),
-      };
-    }
-    // pending / running / skipped / undefined — treat as skipped in the banner
-    return { name: runnerId, status: 'skipped', model, durationMs, costUsd };
-  });
 }
 
 // ---------------------------------------------------------------------------

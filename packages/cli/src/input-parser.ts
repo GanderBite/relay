@@ -257,6 +257,69 @@ function buildIssueMessage(error: z.ZodError): string {
 }
 
 // ---------------------------------------------------------------------------
+// normalizeArgvInput
+// ---------------------------------------------------------------------------
+
+/**
+ * Reshape a raw argv slice into positional and named parts for banner display.
+ *
+ * Positional args (no leading `--`) are collected in order; the first one
+ * becomes the primary input descriptor (defaults to `'.'` when absent).
+ * Named flags (`--key value` or `--key=value`) are reshaped to `"key=value"`
+ * strings. Boolean flags with no following value become `"key=true"`.
+ *
+ * This is purely a display reshaping — it does not validate the schema and
+ * does not coerce types.
+ *
+ * @param argv  The argv slice after the flow name, e.g. process.argv.slice(3).
+ * @returns `{ inputPrimary, inputExtras }` ready for renderStartBanner.
+ */
+export function normalizeArgvInput(argv: string[]): {
+  inputPrimary: string;
+  inputExtras: string[];
+} {
+  const positionals: string[] = [];
+  const namedExtras: string[] = [];
+
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--')) {
+      const body = arg.slice(2);
+      const eqIdx = body.indexOf('=');
+      if (eqIdx !== -1) {
+        // --key=value → "key=value"
+        namedExtras.push(body);
+        i++;
+      } else {
+        const next = argv[i + 1];
+        if (next !== undefined && !next.startsWith('--')) {
+          // --key value → "key=value"
+          namedExtras.push(`${body}=${next}`);
+          i += 2;
+        } else {
+          // boolean flag with no value → "key=true"
+          namedExtras.push(`${body}=true`);
+          i++;
+        }
+      }
+    } else {
+      positionals.push(arg);
+      i++;
+    }
+  }
+
+  return {
+    inputPrimary: positionals[0] ?? '.',
+    inputExtras: namedExtras,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // renderHelpFromSchema
 // ---------------------------------------------------------------------------
 

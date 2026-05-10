@@ -42,6 +42,7 @@ vi.mock('../../src/flow-loader.js', () => ({
 
 vi.mock('../../src/input-parser.js', () => ({
   parseInputFromArgv: (...args: unknown[]) => mockParseInputFromArgv(...args),
+  normalizeArgvInput: (_argv: string[]) => ({ inputPrimary: '.', inputExtras: [] }),
 }));
 
 vi.mock('../../src/banner.js', () => ({

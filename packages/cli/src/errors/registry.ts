@@ -91,6 +91,41 @@ function lastEdge(cyclePath: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// ERROR_CODES mapping reference
+//
+// The table below lists every relay_* code from @ganderbite/relay-core's
+// ERROR_CODES and records whether it is handled here (with the resulting exit
+// code) or will fall through to the exitCodeFor fallback (exit 1).
+//
+//   relay_ATOMIC_WRITE            — unmapped  → exit 1 (runner_failure)
+//   relay_AUTH_TIMEOUT            — mapped    → exit 5 (timeout)
+//   relay_CLAUDE_AUTH             — mapped    → exit 3 (auth_error)
+//   relay_FLOW_DEFINITION         — mapped    → exit 2 (definition_error)
+//   relay_FLOW_IMPORT             — mapped    → exit 2 (definition_error)
+//   relay_FLOW_INVALID            — mapped    → exit 2 (definition_error)
+//   relay_FLOW_NOT_FOUND          — mapped    → exit 1 (runner_failure)
+//   relay_HANDOFF_IO              — unmapped  → exit 1 (runner_failure)
+//   relay_HANDOFF_NOT_FOUND       — unmapped  → exit 1 (runner_failure)
+//   relay_HANDOFF_OUTPUT          — unmapped  → exit 1 (runner_failure)
+//   relay_HANDOFF_SCHEMA          — mapped    → exit 4 (handoff_error)
+//   relay_HANDOFF_WRITE           — unmapped  → exit 1 (runner_failure)
+//   relay_METRICS_WRITE           — unmapped  → exit 1 (runner_failure)
+//   relay_NO_PROVIDER             — mapped    → exit 6 (no_provider)
+//   relay_PROVIDER_AUTH           — mapped    → exit 3 (auth_error)
+//   relay_PROVIDER_CAPABILITY     — mapped    → exit 2 (definition_error)
+//   relay_PROVIDER_RATE_LIMIT     — mapped    → exit 8 (rate_limit)
+//   relay_STATE_CORRUPT           — unmapped  → exit 1 (runner_failure)
+//   relay_STATE_NOT_FOUND         — unmapped  → exit 1 (runner_failure)
+//   relay_STATE_TRANSITION        — unmapped  → exit 1 (runner_failure)
+//   relay_STATE_VERSION_MISMATCH  — unmapped  → exit 1 (runner_failure)
+//   relay_STATE_WRITE             — unmapped  → exit 1 (runner_failure)
+//   relay_STEP_FAILURE            — mapped    → exit 1 (runner_failure)
+//   relay_TIMEOUT                 — mapped    → exit 5 (timeout)
+//   relay_LOOP_MAX_ITERATIONS_EXCEEDED — mapped → exit 9 (loop_exhausted)
+//   relay_flow_import_error       — mapped    → exit 2 (definition_error) [alias for FLOW_IMPORT]
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
