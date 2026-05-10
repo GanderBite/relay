@@ -7,6 +7,7 @@ import { CostTracker } from '../cost.js';
 import {
   type AtomicWriteError,
   AuthTimeoutError,
+  AwaitingInputSignal,
   ERROR_CODES,
   FlowDefinitionError,
   PipelineError,
@@ -26,6 +27,7 @@ import { createWorktree, isGitRepo, removeWorktree } from '../util/worktree.js';
 import { z } from '../zod.js';
 
 import { checkCapabilities } from './capability-check.js';
+import { type AskStepResult, askAnswerHandoffKey, executeAsk } from './exec/ask.js';
 import { executeBranch } from './exec/branch.js';
 import { executeLoop } from './exec/loop.js';
 import { executeParallel } from './exec/parallel.js';
@@ -154,7 +156,7 @@ export interface RunOptions {
 export interface RunResult {
   runId: string;
   runDir: string;
-  status: 'succeeded' | 'failed' | 'aborted';
+  status: 'succeeded' | 'failed' | 'aborted' | 'paused';
   cost: { totalUsd: number; totalTokens: number };
   artifacts: string[];
   durationMs: number;
@@ -170,6 +172,12 @@ export interface RunResult {
    * In-memory only — never persisted to state.json.
    */
   firstError?: Error | undefined;
+  /**
+   * When `status === 'paused'`, the id of the ask step that triggered the
+   * pause. The CLI uses this to render targeted resume guidance
+   * (`relay answer <runId>`) without re-reading state.json.
+   */
+  pausedStepId?: string | undefined;
 }
 
 /**
@@ -240,6 +248,10 @@ function isAbortLike(err: unknown): boolean {
   if (err instanceof RunAbortedError) return true;
   if (err instanceof Error && err.name === 'AbortError') return true;
   return false;
+}
+
+function isAwaitingInputSignal(err: unknown): err is AwaitingInputSignal {
+  return err instanceof AwaitingInputSignal;
 }
 
 /**
@@ -330,8 +342,9 @@ export class Orchestrator {
     process.on('SIGTERM', onSigterm);
 
     const start = Date.now();
-    let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    let runStatus: 'succeeded' | 'failed' | 'aborted' | 'paused' = 'failed';
     let firstError: Error | undefined;
+    let pausedStepId: string | undefined;
     // Declared outside the try so the finally block can tear down whatever
     // setupWorktree produced, including a partial success where create-after-
     // probe throws mid-way.
@@ -385,6 +398,7 @@ export class Orchestrator {
         });
         runStatus = walkResult.status;
         firstError = walkResult.firstError;
+        pausedStepId = walkResult.pausedStepId;
       }
     } catch (caught) {
       if (isAbortLike(caught)) {
@@ -399,8 +413,14 @@ export class Orchestrator {
       await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
-    const markResult = stateMachine.markRun(runStatus);
-    if (markResult.isErr()) throw markResult.error;
+    // Paused runs already had their run-level status flipped to 'paused' by
+    // pauseStep inside the walker; re-applying markRun here would either be
+    // a no-op or, worse, sweep the in-flight ask step into 'failed'. Skip the
+    // markRun pass and persist whatever the pause path already wrote.
+    if (runStatus !== 'paused') {
+      const markResult = stateMachine.markRun(runStatus);
+      if (markResult.isErr()) throw markResult.error;
+    }
     const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
     stateMachine.clearStepResults();
@@ -423,6 +443,7 @@ export class Orchestrator {
       artifacts,
       durationMs: Date.now() - start,
       ...(firstError !== undefined ? { firstError } : {}),
+      ...(pausedStepId !== undefined ? { pausedStepId } : {}),
     };
   }
 
@@ -455,9 +476,12 @@ export class Orchestrator {
       case 'aborted':
       case 'failed':
       case 'running':
+      case 'paused':
         // Fall through to the resume walker. Each case shares the same
         // recovery path (zombie sweep, failed -> pending, re-dispatch) so
         // surfacing them as distinct branches here is for documentation.
+        // 'paused' relies on seedReadyQueueForResume re-queuing the ask step
+        // so executeAsk can read the answer handoff written via relay answer.
         break;
     }
 
@@ -588,8 +612,9 @@ export class Orchestrator {
     process.on('SIGTERM', onSigterm);
 
     const start = Date.now();
-    let runStatus: 'succeeded' | 'failed' | 'aborted' = 'failed';
+    let runStatus: 'succeeded' | 'failed' | 'aborted' | 'paused' = 'failed';
     let firstError: Error | undefined;
+    let pausedStepId: string | undefined;
     // A resumed run gets its own fresh worktree. Declared outside the try so
     // the finally block can tear down a partial setup even when auth or the
     // worktree creation itself throws.
@@ -645,6 +670,7 @@ export class Orchestrator {
         });
         runStatus = walkResult.status;
         firstError = walkResult.firstError;
+        pausedStepId = walkResult.pausedStepId;
       }
     } catch (caught) {
       if (isAbortLike(caught)) {
@@ -659,8 +685,14 @@ export class Orchestrator {
       await this.#teardownWorktree(worktreePath, gitRoot, logger);
     }
 
-    const markResult = stateMachine.markRun(runStatus);
-    if (markResult.isErr()) throw markResult.error;
+    // Paused runs already had their run-level status flipped to 'paused' by
+    // pauseStep inside the walker; re-applying markRun here would either be
+    // a no-op or, worse, sweep the in-flight ask step into 'failed'. Skip the
+    // markRun pass and persist whatever the pause path already wrote.
+    if (runStatus !== 'paused') {
+      const markResult = stateMachine.markRun(runStatus);
+      if (markResult.isErr()) throw markResult.error;
+    }
     const finalSave = await stateMachine.save();
     if (finalSave.isErr()) throw finalSave.error;
     stateMachine.clearStepResults();
@@ -683,6 +715,7 @@ export class Orchestrator {
       artifacts,
       durationMs: Date.now() - start,
       ...(firstError !== undefined ? { firstError } : {}),
+      ...(pausedStepId !== undefined ? { pausedStepId } : {}),
     };
   }
 
@@ -1034,8 +1067,9 @@ export class Orchestrator {
      */
     verbose?: boolean;
   }): Promise<{
-    status: 'succeeded' | 'failed' | 'aborted';
+    status: 'succeeded' | 'failed' | 'aborted' | 'paused';
     firstError: Error | undefined;
+    pausedStepId?: string;
   }> {
     const {
       flow,
@@ -1076,6 +1110,13 @@ export class Orchestrator {
     // We only record the first one so the originating cause survives even when
     // onFail=continue keeps the walker draining other completions.
     let firstError: Error | undefined;
+    // Captured when an ask step throws AwaitingInputSignal inside dispatchStep.
+    // Setting this both flips the walker into the paused outcome path and
+    // causes the abort controller to fire so any sibling parallel branches
+    // stop in flight. Once paused, subsequent step failures (typically the
+    // abort cascade rejecting in flight branches) are ignored — the originating
+    // pause is the outcome the operator needs to act on.
+    let pausedSignal: AwaitingInputSignal | undefined;
 
     const waitForCompletion = (): Promise<void> =>
       new Promise((resolve) => {
@@ -1239,15 +1280,24 @@ export class Orchestrator {
               dispatch: (bodyStepId, bodyStep, loopIter) =>
                 runBodyStep(bodyStepId, bodyStep, loopIter, step.id),
             });
-          case 'ask':
-            // Ask-step execution is dispatched by a dedicated executor wired up
-            // in a follow-up change. Surface a clear error if a flow defines an
-            // ask step before that executor lands so callers see an actionable
-            // message instead of an opaque undefined return.
-            throw new FlowDefinitionError(
-              `ask step "${step.id}" cannot be executed: ask-step executor is not yet wired into the orchestrator`,
-              { stepId: step.id },
-            );
+          case 'ask': {
+            // executeAsk has two paths: it throws AwaitingInputSignal on the
+            // first pass (no answer handoff present yet) so the orchestrator
+            // can pause the run, and returns ok(answerMap) on the resume pass
+            // when the answer handoff is already on disk. The signal
+            // propagates up through withRetry and is intercepted in
+            // dispatchStep's catch below; the resume pass falls through to
+            // the normal completeStep path.
+            const askResult = await executeAsk(step, handoffStore, step.id);
+            if (askResult.isErr()) throw askResult.error;
+            const result: AskStepResult = {
+              kind: 'ask',
+              stepId: step.id,
+              answers: askResult.value,
+              handoffs: [askAnswerHandoffKey(step.id)],
+            };
+            return result;
+          }
         }
       };
 
@@ -1297,15 +1347,10 @@ export class Orchestrator {
         return { maxRetries: 0, timeoutMs: undefined };
       };
 
-      const promptStepOutput = (
+      const stepCompletionOutput = (
         result: StepResult,
       ): { handoffs?: readonly string[]; artifacts?: readonly string[] } => {
-        if (
-          typeof result !== 'object' ||
-          result === null ||
-          !('kind' in result) ||
-          result.kind !== 'prompt'
-        ) {
+        if (typeof result !== 'object' || result === null || !('kind' in result)) {
           return {};
         }
         // PromptStepResult tracks handoffs (keys produced via output.handoff)
@@ -1313,7 +1358,16 @@ export class Orchestrator {
         // arrays. completeStep persists both projections on StepState verbatim
         // so RunResult.artifacts surfaces every file the step produced and
         // resume can introspect which handoffs landed without re-reading them.
-        return { handoffs: result.handoffs, artifacts: result.artifacts };
+        if (result.kind === 'prompt') {
+          return { handoffs: result.handoffs, artifacts: result.artifacts };
+        }
+        // AskStepResult records the answer handoff key under `handoffs` so the
+        // produced answer map is discoverable from StepState the same way a
+        // prompt step's handoffs are. Ask steps never write artifacts.
+        if (result.kind === 'ask') {
+          return { handoffs: result.handoffs };
+        }
+        return {};
       };
 
       /**
@@ -1376,7 +1430,7 @@ export class Orchestrator {
                 stepId,
               }),
             );
-            const completeResult = stateMachine.completeStep(stepId, promptStepOutput(value));
+            const completeResult = stateMachine.completeStep(stepId, stepCompletionOutput(value));
             if (completeResult.isErr()) throw completeResult.error;
             stateMachine.recordStepResult(stepId, value);
             const succeededState = stateMachine.getState().steps[stepId];
@@ -1388,6 +1442,55 @@ export class Orchestrator {
             });
             return value;
           } catch (caught) {
+            if (isAwaitingInputSignal(caught)) {
+              // Ask step requested human input. Transition the step from
+              // running to paused, persist atomically, then trip the run-wide
+              // abort so any sibling parallel branches stop in flight. The
+              // signal itself is re-thrown so the walker's completion loop
+              // recognises this as the paused outcome instead of a failure.
+              const promptedAt = new Date().toISOString();
+              const pauseResult = stateMachine.pauseStep(
+                caught.stepId,
+                caught.questions,
+                promptedAt,
+              );
+              if (pauseResult.isErr()) {
+                logger.error(
+                  {
+                    event: 'state.transition_failed',
+                    stepId,
+                    error: pauseResult.error.message,
+                  },
+                  'state transition failed while pausing step',
+                );
+              }
+              const pauseSave = await stateMachine.save();
+              if (pauseSave.isErr()) {
+                logger.error(
+                  { event: 'state.save_failed', error: pauseSave.error.message },
+                  'state.json atomic write failed',
+                );
+                throw pauseSave.error;
+              }
+              const pausedState = stateMachine.getState().steps[stepId];
+              void writeLiveState(runDir, stepId, {
+                status: 'paused',
+                attempt: pausedState?.attempts ?? 1,
+                startedAt: pausedState?.startedAt ?? new Date().toISOString(),
+                lastUpdateAt: new Date().toISOString(),
+              });
+              logger.info(
+                {
+                  event: 'run.paused',
+                  stepId: caught.stepId,
+                  questionCount: caught.questions.length,
+                },
+                'run paused for human input',
+              );
+              pausedSignal = caught;
+              abortController.abort();
+              throw caught;
+            }
             if (!isAbortLike(caught)) {
               const failResult = stateMachine.failStep(stepId, errorMessageOf(caught));
               if (failResult.isErr()) {
@@ -1479,7 +1582,12 @@ export class Orchestrator {
       while (queue.length > 0 || inflight.size > 0) {
         if (abortController.signal.aborted) break;
 
-        while (!runFailed && queue.length > 0 && inflight.size < parallelism) {
+        while (
+          !runFailed &&
+          pausedSignal === undefined &&
+          queue.length > 0 &&
+          inflight.size < parallelism
+        ) {
           const next = queue.shift();
           if (next === undefined) break;
           queued.delete(next);
@@ -1506,6 +1614,22 @@ export class Orchestrator {
             // code instead of swallowing the error as an onFail=abort step.
             if (completed.error instanceof StateWriteError) {
               throw completed.error;
+            }
+            // The ask step intercept inside dispatchStep already pauses the
+            // run, persists state, and trips the abort controller. The signal
+            // surfaces here on the original ask step's own completion record;
+            // skip every failure handling path so the paused outcome is not
+            // shadowed by spurious onFail / firstError bookkeeping.
+            if (isAwaitingInputSignal(completed.error)) {
+              continue;
+            }
+            // Once the run has been paused by an ask step, ignore subsequent
+            // failures — they are typically the abort cascade rejecting the
+            // sibling parallel branches that were still in flight when the
+            // pause fired. The pause is the outcome the operator needs to
+            // act on; surfacing the cascade as the firstError would mask it.
+            if (pausedSignal !== undefined) {
+              continue;
             }
             // Capture the first non-abort, non-state-write error so RunResult
             // can carry it back to embedding hosts. Subsequent failures (e.g.
@@ -1563,6 +1687,9 @@ export class Orchestrator {
         if (!runFailed && !abortController.signal.aborted) enqueueReady();
       }
 
+      if (pausedSignal !== undefined) {
+        return { status: 'paused', firstError: undefined, pausedStepId: pausedSignal.stepId };
+      }
       if (abortController.signal.aborted) return { status: 'aborted', firstError };
       return {
         status: runFailed ? 'failed' : 'succeeded',

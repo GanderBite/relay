@@ -92,6 +92,7 @@ export type {
 export {
   AtomicWriteError,
   AuthTimeoutError,
+  AwaitingInputSignal,
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
@@ -131,7 +132,20 @@ export type { FlowInput, StepBuilderOutput } from './flow/define.js';
  * @returns A frozen `Flow` that the `Orchestrator` accepts.
  */
 export { defineFlow } from './flow/define.js';
-
+/** Question types for interactive ask steps. */
+export type {
+  AnswerMap,
+  DynamicQuestionSource,
+  Question,
+  QuestionKind,
+} from './flow/question.js';
+export {
+  DynamicQuestionSourceSchema,
+  QuestionSchema,
+  QuestionsArraySchema,
+} from './flow/question.js';
+/** Zod schema for the ask step spec. */
+export { askStepSpecSchema } from './flow/schemas.js';
 /**
  * Namespace of step builder functions. Each builder validates its config
  * against the step schema and throws `FlowDefinitionError` on invalid input.
@@ -165,7 +179,6 @@ export { defineFlow } from './flow/define.js';
  *   Key config options: `message`, `exitCode`, `dependsOn`.
  */
 export { step } from './flow/step.js';
-
 /** Builder input and output shapes for each step kind. Useful for typing custom step wrappers. */
 export type { BranchStepBuilderInput, BranchStepBuilderOutput } from './flow/steps/branch.js';
 export type { LoopStepBuilderInput, LoopStepBuilderOutput } from './flow/steps/loop.js';
@@ -189,7 +202,7 @@ export type {
  * - `FlowStatus` — `'running' | 'succeeded' | 'failed' | 'aborted'`.
  * - `Step` — discriminated union of all compiled step types.
  * - `StepBase` — fields shared by every step (`id`, `dependsOn`).
- * - `StepKind` — `'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop'`.
+ * - `StepKind` — `'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop' | 'ask'`.
  * - `StepState` — per-step checkpoint state persisted in `state.json`.
  * - `StepStatus` — `'pending' | 'running' | 'succeeded' | 'failed' | 'skipped'`.
  * - `PromptStepSpec` — spec for a step that invokes a Claude prompt.
@@ -198,9 +211,14 @@ export type {
  * - `BranchStepSpec` — spec for a step that routes control by exit code.
  * - `ParallelStepSpec` — spec for a step that fans out to named sub-steps.
  * - `TerminalStepSpec` — spec for a step that ends the flow.
+ * - `AskStepSpec` — spec for an interactive step that pauses for user input.
+ * - `AwaitingInput` — snapshot of a paused ask step recorded in `state.json`.
  * - `RunState` — full run checkpoint persisted to `state.json`.
  */
 export type {
+  AskStep,
+  AskStepSpec,
+  AwaitingInput,
   BranchStep,
   BranchStepSpec,
   Flow,
@@ -280,6 +298,7 @@ export type { ScriptEnvContext } from './orchestrator/exec/script-env.js';
 export { resolveScriptEnv } from './orchestrator/exec/script-env.js';
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
+  AskStepResult,
   BranchStepResult,
   LoopStepResult,
   OrchestratorOptions,

@@ -13,6 +13,23 @@ import type { HandoffStore } from '../../handoffs.js';
 import { z } from '../../zod.js';
 
 /**
+ * Discriminated result variant returned to the orchestrator on the resume
+ * pass — when the answer handoff is already on disk and the step is treated
+ * as succeeded. The first-pass behaviour of executeAsk is to throw
+ * AwaitingInputSignal, so this shape is only constructed by the orchestrator
+ * after executeAsk resolves with ok(answerMap).
+ *
+ * Carries the answer-handoff key under `handoffs` so the StateMachine's
+ * completeStep call records the produced handoff alongside other step outputs.
+ */
+export interface AskStepResult {
+  kind: 'ask';
+  stepId: string;
+  answers: AnswerMap;
+  handoffs: string[];
+}
+
+/**
  * Errors executeAsk surfaces via the Result channel. AwaitingInputSignal is
  * thrown (not returned) because it is a control-flow signal the orchestrator
  * intercepts to pause the run; everything in this union represents an actual

@@ -57,6 +57,7 @@ const STEP_STATUSES = [
   'succeeded',
   'failed',
   'skipped',
+  'paused',
 ] as const satisfies readonly StepStatus[];
 
 const RawStepStateSchema = z
@@ -131,6 +132,10 @@ function renderPausedRunnerRow(
     return gray(` ${SYMBOLS.cancelled} ${nameCol}${annotation}`);
   }
 
+  if (stepState.status === 'paused') {
+    return gray(` ${SYMBOLS.dot} ${nameCol}awaiting input`);
+  }
+
   // pending / skipped — not started
   return gray(` ${SYMBOLS.pending} ${nameCol}not started`);
 }
@@ -175,12 +180,16 @@ async function readMetrics(runDir: string): Promise<Map<string, RawMetrics>> {
  *
  * Reads state.json and metrics.json from runDir to show per-step status.
  * Falls back to a minimal banner if state cannot be loaded.
+ *
+ * When awaitingInput is provided the run is paused at an ask step; the footer
+ * hint changes from "resume: relay resume <runId>" to "answer: relay answer <runId>".
  */
 export async function renderPausedBanner(
   flowName: string,
   runId: string,
   runDir: string,
   stepOrder: readonly string[],
+  awaitingInput?: { stepId: string },
 ): Promise<void> {
   // Header: "^C" echo, blank, then the paused header line.
   process.stdout.write('^C\n');
@@ -196,7 +205,11 @@ export async function renderPausedBanner(
     // Minimal fallback: state could not be loaded.
     process.stdout.write('state saved.\n');
     process.stdout.write('\n');
-    process.stdout.write(`resume: relay resume ${runId}\n`);
+    const fallbackHint =
+      awaitingInput !== undefined
+        ? `answer: relay answer ${runId}`
+        : `resume: relay resume ${runId}`;
+    process.stdout.write(`${fallbackHint}\n`);
     return;
   }
 
@@ -219,5 +232,7 @@ export async function renderPausedBanner(
 
   process.stdout.write(`state saved. ${fmtCost(totalSpent)} spent.\n`);
   process.stdout.write('\n');
-  process.stdout.write(`resume: relay resume ${runId}\n`);
+  const footerHint =
+    awaitingInput !== undefined ? `answer: relay answer ${runId}` : `resume: relay resume ${runId}`;
+  process.stdout.write(`${footerHint}\n`);
 }
