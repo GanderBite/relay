@@ -45,7 +45,10 @@ export async function executeScript(
       (entry): entry is [string, string] => entry[1] !== undefined,
     ),
   );
-  const env: Record<string, string> = { ...baseEnv, ...(step.env ?? {}) };
+  const stepEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(step.env ?? {}).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v]] : [])),
+  );
+  const env: Record<string, string> = { ...baseEnv, ...stepEnv };
 
   const hasArtifact = step.output?.artifact !== undefined;
 

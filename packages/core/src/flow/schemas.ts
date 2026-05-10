@@ -5,6 +5,7 @@ import type {
   ParallelStepSpec,
   PromptStepOutput,
   PromptStepSpec,
+  ScriptEnvValueSpec,
   ScriptStepSpec,
   TerminalStepSpec,
 } from './types.js';
@@ -26,6 +27,17 @@ const onExitKey = z.union([z.literal('default'), z.string().regex(/^\d+$/)]);
 // onExit/onFail values shared by prompt, script, and branch steps.
 const onExitValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
 const onFailValue = z.union([z.literal('abort'), z.literal('continue'), stepId]);
+
+// Env value: either a plain string literal or an object referencing a flow
+// input field or handoff value by dot-path.
+export const scriptEnvValueSpecSchema: z.ZodType<ScriptEnvValueSpec> = z.union([
+  z.string(),
+  z.strictObject({
+    from: nonEmptyString,
+    required: z.boolean().optional(),
+    resolve: z.enum(['fromCwd', 'absolute']).optional(),
+  }),
+]);
 
 // Output variant for prompt steps. Modelled as an explicit union of the three
 // shapes the spec enumerates — no single-object-with-refine shortcut that
@@ -74,7 +86,7 @@ export const scriptStepSpecSchema: z.ZodType<ScriptStepSpec> = z.strictObject({
   kind: z.literal('script'),
   run: runCommand,
   dependsOn: z.array(stepId).optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), scriptEnvValueSpecSchema).optional(),
   cwd: z.string().optional(),
   output: z.strictObject({ artifact: stepId.optional() }).optional(),
   onExit: z.record(onExitKey, onExitValue).optional(),
@@ -88,7 +100,7 @@ export const branchStepSpecSchema: z.ZodType<BranchStepSpec> = z.strictObject({
   kind: z.literal('branch'),
   run: runCommand,
   dependsOn: z.array(stepId).optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string(), scriptEnvValueSpecSchema).optional(),
   cwd: z.string().optional(),
   onExit: z.record(onExitKey, onExitValue).refine((o) => Object.keys(o).length > 0, {
     message: 'branch step requires a non-empty `onExit` map',

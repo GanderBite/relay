@@ -2,6 +2,16 @@ import type { z } from '../zod.js';
 
 export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop';
 
+export type ScriptEnvResolve = 'fromCwd' | 'absolute';
+
+export interface ScriptEnvFromSpec {
+  from: string;
+  required?: boolean | undefined;
+  resolve?: ScriptEnvResolve | undefined;
+}
+
+export type ScriptEnvValueSpec = string | ScriptEnvFromSpec;
+
 /**
  * The minimum fields shared by every step type.
  * Each per-kind spec explicitly opts in to the additional fields (retry,
@@ -56,7 +66,7 @@ export interface PromptStepSpec extends StepBase {
 export interface ScriptStepSpec extends StepBase {
   kind: 'script';
   run: string | string[];
-  env?: Record<string, string> | undefined;
+  env?: Record<string, ScriptEnvValueSpec> | undefined;
   cwd?: string | undefined;
   output?: { artifact?: string | undefined } | undefined;
   onExit?: Record<string, 'abort' | 'continue' | string> | undefined;
