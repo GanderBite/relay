@@ -1,4 +1,10 @@
 import { FlowDefinitionError, toFlowDefError } from '../errors.js';
+import { defaultStepRegistry } from '../orchestrator/step-kind-registry.js';
+// Side-effect import — populates `defaultStepRegistry` with the built-in
+// step-kind entries so `synthesizeStep` below can dispatch by kind without a
+// switch. The import is idempotent so re-importing here and from the
+// orchestrator entry point is safe.
+import '../orchestrator/step-registrations.js';
 import type { z } from '../zod.js';
 import { buildGraph } from './graph.js';
 import { flowSpecInputSchema } from './schemas.js';
@@ -40,22 +46,17 @@ export interface FlowInput<TInput> {
 }
 
 function synthesizeStep(raw: StepBuilderOutput, id: string): Step {
-  switch (raw.kind) {
-    case 'prompt':
-      return { ...raw, id };
-    case 'script':
-      return { ...raw, id };
-    case 'branch':
-      return { ...raw, id };
-    case 'parallel':
-      return { ...raw, id };
-    case 'terminal':
-      return { ...raw, id };
-    case 'loop':
-      return { ...raw, id };
-    case 'ask':
-      return { ...raw, id };
+  const entry = defaultStepRegistry.get(raw.kind);
+  if (entry === undefined) {
+    throw new FlowDefinitionError(
+      `unknown step kind "${raw.kind}" for step "${id}". Register it via defaultStepRegistry.register(...) before defining the flow.`,
+    );
   }
+  // The registry stores entries keyed by literal kind, so the entry's
+  // synthesize signature is precisely typed for `raw.kind`. The cast on
+  // `raw` re-narrows the broad union to that variant — TypeScript cannot
+  // follow the discriminant through the registry's heterogeneous map.
+  return entry.synthesize(raw as never, id);
 }
 
 /**

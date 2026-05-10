@@ -9,39 +9,19 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from '@ganderbite/relay-core';
 import type { FailureStepRow, SuccessStepRow } from './banner.js';
+import {
+  type RawMetrics,
+  RawMetricsSchema,
+  type RawStepState,
+  RawStepStateSchema,
+} from './schemas.js';
 
 // ---------------------------------------------------------------------------
 // Internal schemas
 // ---------------------------------------------------------------------------
 
-const RawStepStateSchema = z.object({
-  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
-  attempts: z.number().optional(),
-  startedAt: z.string().optional(),
-  completedAt: z.string().optional(),
-  errorMessage: z.string().optional(),
-  artifacts: z.array(z.string()).optional(),
-  handoffs: z.array(z.string()).optional(),
-});
-
-type RawStepState = z.infer<typeof RawStepStateSchema>;
-
-interface RawMetrics {
-  stepId: string;
-  durationMs?: number;
-  costUsd?: number;
-  model?: string;
-}
-
 const RawStateJsonSchema = z.object({
   steps: z.record(z.string(), RawStepStateSchema).optional(),
-});
-
-const RawMetricsSchema = z.object({
-  stepId: z.string(),
-  durationMs: z.number().optional(),
-  costUsd: z.number().optional(),
-  model: z.string().optional(),
 });
 
 const RawMetricsArraySchema = z.array(RawMetricsSchema);

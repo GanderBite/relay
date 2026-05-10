@@ -29,16 +29,18 @@ import { z } from '../zod.js';
 
 import { checkCapabilities } from './capability-check.js';
 import { type AskStepResult, askIterationAnswerHandoffPath, executeAsk } from './exec/ask.js';
-import { executeBranch } from './exec/branch.js';
-import { executeLoop } from './exec/loop.js';
-import { executeParallel } from './exec/parallel.js';
-import { executePrompt } from './exec/prompt.js';
-import { executeScript } from './exec/script.js';
-import { executeTerminal } from './exec/terminal.js';
+import type { BranchStatusSnapshot } from './exec/parallel.js';
 import { writeHandoffHelperScript } from './handoff-helper.js';
 import { writeLiveState } from './live-state.js';
 import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { withRetry } from './retry.js';
+import type { StepDispatchContext } from './step-dispatch-context.js';
+import { defaultStepRegistry } from './step-kind-registry.js';
+// Side-effect import — populates `defaultStepRegistry` so the runExecutor
+// dispatch below resolves a registered entry for every step kind. Idempotent
+// across reloads (the registrations file no-ops when the registry is already
+// populated).
+import './step-registrations.js';
 import type { StepResult } from './types.js';
 
 const DEFAULT_PARALLELISM = 4;
@@ -1206,9 +1208,75 @@ export class Orchestrator {
         }
       };
 
+      // Branch-status snapshot the parallel executor consults to skip
+      // already-succeeded branches on retry. Defined once per walk so the
+      // dispatch context can carry it into every step invocation without
+      // re-allocating the closure.
+      const getBranchStatus = (branchStepId: string): BranchStatusSnapshot => {
+        const branchState = stateMachine.getState().steps[branchStepId];
+        return (branchState?.status ?? 'unknown') as BranchStatusSnapshot;
+      };
+
+      // Resumed-iteration lookup the loop executor uses to pick up at the
+      // iteration the prior run paused on. Returns undefined for any other
+      // loop or any other awaitingInput shape.
+      const getResumedLoopIter = (loopStepId: string): number | undefined => {
+        const awaiting = stateMachine.getState().awaitingInput;
+        if (awaiting?.loopStepId === loopStepId) return awaiting.loopIter;
+        return undefined;
+      };
+
+      // Iteration-boundary sweep used by the loop executor: at the top of
+      // every iteration past the resumed one, drop any settled body-step
+      // state entries back to pending so startStep does not trip on a stale
+      // succeeded/paused/failed status carried over from the prior iteration.
+      // Iteration 1 (or the resumed iteration) skips the sweep so resume can
+      // use isLoopBodyStepSucceeded to short-circuit body steps that already
+      // completed.
+      const onLoopIterationStart = async (loopStepId: string, iter: number): Promise<void> => {
+        const stepLoggerLoop = logger.child({ stepId: loopStepId });
+        const baseIter = getResumedLoopIter(loopStepId) ?? 1;
+        if (iter > baseIter) {
+          const sweepResult = stateMachine.sweepBodySteps(loopStepId);
+          if (sweepResult.isErr()) {
+            stepLoggerLoop.error(
+              {
+                event: 'state.transition_failed',
+                stepId: loopStepId,
+                iter,
+                error: sweepResult.error.message,
+              },
+              'state transition failed while sweeping loop body steps',
+            );
+          }
+          const sweepSave = await stateMachine.save();
+          if (sweepSave.isErr()) {
+            stepLoggerLoop.error(
+              { event: 'state.save_failed', error: sweepSave.error.message },
+              'state.json atomic write failed during loop iteration sweep',
+            );
+            throw sweepSave.error;
+          }
+        }
+        stepLoggerLoop.debug(
+          { event: 'loop.iteration.boundary', stepId: loopStepId, iter },
+          'loop iteration boundary entered',
+        );
+      };
+
+      const isLoopBodyStepSucceeded = (
+        loopStepId: string,
+        bodyStepId: string,
+        iter: number,
+      ): boolean => {
+        const key = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
+        const bodyState = stateMachine.getState().steps[key];
+        return bodyState?.status === 'succeeded' && bodyState.iter === iter;
+      };
+
       const runExecutor = async (step: Step, attempt: number): Promise<StepResult> => {
         const stepLogger = logger.child({ stepId: step.id });
-        const baseCtx: StepExecutionContext = {
+        const dispatchCtx: StepDispatchContext = {
           flow,
           runDir,
           runId,
@@ -1223,191 +1291,33 @@ export class Orchestrator {
           logger: stepLogger,
           providers,
           provider,
+          providerByStep,
+          inputVars,
           ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
+          ...(verbose !== undefined ? { verbose } : {}),
+          dispatchStep: (branchStepId) => dispatchStep(branchStepId),
+          dispatchBodyStep: (bodyStepId, bodyStep, loopIter, loopStepId) =>
+            runBodyStep(bodyStepId, bodyStep, loopIter, loopStepId),
+          getBranchStatus,
+          getBranchResult: (branchStepId) => stateMachine.getStepResult(branchStepId),
+          getResumedLoopIter,
+          onLoopIterationStart,
+          isLoopBodyStepSucceeded,
         };
 
-        switch (step.kind) {
-          case 'prompt': {
-            const stepProvider = providerByStep.get(step.id);
-            if (stepProvider === undefined) {
-              throw new FlowDefinitionError(`no provider resolved for prompt step "${step.id}"`, {
-                stepId: step.id,
-              });
-            }
-            return executePrompt(step, {
-              runDir,
-              flowDir,
-              flowName: flow.name,
-              runId,
-              stepId: step.id,
-              attempt,
-              abortSignal: abortController.signal,
-              handoffStore,
-              costTracker,
-              logger: stepLogger,
-              provider: stepProvider,
-              inputVars,
-              ...(invocationCwd !== undefined ? { cwd: invocationCwd } : {}),
-              ...(verbose !== undefined ? { verbose } : {}),
-            });
-          }
-          case 'script':
-            return executeScript(step, {
-              runDir,
-              runId,
-              stepId: step.id,
-              attempt,
-              abortSignal: abortController.signal,
-              logger: stepLogger,
-              input: inputVars,
-              // Handoffs are not auto-injected into script template context yet;
-              // a future change will load `contextFrom` for script steps the
-              // way prompt steps do. Pass an empty record so {{handoff_id}}
-              // references render to empty rather than throwing.
-              handoffs: {},
-              flowDir,
-              handoffsDir: join(runDir, 'handoffs'),
-            });
-          case 'branch':
-            return executeBranch(step, {
-              runDir,
-              runId,
-              stepId: step.id,
-              attempt,
-              abortSignal: abortController.signal,
-              logger: stepLogger,
-              input: inputVars,
-              // Handoffs are not auto-injected into branch template context yet;
-              // a future change will load `contextFrom` for branch steps the
-              // way prompt steps do. Pass an empty record so {{handoff_id}}
-              // references render to empty rather than throwing.
-              handoffs: {},
-              flowDir,
-              handoffsDir: join(runDir, 'handoffs'),
-            });
-          case 'parallel':
-            return executeParallel(step, {
-              stepId: step.id,
-              runId,
-              step,
-              attempt,
-              abortSignal: abortController.signal,
-              logger: stepLogger,
-              // Branches share the same dispatch path as top-level steps so each
-              // branch honors its own maxRetries/timeoutMs/abort policy. Without
-              // this, a branch with maxRetries: 3 dispatched via parallel would
-              // fail on the first attempt regardless of its own retry budget.
-              dispatch: (branchStepId: string): Promise<StepResult> => dispatchStep(branchStepId),
-              // On retry (the Orchestrator re-dispatched the parent parallel step
-              // after a mixed-outcome first attempt) or on a resumed run, some
-              // branches may already be in 'succeeded' status. Re-dispatching
-              // those trips startStep's pending-only guard with a confusing
-              // StateTransitionError. Expose both the current branch status and
-              // any cached result so the parallel executor can short-circuit.
-              getBranchStatus: (branchStepId: string) => {
-                const branchState = stateMachine.getState().steps[branchStepId];
-                return branchState?.status ?? 'unknown';
-              },
-              getBranchResult: (branchStepId: string) => stateMachine.getStepResult(branchStepId),
-            });
-          case 'terminal':
-            return executeTerminal(step, baseCtx);
-          case 'loop':
-            return executeLoop(step, {
-              runDir,
-              stepId: step.id,
-              abortSignal: abortController.signal,
-              handoffStore,
-              logger: stepLogger,
-              dispatch: (bodyStepId, bodyStep, loopIter) =>
-                runBodyStep(bodyStepId, bodyStep, loopIter, step.id),
-              // Resume hook: when the prior run paused inside this loop, the
-              // ask body step persisted loopStepId/loopIter on awaitingInput.
-              // Picking the resumed iteration up here lets the loop skip
-              // already-completed iterations entirely.
-              getResumedIter: () => {
-                const awaiting = stateMachine.getState().awaitingInput;
-                if (awaiting?.loopStepId === step.id) return awaiting.loopIter;
-                return undefined;
-              },
-              // Iteration-boundary sweep: at the top of every iteration past
-              // the resumed one, drop any settled body-step state entries
-              // back to pending so startStep does not trip on a stale
-              // succeeded/paused/failed status carried over from the prior
-              // iteration. Iteration 1 (or the resumed iteration) skips the
-              // sweep so resume can use isBodyStepSucceeded to short-circuit
-              // body steps that already completed.
-              onIterationStart: async (iter) => {
-                const resumedIter = (() => {
-                  const awaiting = stateMachine.getState().awaitingInput;
-                  if (awaiting?.loopStepId === step.id) return awaiting.loopIter;
-                  return undefined;
-                })();
-                const baseIter = resumedIter ?? 1;
-                if (iter > baseIter) {
-                  const sweepResult = stateMachine.sweepBodySteps(step.id);
-                  if (sweepResult.isErr()) {
-                    stepLogger.error(
-                      {
-                        event: 'state.transition_failed',
-                        stepId: step.id,
-                        iter,
-                        error: sweepResult.error.message,
-                      },
-                      'state transition failed while sweeping loop body steps',
-                    );
-                  }
-                  const sweepSave = await stateMachine.save();
-                  if (sweepSave.isErr()) {
-                    stepLogger.error(
-                      { event: 'state.save_failed', error: sweepSave.error.message },
-                      'state.json atomic write failed during loop iteration sweep',
-                    );
-                    throw sweepSave.error;
-                  }
-                }
-                stepLogger.debug(
-                  { event: 'loop.iteration.boundary', stepId: step.id, iter },
-                  'loop iteration boundary entered',
-                );
-              },
-              isBodyStepSucceeded: (loopStepId, bodyStepId, iter) => {
-                const key = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
-                const bodyState = stateMachine.getState().steps[key];
-                return bodyState?.status === 'succeeded' && bodyState.iter === iter;
-              },
-            });
-          case 'ask': {
-            // executeAsk has two paths: it throws AwaitingInputSignal on the
-            // first pass (no answer file present yet) so the orchestrator can
-            // pause the run, and returns ok(answerMap) on the resume pass
-            // when the answer file is already on disk. The signal propagates
-            // up through withRetry and is intercepted in dispatchStep's catch
-            // below; the resume pass falls through to the normal completeStep
-            // path. After reading the answer map, we publish it as a regular
-            // handoff under the ask step's id so downstream steps can consume
-            // it via `contextFrom: ['<askStepId>']` exactly like a prompt
-            // step's output. The on-disk __ask_<stepId>__ file remains the
-            // input the CLI writes; the <stepId> handoff is the orchestrator's
-            // canonical output the DAG sees.
-            const askResult = await executeAsk(step, handoffStore, step.id, runDir);
-            if (askResult.isErr()) throw askResult.error;
-            const answers = askResult.value;
-            const writeResult = await handoffStore.write<unknown>(
-              step.id,
-              answers,
-              step.output?.schema,
-            );
-            if (writeResult.isErr()) throw writeResult.error;
-            const result: AskStepResult = {
-              kind: 'ask',
-              stepId: step.id,
-              answers,
-              handoffs: [step.id],
-            };
-            return result;
-          }
+        const entry = defaultStepRegistry.get(step.kind);
+        if (entry === undefined) {
+          throw new FlowDefinitionError(
+            `unknown step kind "${step.kind}" for step "${step.id}". Register it via defaultStepRegistry.register(...) before running the flow.`,
+            { stepId: step.id },
+          );
         }
+        // The registry stores entries keyed by literal kind, so the entry's
+        // execute signature is precisely typed for `step.kind`. The cast on
+        // `step` re-narrows the broad union to the matching variant —
+        // TypeScript cannot follow the discriminant through the registry's
+        // heterogeneous map.
+        return entry.execute(step as never, dispatchCtx);
       };
 
       /**

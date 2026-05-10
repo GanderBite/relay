@@ -26,7 +26,7 @@ import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { Flow, ReplayedEventRecord, StepStatus } from '@ganderbite/relay-core';
-import { EventRecordSchema, z } from '@ganderbite/relay-core';
+import { EventRecordSchema } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import type { FSWatcher } from 'chokidar';
 import { watch } from 'chokidar';
@@ -35,21 +35,8 @@ import { flowHeader, SYMBOLS } from './brand.js';
 import { gray, green, red, yellow } from './color.js';
 import { fmtCostApprox, fmtK } from './format.js';
 import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from './layout.js';
+import { LiveStatePartialSchema } from './schemas.js';
 import { renderStepSummary, renderStreamingLine, renderVerboseEvent } from './verboseStream.js';
-
-// ---------------------------------------------------------------------------
-// Live state Zod schema — LiveStatePartial type is imported from @ganderbite/relay-core/live-state.
-// ---------------------------------------------------------------------------
-
-const LiveStatePartialSchema = z.object({
-  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
-  attempt: z.number(),
-  startedAt: z.string(),
-  lastUpdateAt: z.string(),
-  model: z.string().optional(),
-  tokensSoFar: z.number().optional(),
-  toolsSoFar: z.number().optional(),
-});
 
 // ---------------------------------------------------------------------------
 // Auth descriptor
