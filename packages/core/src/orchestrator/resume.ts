@@ -137,6 +137,21 @@ function isFlow(value: unknown): value is Flow<unknown> {
  * the walker re-dispatches them, and executeAsk either returns the answer
  * map (if the user has written the answer handoff) or throws
  * AwaitingInputSignal again so the run pauses once more.
+ *
+ * Iteration is over `flow.graph.topoOrder`, which contains only top-level
+ * step ids — synthesised loop-body state keys of the form
+ * `<loopStepId>::<bodyStepId>` are intentionally excluded from the ready
+ * queue. Body-step lifecycles are owned by `executeLoop` and the
+ * `seedBodyStep` / `sweepBodySteps` machinery; the walker dispatches the
+ * enclosing loop step and `executeLoop` re-enters mid-iteration via
+ * `getResumedIter`.
+ *
+ * When a body-step ask paused the prior run, the loop step itself was
+ * concurrently `running` and was swept back to `pending` by the
+ * pause-time sibling sweep in dispatchStep (running -> failed -> pending,
+ * attempts preserved). On resume that pending loop step lands here and is
+ * re-queued as a normal predecessors-satisfied entry, no special-casing
+ * required.
  */
 export function seedReadyQueueForResume(flow: Flow<unknown>, state: RunState): string[] {
   const queue: string[] = [];

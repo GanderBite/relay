@@ -21,6 +21,7 @@ import type { AnswerMap, AwaitingInput, Question, RunState } from '@ganderbite/r
 import {
   askAnswerHandoffKey,
   askAnswerHandoffPath,
+  askIterationAnswerHandoffPath,
   atomicWriteJson,
   loadState,
   Orchestrator,
@@ -286,7 +287,31 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   // HandoffStore.write rejects. The file lands at the exact same path that
   // HandoffStore.read (in executeAsk) resolves to, so the orchestrator's
   // resume sweep picks it up correctly.
-  const handoffPath = askAnswerHandoffPath(runDir, pausedStepId);
+  //
+  // When the paused step is inside a loop body, the answer must go to the
+  // iteration-scoped subdirectory so that answer files from different
+  // iterations do not collide. The loopStepId and loopIter fields on
+  // awaitingInput carry the routing information; the bare body step id is
+  // derived by stripping the "<loopStepId>::" prefix from the synthesised key.
+  let handoffPath: string;
+  if (
+    awaitingInput !== undefined &&
+    awaitingInput.loopStepId !== undefined &&
+    awaitingInput.loopIter !== undefined
+  ) {
+    const prefix = awaitingInput.loopStepId + '::';
+    const bareBodyStepId = awaitingInput.stepId.startsWith(prefix)
+      ? awaitingInput.stepId.slice(prefix.length)
+      : awaitingInput.stepId;
+    handoffPath = askIterationAnswerHandoffPath(
+      runDir,
+      awaitingInput.loopStepId,
+      awaitingInput.loopIter,
+      bareBodyStepId,
+    );
+  } else {
+    handoffPath = askAnswerHandoffPath(runDir, pausedStepId);
+  }
   const writeResult = await atomicWriteJson(handoffPath, answers);
   if (writeResult.isErr()) {
     process.stderr.write(

@@ -207,7 +207,23 @@ export class StateMachine {
     if (output.artifacts !== undefined && output.artifacts.length > 0) {
       next.artifacts = [...output.artifacts];
     }
-    this.#updateStep(id, next);
+    // Completing the step that was awaited-on clears the awaitingInput pointer:
+    // the prompt is consumed, the run is no longer paused on that step. For
+    // top-level ask steps resumePausedStep already cleared the pointer on
+    // resume; for loop-body ask steps, awaitingInput is preserved across the
+    // resume sweep (so executeLoop can read loopIter) and is cleared here once
+    // the resumed body step actually completes.
+    const clearAwaiting = this.#state.awaitingInput?.stepId === id;
+    if (clearAwaiting) {
+      const { awaitingInput: _drop, ...rest } = this.#state;
+      this.#state = {
+        ...rest,
+        steps: { ...this.#state.steps, [id]: next },
+        updatedAt: nowIso(),
+      };
+    } else {
+      this.#updateStep(id, next);
+    }
     return ok(undefined);
   }
 
@@ -290,11 +306,27 @@ export class StateMachine {
    * executor — the paused dispatch never finished running because no answer
    * was supplied, and the next dispatch's startStep will re-increment the
    * counter back to where it was. Drops the `startedAt` timestamp (the next
-   * dispatch records a fresh one) and clears `awaitingInput` from the
-   * run-level state when it points at this step. Caller is responsible for
-   * invoking save() to persist the snapshot atomically.
+   * dispatch records a fresh one).
+   *
+   * `awaitingInput` is cleared by default. Pass `preserveAwaitingInput: true`
+   * for paused loop-body ask entries — the enclosing loop step's executor
+   * needs to read `awaitingInput.loopIter` to re-enter at the right iteration,
+   * so the pointer must outlive the paused-to-pending flip. The matching
+   * `completeStep` call clears `awaitingInput` later, when the resumed body
+   * step actually consumes the supplied answer.
+   *
+   * `iter` is preserved on the next state entry so synthesised body-step keys
+   * keep their iteration tag across the resume — `seedBodyStep` short-circuits
+   * to a no-op when the iter matches and would otherwise overwrite a missing
+   * iter tag with `attempts: 0`, double-decrementing the counter.
+   *
+   * Caller is responsible for invoking save() to persist the snapshot
+   * atomically.
    */
-  resumePausedStep(id: string): Result<void, StateTransitionError> {
+  resumePausedStep(
+    id: string,
+    opts: { preserveAwaitingInput?: boolean } = {},
+  ): Result<void, StateTransitionError> {
     const stepResult = this.#requireStep(id);
     if (stepResult.isErr()) return err(stepResult.error);
     const step = stepResult.value;
@@ -311,7 +343,9 @@ export class StateMachine {
       status: 'pending',
       attempts: Math.max(0, step.attempts - 1),
     };
-    const clearAwaiting = this.#state.awaitingInput?.stepId === id;
+    if (step.iter !== undefined) next.iter = step.iter;
+    const clearAwaiting =
+      opts.preserveAwaitingInput !== true && this.#state.awaitingInput?.stepId === id;
     const nextSteps = { ...this.#state.steps, [id]: next };
     if (clearAwaiting) {
       const { awaitingInput: _drop, ...rest } = this.#state;

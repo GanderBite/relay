@@ -585,12 +585,24 @@ export class Orchestrator {
     // resumePausedStep, which additionally clears the run-level
     // awaitingInput pointer so the resumed snapshot reads as in-progress
     // rather than waiting on input that has already been supplied.
+    //
+    // Synthesised loop-body ask entries (keys containing `::`) are paused the
+    // same way, but their pause carries a loopStepId/loopIter pointer on
+    // awaitingInput that the enclosing loop step's executor reads via
+    // getResumedIter to re-enter at the correct iteration. Clearing
+    // awaitingInput here would force the loop to restart at iter 1, looking
+    // for an answer file at the wrong path and pausing again immediately. So
+    // for those entries we preserve awaitingInput; completeStep clears it
+    // later when the resumed body step consumes the supplied answer.
     for (const [stepId, stepState] of Object.entries(stateMachine.getState().steps)) {
       if (stepState.status === 'failed') {
         const resetResult = stateMachine.resetStep(stepId);
         if (resetResult.isErr()) throw resetResult.error;
       } else if (stepState.status === 'paused') {
-        const resumeResult = stateMachine.resumePausedStep(stepId);
+        const isBodyStepKey = stepId.includes('::');
+        const resumeResult = stateMachine.resumePausedStep(stepId, {
+          preserveAwaitingInput: isBodyStepKey,
+        });
         if (resumeResult.isErr()) throw resumeResult.error;
       }
     }

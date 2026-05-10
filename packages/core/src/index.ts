@@ -329,10 +329,14 @@ export type {
  * - `askAnswerHandoffPath(runDir, stepId)` resolves the absolute path
  *   `<runDir>/handoffs/<askAnswerHandoffKey(stepId)>.json` — the file the
  *   `relay answer` CLI writes and the orchestrator reads on resume.
+ * - `askIterationAnswerHandoffPath(runDir, loopStepId, iter, bodyStepId)`
+ *   resolves the iteration-scoped path for an ask step that lives inside a
+ *   loop body: `<runDir>/handoffs/<loopStepId>/iter_<iter>/__ask_<bodyStepId>__.json`.
  */
 export {
   askAnswerHandoffKey,
   askAnswerHandoffPath,
+  askIterationAnswerHandoffPath,
   createOrchestrator,
   Orchestrator,
 } from './orchestrator/index.js';
