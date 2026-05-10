@@ -27,7 +27,7 @@ export const ERROR_CODES = {
   STEP_FAILURE: 'relay_STEP_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
   LOOP_MAX_ITERATIONS: 'relay_LOOP_MAX_ITERATIONS_EXCEEDED',
-  FLOW_IMPORT: 'relay_flow_import_error',
+  FLOW_IMPORT: 'relay_FLOW_IMPORT',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -113,12 +113,13 @@ export interface FlowImportDetails extends Record<string, unknown> {
   /** Absolute path to the flow module that could not be imported. */
   path: string;
   /** Why the import failed. */
-  reason: 'missing-file' | 'missing-default-export' | 'build-not-run';
+  reason: 'absent' | 'unparseable' | 'missing-default-export';
 }
 
 /**
- * Thrown when a flow module cannot be imported — the file is absent, the build
- * has not been run, or the module has no default export.
+ * Thrown when a flow module cannot be imported — the file is absent
+ * (`absent`), the file exists but cannot be loaded (`unparseable`), or the
+ * module has no valid default export (`missing-default-export`).
  *
  * CLI exit code: 2 (definition_error)
  */

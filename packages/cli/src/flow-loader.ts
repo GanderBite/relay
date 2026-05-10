@@ -155,11 +155,11 @@ async function importFlow(
     }
     const detail = importErr instanceof Error ? importErr.message : String(importErr);
     if (isModuleNotFound(detail)) {
-      // The dist/flow.js file does not exist — the build has not been run.
+      // The dist/flow.js file does not exist.
       return err(
         new FlowImportError(
           `flow module not found at ${entryPath}: run the flow package build before invoking relay`,
-          { path: entryPath, reason: 'build-not-run' },
+          { path: entryPath, reason: 'absent' },
         ),
       );
     }
@@ -167,7 +167,7 @@ async function importFlow(
     return err(
       new FlowImportError(`failed to import flow from ${entryPath}: ${detail}`, {
         path: entryPath,
-        reason: 'missing-file',
+        reason: 'unparseable',
       }),
     );
   }

@@ -129,9 +129,9 @@ describe('TC-015: loadFlow resolution order', () => {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
-    expect(details.reason).toBe('build-not-run');
+    expect(details.reason).toBe('absent');
   });
 
   it('[TC-015d] unknown flow name returns err when neither .relay/flows nor node_modules has it', async () => {
@@ -145,12 +145,12 @@ describe('TC-015: loadFlow resolution order', () => {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
-    expect(details.reason).toBe('build-not-run');
+    expect(details.reason).toBe('absent');
   });
 
-  it('[TC-015e] explicit path that does not exist returns err with code relay_flow_import_error', async () => {
+  it('[TC-015e] explicit path that does not exist returns err with code relay_FLOW_IMPORT', async () => {
     // Path-like argument → loader goes to importFlow directly (no fallthrough).
     // The dir does not exist, so the dynamic import fails → FlowImportError.
     const result = await loadFlow('./does-not-exist', tmp);
@@ -158,9 +158,9 @@ describe('TC-015: loadFlow resolution order', () => {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
-    expect(details.reason).toBe('build-not-run');
+    expect(details.reason).toBe('absent');
   });
 
   it('[TC-015f] .relay/flows entry with invalid flow does NOT fall through to node_modules', async () => {
@@ -184,7 +184,7 @@ describe('TC-015: loadFlow resolution order', () => {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });
@@ -195,7 +195,7 @@ describe('TC-015: loadFlow resolution order', () => {
 // ---------------------------------------------------------------------------
 
 describe('TC-016: duck-type guard rejects invalid flow shapes', () => {
-  it('[TC-016a] graph present but missing topoOrder → err with code relay_flow_import_error', async () => {
+  it('[TC-016a] graph present but missing topoOrder → err with code relay_FLOW_IMPORT', async () => {
     const flowDir = join(tmp, 'bad-flow');
     await mkdir(join(flowDir, 'dist'), { recursive: true });
     // graph exists but lacks topoOrder — isFlow() must reject it.
@@ -216,12 +216,12 @@ export default {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });
 
-  it('[TC-016b] graph.successors not map-like → err with code relay_flow_import_error', async () => {
+  it('[TC-016b] graph.successors not map-like → err with code relay_FLOW_IMPORT', async () => {
     const flowDir = join(tmp, 'bad-flow-2');
     await mkdir(join(flowDir, 'dist'), { recursive: true });
     const badContent = `
@@ -242,12 +242,12 @@ export default {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });
 
-  it('[TC-016c] missing name field → err with code relay_flow_import_error', async () => {
+  it('[TC-016c] missing name field → err with code relay_FLOW_IMPORT', async () => {
     const flowDir = join(tmp, 'bad-flow-3');
     await mkdir(join(flowDir, 'dist'), { recursive: true });
     const badContent = `
@@ -267,12 +267,12 @@ export default {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });
 
-  it('[TC-016d] default export is null → err with code relay_flow_import_error', async () => {
+  it('[TC-016d] default export is null → err with code relay_FLOW_IMPORT', async () => {
     const flowDir = join(tmp, 'null-flow');
     await mkdir(join(flowDir, 'dist'), { recursive: true });
     await writeFile(join(flowDir, 'dist', 'flow.js'), `export default null;`, 'utf8');
@@ -282,12 +282,12 @@ export default {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });
 
-  it('[TC-016e] default export is missing (no default export) → err with code relay_flow_import_error', async () => {
+  it('[TC-016e] default export is missing (no default export) → err with code relay_FLOW_IMPORT', async () => {
     const flowDir = join(tmp, 'no-default-flow');
     await mkdir(join(flowDir, 'dist'), { recursive: true });
     // Named export only — no default export → defaultExport is undefined.
@@ -302,7 +302,7 @@ export default {
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
     expect(error).toBeInstanceOf(FlowImportError);
-    expect(error.code).toBe('relay_flow_import_error');
+    expect(error.code).toBe('relay_FLOW_IMPORT');
     const details = (error as FlowImportError).details as { reason: string };
     expect(details.reason).toBe('missing-default-export');
   });

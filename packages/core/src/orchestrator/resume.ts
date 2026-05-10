@@ -98,7 +98,7 @@ export async function importFlow(flowPath: string): Promise<Flow<unknown>> {
     throw new FlowImportError(
       `resume failed to import flow module at "${flowPath}": ${message}. ` +
         'Run `pnpm build` in the flow package before invoking resume.',
-      { path: flowPath, reason: 'build-not-run' },
+      { path: flowPath, reason: 'absent' },
     );
   }
   const candidate = mod['default'] ?? mod['flow'];
