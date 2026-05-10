@@ -48,7 +48,7 @@ export interface RunEvent {
  * telemetry.enabled set to true. Any read, parse, or validation failure
  * returns false — telemetry is disabled by default.
  */
-export async function isEnabled(): Promise<boolean> {
+export async function isTelemetryEnabled(): Promise<boolean> {
   const result = await loadGlobalSettings();
   if (result.isErr()) return false;
   return result.value?.telemetry?.enabled === true;
@@ -64,7 +64,7 @@ export async function isEnabled(): Promise<boolean> {
  * returns an error. Uses a 2-second AbortController timeout.
  */
 export async function maybeSendRunEvent(evt: RunEvent): Promise<void> {
-  if (!(await isEnabled())) return;
+  if (!(await isTelemetryEnabled())) return;
 
   const controller = new AbortController();
   const timer = setTimeout(() => {
