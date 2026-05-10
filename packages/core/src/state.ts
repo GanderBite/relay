@@ -455,6 +455,84 @@ export class StateMachine {
     return ok(loadResult.value);
   }
 
+  /**
+   * Compose the synthesised state-key for a body step inside a loop. The
+   * double-colon separator is reserved for keys in `state.json` only — it is
+   * never used in handoff ids, the DAG, or anywhere a user-supplied id is
+   * accepted, so collisions with real step ids are impossible.
+   */
+  static bodyStepStateKey(loopStepId: string, bodyStepId: string): string {
+    return `${loopStepId}::${bodyStepId}`;
+  }
+
+  /**
+   * Lazily insert a pending state entry for a loop body step at the start of
+   * an iteration. The entry lives at the synthesised key
+   * `<loopStepId>::<bodyStepId>` and carries the `iter` index so a resume in
+   * another process can tell which iteration produced it. If an entry already
+   * exists for the same `iter`, this is a no-op; if the existing entry was
+   * seeded for a different iteration, it is replaced with a fresh pending
+   * entry. Caller is responsible for invoking save() to persist the snapshot
+   * atomically.
+   */
+  seedBodyStep(
+    loopStepId: string,
+    bodyStepId: string,
+    iter: number,
+  ): Result<void, StateTransitionError> {
+    const key = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
+    const existing = this.#state.steps[key];
+    if (existing !== undefined && existing.iter === iter) {
+      return ok(undefined);
+    }
+    this.#updateStep(key, { status: 'pending', attempts: 0, iter });
+    return ok(undefined);
+  }
+
+  /**
+   * Reset every body-step state entry belonging to the named loop back to
+   * pending at an iteration boundary. Walks every key prefixed with
+   * `<loopStepId>::` and lands each entry on pending while preserving its
+   * `iter` index. `running` entries are routed through the same
+   * `failStep -> resetStep` chain used by the sibling sweep elsewhere so
+   * the cached step result is dropped via resetStep's invalidation; `failed`
+   * entries go through resetStep directly. Settled entries
+   * (`succeeded` / `paused` / `skipped`) cannot be driven by either public
+   * transition (their preconditions reject those statuses), so the sweep
+   * writes a fresh pending entry directly — total reset is the contract here,
+   * not transition-graph fidelity. `pending` entries are left untouched.
+   * Caller is responsible for invoking save() to persist the snapshot
+   * atomically.
+   */
+  sweepBodySteps(loopStepId: string): Result<void, StateTransitionError> {
+    const prefix = `${loopStepId}::`;
+    for (const [key, step] of Object.entries(this.#state.steps)) {
+      if (!key.startsWith(prefix)) continue;
+      if (step.status === 'pending') continue;
+      if (step.status === 'running') {
+        const failResult = this.failStep(key, 'iteration boundary sweep');
+        if (failResult.isErr()) return err(failResult.error);
+        const resetResult = this.resetStep(key);
+        if (resetResult.isErr()) return err(resetResult.error);
+        continue;
+      }
+      if (step.status === 'failed') {
+        const resetResult = this.resetStep(key);
+        if (resetResult.isErr()) return err(resetResult.error);
+        continue;
+      }
+      // 'succeeded' | 'paused' | 'skipped' — neither failStep nor resetStep
+      // accepts these statuses, so write a fresh pending entry that preserves
+      // the seeded `iter` index. attempts resets to 0 because the next
+      // iteration's startStep will re-increment from a clean slate.
+      const next: StepState = { status: 'pending', attempts: 0 };
+      if (step.iter !== undefined) next.iter = step.iter;
+      this.#updateStep(key, next);
+      this.#stepResults.delete(key);
+    }
+    return ok(undefined);
+  }
+
   #requireStep(id: string): Result<StepState, StateTransitionError> {
     const step = this.#state.steps[id];
     if (step === undefined) {
