@@ -38,6 +38,12 @@ export interface ExecuteRunInputs {
  * teardown, and the final RunResult assembly. Both entry points hand in the
  * collaborators they have already prepared (state machine, logger, etc.) and
  * a precomputed `initialQueue`.
+ *
+ * Installs process-level SIGINT/SIGTERM listeners for the duration of one
+ * invocation and removes them in the finally block. Concurrent calls are not
+ * supported — overlapping invocations would each install their own listeners
+ * and both abort on a single signal. Embedded hosts that may invoke this in
+ * parallel must serialize calls externally.
  */
 export async function executeRun(inputs: ExecuteRunInputs): Promise<RunResult> {
   const {
