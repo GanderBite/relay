@@ -108,6 +108,7 @@ function printScriptLikeStep(
   const rawEnv = step.env;
   const displayEntries: Array<[string, string]> = [];
 
+  // Resolve per entry so a single failure produces one placeholder, not a wholesale skip.
   if (rawEnv !== undefined) {
     for (const [k, spec] of Object.entries(rawEnv)) {
       if (isScriptEnvFromSpec(spec)) {
@@ -139,7 +140,7 @@ function printScriptLikeStep(
     ['RELAY_RUN_DIR', envCtx.runDir],
     ['RELAY_FLOW_DIR', envCtx.flowDir],
     ['RELAY_HANDOFFS_DIR', envCtx.handoffsDir],
-    ['RELAY_INPUT_JSON', `${envCtx.runDir}/live/${step.id}.input.json`],
+    ['RELAY_INPUT_JSON', join(envCtx.runDir, 'live', `${step.id}.input.json`)],
   ];
 
   const hasUserEnv = displayEntries.length > 0;
