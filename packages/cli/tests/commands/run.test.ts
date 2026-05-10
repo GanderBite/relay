@@ -191,14 +191,18 @@ describe('relay run — --fresh flag', () => {
 });
 
 describe('relay run — --provider flag forwarding', () => {
-  it('[RUN-PROV-001] --provider is forwarded to runner.run() as flagProvider', async () => {
+  it('[RUN-PROV-001] resolved provider name is forwarded to runner.run() as resolvedProviderName', async () => {
     await expect(runCommand(['test-flow', '.'], { provider: 'claude-cli' })).rejects.toThrow(
       'process.exit called',
     );
 
     expect(mockRunnerRun).toHaveBeenCalledOnce();
     const runOpts = mockRunnerRun.mock.calls[0][2] as Record<string, unknown>;
-    expect(runOpts.flagProvider).toBe('claude-cli');
+    // The CLI resolves the provider via loadFlowAndAuth and passes the resolved
+    // provider name as resolvedProviderName so the orchestrator skips the
+    // three-tier settings read. flagProvider is not set on this path.
+    expect(runOpts.resolvedProviderName).toBe('claude-cli');
+    expect(runOpts.flagProvider).toBeUndefined();
   });
 });
 

@@ -55,6 +55,19 @@ export interface RunOptions {
    */
   flagProvider?: string;
   /**
+   * A provider name that has already been resolved by the caller (e.g. the CLI
+   * after `loadFlowAndAuth` finishes). When set, the orchestrator's auth
+   * bootstrap skips the three-tier settings resolution chain and fetches the
+   * provider directly from the registry by this name. Prefer this over
+   * `flagProvider` when the caller has already resolved the provider — it
+   * avoids redundant settings-file I/O and prevents the two resolution passes
+   * from diverging if settings change between the banner and the run.
+   *
+   * Mutually exclusive with `flagProvider`. `resolvedProviderName` takes
+   * precedence when both are set.
+   */
+  resolvedProviderName?: string | undefined;
+  /**
    * Isolate this run in a per-run git worktree rooted at $TMPDIR. Prompt
    * subprocesses are spawned with the worktree path as their cwd so every
    * file edit lands in an isolated checkout that is torn down when the run

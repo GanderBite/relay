@@ -177,7 +177,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   progress.start(runId);
 
   // ---------------------------------------------------------------------------
-  // SIGINT handler — Ctrl-C paused UX (product spec §11.5)
+  // SIGINT handler — Ctrl-C paused UX.
   //
   // First ^C: flag the interruption. The Orchestrator registers its own SIGINT
   // listener and fires its AbortController, which causes orchestrator.run() to
@@ -243,9 +243,11 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
       // terminal output. Non-TTY callers (CI, pipes) keep NDJSON on stdout.
       logToStdout: !process.stdout.isTTY,
     };
-    if (options.provider !== undefined) {
-      runOpts.flagProvider = options.provider;
-    }
+    // The provider was already resolved and authenticated by loadFlowAndAuth
+    // above. Pass the resolved name directly so the orchestrator skips the
+    // three-tier settings resolution (loadGlobalSettings + loadFlowSettings +
+    // resolveProvider) — it looks the provider up by name in the registry instead.
+    runOpts.resolvedProviderName = resolvedProvider.name;
     if (options.fresh === true) {
       runOpts.fresh = true;
     }

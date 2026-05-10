@@ -10,6 +10,19 @@ const DEFAULT_AUTH_TIMEOUT_MS = 30_000;
 
 export interface ResolveAndAuthenticateOptions {
   flagProvider?: string | undefined;
+  /**
+   * A provider name that has already been resolved by the caller (e.g. the CLI
+   * after `loadFlowAndAuth`). When set, the three-tier resolution chain
+   * (loadGlobalSettings + loadFlowSettings + resolveProvider) is skipped and
+   * the provider is fetched directly from the registry by this name. This
+   * avoids redundant settings-file I/O on every `relay run` invocation and
+   * prevents the two resolution passes from diverging if on-disk settings
+   * change between banner rendering and the orchestrator auth bootstrap.
+   *
+   * If the name is set but the provider is not in the registry, throws the same
+   * `FlowDefinitionError` that the registry `get()` path would produce.
+   */
+  resolvedProviderName?: string | undefined;
   flowDir: string;
   registry: ProviderRegistry;
   authTimeoutMs?: number | undefined;
@@ -26,11 +39,23 @@ export interface ResolveAndAuthenticateOptions {
  * a cached `preAuthedState` entry for the resolved provider's name (the CLI
  * banner already authenticated upstream and the orchestrator should not
  * re-spawn the probe).
+ *
+ * When `opts.resolvedProviderName` is set the three-tier settings resolution
+ * is skipped — the provider is fetched directly from the registry. Use this
+ * when the caller has already resolved (and authenticated) the provider so the
+ * settings files are not read twice.
  */
 export async function resolveAndAuthenticate(
   opts: ResolveAndAuthenticateOptions,
 ): Promise<{ provider: Provider; authState: AuthState | undefined }> {
-  const provider = await resolveRunProvider(opts.registry, opts.flowDir, opts.flagProvider);
+  let provider: Provider;
+  if (opts.resolvedProviderName !== undefined) {
+    const registryResult = opts.registry.get(opts.resolvedProviderName);
+    if (registryResult.isErr()) throw registryResult.error;
+    provider = registryResult.value;
+  } else {
+    provider = await resolveRunProvider(opts.registry, opts.flowDir, opts.flagProvider);
+  }
 
   if (opts.preAuthedState?.has(provider.name)) {
     return { provider, authState: opts.preAuthedState.get(provider.name) };

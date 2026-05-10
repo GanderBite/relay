@@ -88,7 +88,13 @@ export async function executeRun(inputs: ExecuteRunInputs): Promise<RunResult> {
     // (NoProviderConfiguredError, FlowDefinitionError, AuthTimeoutError, or
     // a provider's authenticate() error) rather than a half-executed run.
     const { provider } = await resolveAndAuthenticate({
-      flagProvider: opts.flagProvider,
+      // When the CLI has already resolved the provider (via loadFlowAndAuth),
+      // it passes resolvedProviderName to skip the three-tier settings read
+      // here. flagProvider is used as fallback when resolvedProviderName is not
+      // set (e.g. library-mode callers that pass the raw flag value directly).
+      ...(opts.resolvedProviderName !== undefined
+        ? { resolvedProviderName: opts.resolvedProviderName }
+        : { flagProvider: opts.flagProvider }),
       flowDir,
       registry: providers,
       ...(opts.authTimeoutMs !== undefined ? { authTimeoutMs: opts.authTimeoutMs } : {}),

@@ -2,7 +2,7 @@
  * `relay resume <runId>` — resume a failed or interrupted run from its last
  * checkpoint.
  *
- * Pre-resume banner verbatim per product spec §6.7:
+ * Pre-resume banner — verbatim string contract; the file is the canonical reference:
  *
  *   ●─▶●─▶●─▶●  relay resume f9c3a2
  *
@@ -88,7 +88,7 @@ export function firstPendingStepId(
 /**
  * Render one step row for the pre-resume static banner.
  *
- * Status rules per §6.7:
+ * Status rules for the pre-resume step grid:
  *   succeeded → green "✓ <name padded>  (cached, ran HH:MM)"
  *   failed/pending/running → determined by position in banner:
  *     the first non-succeeded step is shown as spinning "⠋ <name>    running"
@@ -365,7 +365,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   display.start(runId);
 
   // ---------------------------------------------------------------------------
-  // SIGINT handler — Ctrl-C paused UX (product spec §11.5)
+  // SIGINT handler — Ctrl-C paused UX.
   //
   // First ^C: flag the interruption. The Orchestrator registers its own SIGINT
   // listener and fires its AbortController, which causes orchestrator.resume()

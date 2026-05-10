@@ -12,7 +12,7 @@
  * changed, gray when already at the latest version. Failed flows are printed
  * in red and do not abort the remaining upgrades.
  *
- * Output contract (product spec §6.8 banner shape):
+ * Output contract (banner shape — mark header, per-flow diff rows, summary footer):
  *
  *   ●─▶●─▶●─▶●  upgrading flows
  *
@@ -180,8 +180,11 @@ export default async function upgradeCommand(args: unknown[], opts: unknown): Pr
     // Single-race mode: verify the race exists before proceeding.
     const all = await discoverFlows(flowsDir);
     if (all === null || !all.includes(targetFlow)) {
+      // usage-error: formatError does not apply — missing target flow is not a PipelineError type
       process.stdout.write(
-        `  ${SYMBOLS.fail} ${targetFlow} is not installed. run: relay install ${targetFlow}\n`,
+        red(`  ${SYMBOLS.fail} ${targetFlow} is not installed`) +
+          gray(`. run: relay install ${targetFlow}`) +
+          '\n',
       );
       process.exit(1);
     }
@@ -196,7 +199,7 @@ export default async function upgradeCommand(args: unknown[], opts: unknown): Pr
     flowNames = discovered;
   }
 
-  // Header — matches the banner shape from product spec §6.8.
+  // Header — mark followed by a verb describing the upgrade scope.
   const verb = targetFlow !== undefined ? `upgrading ${targetFlow}` : 'upgrading flows';
   process.stdout.write(`${MARK}  ${verb}\n`);
   process.stdout.write('\n');
