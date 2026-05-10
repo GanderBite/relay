@@ -12,6 +12,7 @@
  *   7 — I/O error (AtomicWriteError)
  *   8 — rate limited (ProviderRateLimitError)
  *   9 — loop exhausted (LoopMaxIterationsError)
+ *  75 — run paused waiting for input (used by run command when a step.ask pauses execution)
  *
  * Error format follows the product spec error template:
  *   ✕ <one-line headline>
@@ -55,6 +56,7 @@ export const EXIT_CODES = {
   io_error: 7,
   rate_limit: 8,
   loop_exhausted: 9,
+  paused: 75,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];

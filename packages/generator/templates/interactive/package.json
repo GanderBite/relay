@@ -1,0 +1,42 @@
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "Interactive flow scaffolded from @ganderbite/relay-generator. Pauses for human input, then runs a prompt that consumes the answers.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": [
+    "dist",
+    "prompts",
+    "schemas",
+    "templates",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@ganderbite/relay-core": "^0.4.0"
+  },
+  "relay": {
+    "flowName": "{{pkgName}}",
+    "displayName": "{{pkgName}}",
+    "tags": [
+      "interactive",
+      "human-in-the-loop",
+      "ask"
+    ],
+    "estimatedCostUsd": {
+      "min": 0.01,
+      "max": 0.2
+    },
+    "estimatedDurationMin": {
+      "min": 1,
+      "max": 10
+    },
+    "audience": [
+      "dev"
+    ]
+  }
+}

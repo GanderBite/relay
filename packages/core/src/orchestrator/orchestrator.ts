@@ -581,11 +581,17 @@ export class Orchestrator {
 
     // Flip failed steps back to pending so the retry loop can take another
     // attempt. resetStep preserves the attempts counter so maxRetries budgets
-    // carry across resume.
+    // carry across resume. Paused ask steps follow the same pattern via
+    // resumePausedStep, which additionally clears the run-level
+    // awaitingInput pointer so the resumed snapshot reads as in-progress
+    // rather than waiting on input that has already been supplied.
     for (const [stepId, stepState] of Object.entries(stateMachine.getState().steps)) {
       if (stepState.status === 'failed') {
         const resetResult = stateMachine.resetStep(stepId);
         if (resetResult.isErr()) throw resetResult.error;
+      } else if (stepState.status === 'paused') {
+        const resumeResult = stateMachine.resumePausedStep(stepId);
+        if (resumeResult.isErr()) throw resumeResult.error;
       }
     }
 

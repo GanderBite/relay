@@ -131,8 +131,12 @@ function isFlow(value: unknown): value is Flow<unknown> {
  * Compute the initial ready queue for a resumed run. A step is "ready" when
  * it is not already succeeded/skipped AND every predecessor is either
  * succeeded, skipped, or failed with onFail=continue. Failed steps that the
- * Step plans to retry are included — the caller resets their status before
- * the walker dispatches them.
+ * Step plans to retry are included — the caller resets their status to
+ * pending before the walker dispatches them. Paused ask steps are included
+ * the same way: the caller flips them back to pending via resumePausedStep,
+ * the walker re-dispatches them, and executeAsk either returns the answer
+ * map (if the user has written the answer handoff) or throws
+ * AwaitingInputSignal again so the run pauses once more.
  */
 export function seedReadyQueueForResume(flow: Flow<unknown>, state: RunState): string[] {
   const queue: string[] = [];

@@ -281,6 +281,43 @@ export class StateMachine {
   }
 
   /**
+   * Flip a paused interactive step back to pending so the Orchestrator can
+   * re-dispatch it on resume. Preserves `attempts` so retry budgets carry
+   * across the pause boundary, drops the `startedAt` timestamp (the next
+   * dispatch records a fresh one), and clears `awaitingInput` from the
+   * run-level state when it points at this step. Caller is responsible for
+   * invoking save() to persist the snapshot atomically.
+   */
+  resumePausedStep(id: string): Result<void, StateTransitionError> {
+    const stepResult = this.#requireStep(id);
+    if (stepResult.isErr()) return err(stepResult.error);
+    const step = stepResult.value;
+    if (step.status !== 'paused') {
+      return err(
+        new StateTransitionError(
+          `cannot resume paused step "${id}" from status "${step.status}"`,
+          id,
+          { from: step.status, attempted: 'resumePaused' },
+        ),
+      );
+    }
+    const next: StepState = {
+      status: 'pending',
+      attempts: step.attempts,
+    };
+    const clearAwaiting = this.#state.awaitingInput?.stepId === id;
+    const nextSteps = { ...this.#state.steps, [id]: next };
+    if (clearAwaiting) {
+      const { awaitingInput: _drop, ...rest } = this.#state;
+      this.#state = { ...rest, steps: nextSteps, updatedAt: nowIso() };
+    } else {
+      this.#state = { ...this.#state, steps: nextSteps, updatedAt: nowIso() };
+    }
+    this.#stepResults.delete(id);
+    return ok(undefined);
+  }
+
+  /**
    * Pause an interactive step that is waiting for user input. Transitions the
    * step from 'running' to 'paused', flips run-level status to 'paused', and
    * records the prompted questions on `awaitingInput` so a resume in another

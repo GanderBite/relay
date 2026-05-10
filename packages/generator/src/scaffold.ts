@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { err, ok, type Result } from 'neverthrow';
 
-export type TemplateId = 'blank' | 'linear' | 'fan-out' | 'discovery' | 'loop';
+export type TemplateId = 'blank' | 'linear' | 'fan-out' | 'discovery' | 'loop' | 'interactive';
 
 export interface ScaffoldReport {
   filesWritten: string[];
@@ -129,6 +129,8 @@ export async function scaffoldFlow(
 export function pickTemplate(intentText: string): TemplateId {
   const lower = intentText.toLowerCase();
   if (/(explore|audit|document|review codebase)/.test(lower)) return 'discovery';
+  if (/(interactive|ask|prompt user|human[- ]in[- ]the[- ]loop|gather input|pause for)/.test(lower))
+    return 'interactive';
   if (/(then|chain|sequential)/.test(lower)) return 'linear';
   if (/(parallel|fan[-_ ]?out)/.test(lower)) return 'fan-out';
   if (/(loop|iterative|implement.*review|review.*until)/.test(lower)) return 'loop';

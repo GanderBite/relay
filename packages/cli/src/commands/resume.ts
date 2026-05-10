@@ -273,6 +273,13 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   }
   const state = stateResult.value;
 
+  // ---- (2b) Refuse paused runs — relay resume cannot resume an ask-paused run ----
+  if (state.status === 'paused') {
+    process.stderr.write(yellow(`  ${SYMBOLS.warn} this run is paused waiting for input`) + '\n');
+    process.stderr.write(gray(`  provide answers with: relay answer ${runId}`) + '\n');
+    process.exit(1);
+  }
+
   // ---- (3) Load flow-ref.json ----
   let flowRef: FlowRef;
   try {
