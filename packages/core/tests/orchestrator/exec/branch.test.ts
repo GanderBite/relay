@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { StepFailureError } from '../../../src/errors.js';
+import { FlowDefinitionError, StepFailureError } from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { createLogger } from '../../../src/logger.js';
 import { executeBranch } from '../../../src/orchestrator/exec/branch.js';
@@ -77,6 +77,28 @@ describe('executeBranch structured env', () => {
       step: s,
     });
     expect(result.exitCode).toBe(0);
+  });
+
+  it('StepFailureError from resolveScriptEnv preserves the FlowDefinitionError cause', async () => {
+    const s = step.branch({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { REPO: { from: 'input.missing', required: true } },
+      onExit: { '0': 'continue' },
+    });
+    let caught: unknown;
+    try {
+      await executeBranch(s, {
+        ...ctxBase(),
+        stepId: s.id || 's',
+        step: s,
+        input: {},
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StepFailureError);
+    const err = caught as StepFailureError;
+    expect(err.details?.cause).toBeInstanceOf(FlowDefinitionError);
   });
 
   it('templates {{input.x}} in string-form run before splitShell', async () => {

@@ -7,7 +7,7 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { StepFailureError, TimeoutError } from '../../../src/errors.js';
+import { FlowDefinitionError, StepFailureError, TimeoutError } from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { createLogger } from '../../../src/logger.js';
 import { executeBranch } from '../../../src/orchestrator/exec/branch.js';
@@ -154,6 +154,22 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
     const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
     expect(result.exitCode).toBe(0);
     expect(String(result.stdout ?? '').trim()).toBe(overrideValue);
+  });
+
+  it('[EXEC-SCRIPT-ENV-CAUSE] StepFailureError from resolveScriptEnv preserves the FlowDefinitionError cause', async () => {
+    const s = step.script({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { REPO: { from: 'input.missing', required: true } },
+    });
+    let caught: unknown;
+    try {
+      await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s, input: {} });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StepFailureError);
+    const err = caught as StepFailureError;
+    expect(err.details?.cause).toBeInstanceOf(FlowDefinitionError);
   });
 
   it('[EXEC-SCRIPT-009] StepFailureError is still thrown even if the stderr sidecar write fails', async () => {

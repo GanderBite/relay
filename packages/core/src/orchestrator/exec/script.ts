@@ -94,7 +94,10 @@ export async function executeScript(
     handoffsDir: ctx.handoffsDir,
   });
   if (resolved.isErr()) {
-    throw new StepFailureError(resolved.error.message, stepId, attempt, { runId });
+    throw new StepFailureError(resolved.error.message, stepId, attempt, {
+      runId,
+      cause: resolved.error,
+    });
   }
 
   // Best-effort: dump the flow input to a per-step file so scripts can read
