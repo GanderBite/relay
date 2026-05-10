@@ -6,17 +6,23 @@ A Relay flow scaffolded from the `fan-out` template.
 
 ## What it does
 
-Runs a fan-out / fan-in pipeline: one prep step produces shared context,
-two analysis branches run concurrently against that context, and a final
-merge step reconciles both branches into a single Markdown artifact. Use
-this template when the two analyses are independent and can share the same
-upstream inputs.
+Runs a fan-out / fan-in pipeline: an interactive `gather` step pauses the
+run to ask the operator which angle the branches should focus on, two
+analysis branches then run concurrently against that shared answer, and a
+final merge step reconciles both branches into a single Markdown artifact.
+Use this template when the two analyses are independent and can share the
+same upstream context.
 
 ```
-prep ──▶ branch_a ─┐
-     │             ├──▶ merge
-     └─▶ branch_b ─┘
+gather ──▶ branch_a ─┐
+       │             ├──▶ merge
+       └─▶ branch_b ─┘
 ```
+
+The `gather` step is placed BEFORE the parallel barrier on purpose. Ask
+steps inside parallel branches are forbidden because the orchestrator
+cannot serialize answers from two simultaneous pauses — gather your inputs
+upstream, then fan out.
 
 ## Sample output
 
@@ -45,11 +51,13 @@ After a successful run, the flow writes `merged.md` into the run directory
 ## Estimated cost and duration
 
 - **Cost:** $0.05–$0.25 per run (estimated API equivalent; billed to your
-  subscription on Pro/Max).
-- **Duration:** ~3–10 minutes, depending on topic scope and model choice.
+  subscription on Pro/Max). The `gather` step itself is free — cost is
+  driven by the two branch prompts and the merge.
+- **Duration:** 1–10 minutes of model time, plus however long the operator
+  takes to answer `gather`.
 
-The two branch steps run in parallel, so the wall-clock time is roughly
-`prep + max(branch_a, branch_b) + merge`.
+The two branch steps run in parallel, so the wall-clock model time is
+roughly `max(branch_a, branch_b) + merge`.
 
 ## Install
 
@@ -71,8 +79,26 @@ relay install {{pkgName}}
 relay run . --topic="the subject to analyze"
 ```
 
-The `topic` input is required and is echoed through the prep handoff into
-both branches.
+The run will pause at `gather`. The CLI exits with code 75 and prints:
+
+```
+answer: relay answer <runId>
+```
+
+Provide the focusing angle to resume:
+
+```bash
+relay answer <runId>
+```
+
+Or pass the answer non-interactively:
+
+```bash
+relay answer <runId> --json '{"focus":"second-order risks"}'
+```
+
+The `topic` input is required and is read by both branch prompts alongside
+the operator's `focus` answer.
 
 ## Development
 
@@ -95,14 +121,23 @@ The flow accepts these inputs:
 |---|---|---|---|
 | `topic` | `string` | (required) | The subject both branches analyze. |
 
+The `gather` step asks these questions (edit the array in `flow.ts` to add
+or remove questions):
+
+| Question id | Kind | Label |
+|---|---|---|
+| `focus` | `text` | What angle should the branches focus on? |
+
 Models per step (override via `relay run . --model.<step>=<model>`):
 
 | Step | Default model |
 |---|---|
-| `prep` | provider default |
 | `branch_a` | provider default |
 | `branch_b` | provider default |
 | `merge` | provider default |
+
+`gather` does not invoke a model — it pauses the run and waits for
+`relay answer`.
 
 ## Customization
 
@@ -121,6 +156,10 @@ that you are expected to replace. Common edits:
   structured JSON rather than Markdown.
 - **Tighten the schemas.** Attach a Zod schema to the handoffs in
   `output.schema` to fail fast if a branch returns malformed JSON.
+- **Add or change ask questions.** Edit the `questions` array in `gather`.
+  Use `select` or `multiselect` for closed-set inputs; `number` for ranges;
+  `multiline` for longer prose. Keep the ask step BEFORE the barrier — never
+  inside a branch.
 
 ## License
 

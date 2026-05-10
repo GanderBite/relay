@@ -16,13 +16,18 @@ export default defineFlow({
   name: '{{pkgName}}',
   version: '0.1.0',
   description:
-    'Three-step linear flow: {{stepNames[0]}} then {{stepNames[1]}} then {{stepNames[2]}}.',
+    'Three-step linear flow: gather a goal from the operator, then {{stepNames[0]}}, then {{stepNames[1]}}.',
   input: z.object({
     subject: z.string().describe('The subject the flow operates on.'),
   }),
   steps: {
+    gather: step.ask({
+      questions: [{ id: 'goal', kind: 'text', label: 'What is the goal for this run?' }],
+    }),
     '{{stepNames[0]}}': step.prompt({
       promptFile: 'prompts/01_first.md',
+      dependsOn: ['gather'],
+      contextFrom: ['gather'],
       output: { handoff: '{{stepNames[0]}}' },
     }),
     '{{stepNames[1]}}': step.prompt({
@@ -30,12 +35,6 @@ export default defineFlow({
       dependsOn: ['{{stepNames[0]}}'],
       contextFrom: ['{{stepNames[0]}}'],
       output: { handoff: '{{stepNames[1]}}' },
-    }),
-    '{{stepNames[2]}}': step.prompt({
-      promptFile: 'prompts/03_third.md',
-      dependsOn: ['{{stepNames[1]}}'],
-      contextFrom: ['{{stepNames[1]}}'],
-      output: { handoff: '{{stepNames[2]}}' },
     }),
   },
 });

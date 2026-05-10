@@ -885,11 +885,20 @@ export class ProviderRateLimitError extends PipelineError<ProviderRateLimitDetai
  * Internal signal thrown by the ask executor when a step requires human input
  * and caught by the orchestrator to pause the run. Not part of the public
  * neverthrow Result API — callers should never catch this in application code.
+ *
+ * When the paused step lives inside a loop body, the orchestrator's body-step
+ * dispatcher mutates `stepId` to the synthesised body-step state key
+ * (`<loopStepId>::<bodyStepId>`) and attaches `loopContext` so the outer
+ * dispatch catch can persist the loop iteration on the awaitingInput record.
+ * `stepId` and `loopContext` are mutable for that single-site mutation; every
+ * other reader treats the signal as immutable.
  */
 export class AwaitingInputSignal extends Error {
   override readonly name = 'AwaitingInputSignal';
+  /** Loop context attached by the orchestrator when the paused ask lives inside a loop body. */
+  loopContext?: { loopStepId: string; loopIter: number };
   constructor(
-    public readonly stepId: string,
+    public stepId: string,
     public readonly questions: Question[],
   ) {
     super(`step ${stepId} requires human input`);

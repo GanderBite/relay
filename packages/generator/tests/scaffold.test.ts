@@ -92,9 +92,8 @@ describe('scaffoldFlow', () => {
   describe('linear template', () => {
     const tokens = {
       pkgName: 'my-linear',
-      'stepNames[0]': 'gather',
-      'stepNames[1]': 'analyze',
-      'stepNames[2]': 'report',
+      'stepNames[0]': 'analyze',
+      'stepNames[1]': 'report',
     };
 
     it('[GEN-005] linear template emits flow.ts with step.prompt and handoff', async () => {
@@ -105,7 +104,8 @@ describe('scaffoldFlow', () => {
       const content = await readFile(join(outDir, 'flow.ts'), 'utf8');
       expect(content).toContain('defineFlow');
       expect(content).toContain('step.prompt');
-      expect(content).toContain("handoff: 'gather'");
+      expect(content).toContain("handoff: 'analyze'");
+      expect(content).toContain('step.ask');
       expect(content).not.toContain('baton');
       expect(content).not.toContain('runners:');
     });
@@ -119,6 +119,7 @@ describe('scaffoldFlow', () => {
       expect(content).toContain("'analyze'");
       expect(content).toContain("'report'");
       expect(content).not.toContain('{{stepNames[0]}}');
+      expect(content).not.toContain('{{stepNames[1]}}');
     });
   });
 

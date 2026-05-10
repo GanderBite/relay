@@ -11,7 +11,7 @@ import {
 } from './errors.js';
 import type { Question } from './flow/question.js';
 import { QuestionSchema } from './flow/question.js';
-import type { FlowStatus, RunState, StepState } from './flow/types.js';
+import type { AwaitingInput, FlowStatus, RunState, StepState } from './flow/types.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
 import { createWriteSerializer } from './util/serialize.js';
@@ -329,11 +329,19 @@ export class StateMachine {
    * records the prompted questions on `awaitingInput` so a resume in another
    * process can reconstruct the prompt without re-asking. Caller is
    * responsible for invoking save() to persist the snapshot atomically.
+   *
+   * When the paused step lives inside a loop body, callers pass `loopStepId`
+   * and `loopIter` so the awaitingInput record carries the iteration index a
+   * resume needs to re-enter the loop at the same iteration. Top-level ask
+   * steps omit both parameters; the awaitingInput record stores only stepId,
+   * questions, and promptedAt in that case.
    */
   pauseStep(
     stepId: string,
     questions: Question[],
     promptedAt: string,
+    loopStepId?: string,
+    loopIter?: number,
   ): Result<void, StateTransitionError> {
     const stepResult = this.#requireStep(stepId);
     if (stepResult.isErr()) return err(stepResult.error);
@@ -348,6 +356,13 @@ export class StateMachine {
       );
     }
     const timestamp = nowIso();
+    const awaitingInput: AwaitingInput = {
+      stepId,
+      questions: [...questions],
+      promptedAt,
+      ...(loopStepId !== undefined ? { loopStepId } : {}),
+      ...(loopIter !== undefined ? { loopIter } : {}),
+    };
     this.#state = {
       ...this.#state,
       status: 'paused',
@@ -355,7 +370,7 @@ export class StateMachine {
         ...this.#state.steps,
         [stepId]: { ...step, status: 'paused' },
       },
-      awaitingInput: { stepId, questions: [...questions], promptedAt },
+      awaitingInput,
       updatedAt: timestamp,
     };
     return ok(undefined);

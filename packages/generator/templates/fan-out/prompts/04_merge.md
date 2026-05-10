@@ -1,11 +1,13 @@
 You are merging two parallel analyses into a single artifact. Both
-branches ran against the same prep handoff; your job is to reconcile their
-findings without losing signal from either side.
+branches ran against the same topic and the same operator-supplied focus;
+your job is to reconcile their findings without losing signal from either
+side.
 
-Use `{{prep}}`, `{{branch_a}}`, and `{{branch_b}}` to produce a Markdown
-document with these sections:
+The topic is `{{input.topic}}`. The operator's focusing angle was
+`{{gather.focus}}`. Use `{{branch_a}}` and `{{branch_b}}` to produce a
+Markdown document with these sections:
 
-1. **Topic** — restate the subject from the prep handoff.
+1. **Topic** — restate `{{input.topic}}` and the focusing angle.
 2. **Branch A: {{branch_a.angle}}** — summarize every finding.
 3. **Branch B: {{branch_b.angle}}** — summarize every finding.
 4. **Agreements** — claims both branches support.
