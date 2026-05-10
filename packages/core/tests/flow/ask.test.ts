@@ -8,7 +8,6 @@ import {
   QuestionsArraySchema,
 } from '../../src/flow/question.js';
 import { askStep } from '../../src/flow/steps/ask.js';
-import { terminalStep } from '../../src/flow/steps/terminal.js';
 import type { AskStep, PromptStep, Step } from '../../src/flow/types.js';
 import { z } from '../../src/zod.js';
 
