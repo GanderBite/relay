@@ -146,6 +146,36 @@ describe('resolveScriptEnv', () => {
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(FlowDefinitionError);
     expect(result._unsafeUnwrapErr().message).toContain('handoff.pr_body');
   });
+
+  it('[ENV-012] resolve: "absolute" with an already-absolute path passes through unchanged', () => {
+    const result = resolveScriptEnv(
+      { DIR: { from: 'input.dir', resolve: 'absolute' } },
+      mkCtx({ input: { dir: '/usr/local/share' } }),
+    );
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap()).toEqual({ DIR: '/usr/local/share' });
+  });
+
+  it('[ENV-013] resolve: "absolute" with a relative path returns err(FlowDefinitionError)', () => {
+    const result = resolveScriptEnv(
+      { DIR: { from: 'input.dir', resolve: 'absolute' } },
+      mkCtx({ input: { dir: 'relative/path' } }),
+    );
+    expect(result.isErr()).toBe(true);
+    const e = result._unsafeUnwrapErr();
+    expect(e).toBeInstanceOf(FlowDefinitionError);
+    expect(e.message).toMatch(/resolve: 'absolute' requires an absolute path/);
+    expect(e.message).toContain('relative/path');
+  });
+
+  it('[ENV-014] resolve: "fromCwd" with a relative path resolves against cwd', () => {
+    const result = resolveScriptEnv(
+      { DIR: { from: 'input.dir', resolve: 'fromCwd' } },
+      mkCtx({ input: { dir: 'some/subdir' } }),
+    );
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap().DIR).toMatch(/^\/.*some\/subdir$/);
+  });
 });
 
 // ---------------------------------------------------------------------------

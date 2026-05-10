@@ -34,6 +34,12 @@ export function branchStep(spec: BranchStepBuilderInput): BranchStepBuilderOutpu
           `env key "${key}": from "${value.from}" must start with 'input.' or 'handoff.'`,
         );
       }
+      const prefix = value.from.startsWith('input.') ? 'input.' : 'handoff.';
+      if (value.from.length <= prefix.length) {
+        throw new FlowDefinitionError(
+          `env key "${key}": from "${value.from}" must include a non-empty path after the prefix`,
+        );
+      }
     }
   }
 

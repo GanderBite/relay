@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { err, ok, type Result } from 'neverthrow';
 
 import { FlowDefinitionError } from '../../errors.js';
@@ -84,6 +84,14 @@ function resolveOne(
 
   if (resolveMode === 'fromCwd') {
     value = resolve(process.cwd(), value);
+  } else if (resolveMode === 'absolute') {
+    if (!isAbsolute(value)) {
+      return err(
+        new FlowDefinitionError(
+          `env key "${key}": resolve: 'absolute' requires an absolute path, got "${value}"`,
+        ),
+      );
+    }
   }
 
   return ok(value);

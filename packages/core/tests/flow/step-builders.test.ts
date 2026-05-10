@@ -122,6 +122,95 @@ describe('branchStep — shell metacharacter rejection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// scriptStep — from prefix validation (env from-spec)
+// ---------------------------------------------------------------------------
+
+describe('scriptStep — env from-spec prefix validation', () => {
+  it('[ENV-BUILD-001] from: "input." with empty suffix throws FlowDefinitionError', () => {
+    expect(() => scriptStep({ run: 'echo hello', env: { DIR: { from: 'input.' } } })).toThrow(
+      FlowDefinitionError,
+    );
+  });
+
+  it('[ENV-BUILD-002] empty-suffix error message names the key and the bad from value', () => {
+    let caught: unknown;
+    try {
+      scriptStep({ run: 'echo hello', env: { DIR: { from: 'input.' } } });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect((caught as FlowDefinitionError).message).toContain('DIR');
+    expect((caught as FlowDefinitionError).message).toContain('input.');
+    expect((caught as FlowDefinitionError).message).toMatch(
+      /must include a non-empty path after the prefix/,
+    );
+  });
+
+  it('[ENV-BUILD-003] from: "handoff." with empty suffix throws FlowDefinitionError', () => {
+    expect(() => scriptStep({ run: 'echo hello', env: { KEY: { from: 'handoff.' } } })).toThrow(
+      FlowDefinitionError,
+    );
+  });
+
+  it('[ENV-BUILD-004] from: "input.repo" with non-empty suffix does NOT throw', () => {
+    expect(() =>
+      scriptStep({ run: 'echo hello', env: { REPO: { from: 'input.repo' } } }),
+    ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// branchStep — from prefix validation (env from-spec)
+// ---------------------------------------------------------------------------
+
+describe('branchStep — env from-spec prefix validation', () => {
+  it('[ENV-BUILD-010] from: "input." with empty suffix throws FlowDefinitionError', () => {
+    expect(() =>
+      branchStep({ run: './check.sh', onExit: { '0': 'next' }, env: { DIR: { from: 'input.' } } }),
+    ).toThrow(FlowDefinitionError);
+  });
+
+  it('[ENV-BUILD-011] empty-suffix error message names the key and the bad from value', () => {
+    let caught: unknown;
+    try {
+      branchStep({
+        run: './check.sh',
+        onExit: { '0': 'next' },
+        env: { DIR: { from: 'input.' } },
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect((caught as FlowDefinitionError).message).toContain('DIR');
+    expect((caught as FlowDefinitionError).message).toMatch(
+      /must include a non-empty path after the prefix/,
+    );
+  });
+
+  it('[ENV-BUILD-012] from: "handoff." with empty suffix throws FlowDefinitionError', () => {
+    expect(() =>
+      branchStep({
+        run: './check.sh',
+        onExit: { '0': 'next' },
+        env: { KEY: { from: 'handoff.' } },
+      }),
+    ).toThrow(FlowDefinitionError);
+  });
+
+  it('[ENV-BUILD-013] from: "handoff.pr_body" with non-empty suffix does NOT throw', () => {
+    expect(() =>
+      branchStep({
+        run: './check.sh',
+        onExit: { '0': 'next' },
+        env: { BODY: { from: 'handoff.pr_body' } },
+      }),
+    ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Prefix accuracy — each step kind names itself in the error message
 // ---------------------------------------------------------------------------
 
