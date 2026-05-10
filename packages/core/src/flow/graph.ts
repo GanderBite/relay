@@ -121,11 +121,11 @@ function buildGraphInternal(
       }
     }
 
-    // `onFail` exists on every step kind except 'terminal'. Narrow by kind
-    // before reading. Parallel's onFail is limited to 'abort' | <stepId>,
-    // so only 'abort' is an early-return here; 'continue' is not valid for
-    // parallel at the type level.
-    if (step.kind !== 'terminal' && step.onFail !== undefined) {
+    // `onFail` exists on every step kind except 'terminal' and 'ask'. Narrow
+    // by kind before reading. Parallel's onFail is limited to 'abort' |
+    // <stepId>, so only 'abort' is an early-return here; 'continue' is not
+    // valid for parallel at the type level.
+    if (step.kind !== 'terminal' && step.kind !== 'ask' && step.onFail !== undefined) {
       const onFail = step.onFail;
       const isLiteral = onFail === 'abort' || (step.kind !== 'parallel' && onFail === 'continue');
       if (!isLiteral && !stepMap.has(onFail)) {

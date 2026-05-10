@@ -9,6 +9,8 @@ import {
   StateVersionMismatchError,
   StateWriteError,
 } from './errors.js';
+import type { Question } from './flow/question.js';
+import { QuestionSchema } from './flow/question.js';
 import type { FlowStatus, RunState, StepState } from './flow/types.js';
 import { atomicWriteJson } from './util/atomic-write.js';
 import { parseWithSchema } from './util/json.js';
@@ -25,13 +27,19 @@ function nowIso(): string {
 // annotation forces a compile-time equivalence check — if flow/types.ts adds a
 // required field, this line fails typecheck.
 const stepStateSchema: z.ZodType<StepState> = z.object({
-  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped']),
+  status: z.enum(['pending', 'running', 'succeeded', 'failed', 'skipped', 'paused']),
   attempts: z.number().int().nonnegative(),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   errorMessage: z.string().optional(),
   artifacts: z.array(z.string()).optional(),
   handoffs: z.array(z.string()).optional(),
+});
+
+const awaitingInputSchema = z.object({
+  stepId: z.string(),
+  questions: z.array(QuestionSchema),
+  promptedAt: z.string(),
 });
 
 // Schema mirrors RunState from flow/types.ts. `input: z.unknown()` matches the
@@ -41,11 +49,12 @@ const RunStateSchema: z.ZodType<RunState> = z.object({
   runId: z.string(),
   flowName: z.string(),
   flowVersion: z.string(),
-  status: z.enum(['running', 'succeeded', 'failed', 'aborted']),
+  status: z.enum(['running', 'succeeded', 'failed', 'aborted', 'paused']),
   startedAt: z.string(),
   updatedAt: z.string(),
   input: z.unknown(),
   steps: z.record(z.string(), stepStateSchema),
+  awaitingInput: awaitingInputSchema.optional(),
 });
 
 /**
@@ -268,6 +277,44 @@ export class StateMachine {
     // A reset step will run again; any cached result from a prior attempt is
     // stale and must not leak into the next outcome.
     this.#stepResults.delete(id);
+    return ok(undefined);
+  }
+
+  /**
+   * Pause an interactive step that is waiting for user input. Transitions the
+   * step from 'running' to 'paused', flips run-level status to 'paused', and
+   * records the prompted questions on `awaitingInput` so a resume in another
+   * process can reconstruct the prompt without re-asking. Caller is
+   * responsible for invoking save() to persist the snapshot atomically.
+   */
+  pauseStep(
+    stepId: string,
+    questions: Question[],
+    promptedAt: string,
+  ): Result<void, StateTransitionError> {
+    const stepResult = this.#requireStep(stepId);
+    if (stepResult.isErr()) return err(stepResult.error);
+    const step = stepResult.value;
+    if (step.status !== 'running') {
+      return err(
+        new StateTransitionError(
+          `cannot pause step "${stepId}" from status "${step.status}"`,
+          stepId,
+          { from: step.status, attempted: 'pause' },
+        ),
+      );
+    }
+    const timestamp = nowIso();
+    this.#state = {
+      ...this.#state,
+      status: 'paused',
+      steps: {
+        ...this.#state.steps,
+        [stepId]: { ...step, status: 'paused' },
+      },
+      awaitingInput: { stepId, questions: [...questions], promptedAt },
+      updatedAt: timestamp,
+    };
     return ok(undefined);
   }
 

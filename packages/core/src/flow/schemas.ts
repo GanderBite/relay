@@ -1,5 +1,7 @@
 import { z } from '../zod.js';
+import { DynamicQuestionSourceSchema, QuestionsArraySchema } from './question.js';
 import type {
+  AskStepSpec,
   BranchStepSpec,
   LoopStepSpec,
   ParallelStepSpec,
@@ -156,6 +158,19 @@ export const loopStepSpecSchema: z.ZodType<LoopStepSpec> = z.strictObject({
   maxRetries: z.number().int().nonnegative().optional(),
   bodyGraph: z.unknown().optional(),
 }) as z.ZodType<LoopStepSpec>;
+
+// Ask steps pause the run for user input. Questions may be a literal array or
+// a dynamic source (`{ from: 'stepId' }`) resolved at dispatch time. The
+// optional `output.schema` validates the collected answer map before it lands
+// as a handoff for downstream steps.
+export const askStepSpecSchema: z.ZodType<AskStepSpec> = z.strictObject({
+  id: z.string(),
+  kind: z.literal('ask'),
+  name: z.string().optional(),
+  dependsOn: z.array(stepId).optional(),
+  questions: z.union([QuestionsArraySchema, DynamicQuestionSourceSchema]),
+  output: z.strictObject({ schema: zodSchemaValue }).optional(),
+});
 
 export const flowSpecInputSchema = z.strictObject({
   name: z

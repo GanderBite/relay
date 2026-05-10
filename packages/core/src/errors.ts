@@ -1,3 +1,4 @@
+import type { Question } from './flow/question.js';
 import { z } from './zod.js';
 
 // Stable error code constants — the CLI and doctor match on these without magic strings.
@@ -877,5 +878,20 @@ export class ProviderRateLimitError extends PipelineError<ProviderRateLimitDetai
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }
+  }
+}
+
+/**
+ * Internal signal thrown by the ask executor when a step requires human input
+ * and caught by the orchestrator to pause the run. Not part of the public
+ * neverthrow Result API — callers should never catch this in application code.
+ */
+export class AwaitingInputSignal extends Error {
+  override readonly name = 'AwaitingInputSignal';
+  constructor(
+    public readonly stepId: string,
+    public readonly questions: Question[],
+  ) {
+    super(`step ${stepId} requires human input`);
   }
 }

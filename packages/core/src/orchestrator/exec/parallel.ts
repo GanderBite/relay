@@ -13,6 +13,7 @@ export type BranchStatusSnapshot =
   | 'succeeded'
   | 'failed'
   | 'skipped'
+  | 'paused'
   | 'unknown';
 
 /**

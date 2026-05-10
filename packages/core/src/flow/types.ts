@@ -1,6 +1,7 @@
 import type { z } from '../zod.js';
+import type { DynamicQuestionSource, Question } from './question.js';
 
-export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop';
+export type StepKind = 'prompt' | 'script' | 'branch' | 'parallel' | 'terminal' | 'loop' | 'ask';
 
 export type ScriptEnvResolve = 'fromCwd' | 'absolute';
 
@@ -134,14 +135,36 @@ export interface LoopStepSpec extends StepBase {
   bodyGraph?: FlowGraph | undefined;
 }
 
+/**
+ * Specification for an interactive step that pauses the run and prompts the
+ * user for one or more answers. Questions may be supplied as a literal array
+ * or sourced dynamically from a prior step's handoff via `{ from: 'stepId' }`.
+ * The optional `output.schema` validates the collected answer map before it
+ * is written as a handoff for downstream steps to consume.
+ */
+export interface AskStepSpec extends StepBase {
+  kind: 'ask';
+  name?: string | undefined;
+  questions: Question[] | DynamicQuestionSource;
+  output?: { schema: z.ZodType<unknown> } | undefined;
+}
+
 export type PromptStep = PromptStepSpec & { id: string };
 export type ScriptStep = ScriptStepSpec & { id: string };
 export type BranchStep = BranchStepSpec & { id: string };
 export type ParallelStep = ParallelStepSpec & { id: string };
 export type TerminalStep = TerminalStepSpec & { id: string };
 export type LoopStep = LoopStepSpec & { id: string };
+export type AskStep = AskStepSpec & { id: string };
 
-export type Step = PromptStep | ScriptStep | BranchStep | ParallelStep | TerminalStep | LoopStep;
+export type Step =
+  | PromptStep
+  | ScriptStep
+  | BranchStep
+  | ParallelStep
+  | TerminalStep
+  | LoopStep
+  | AskStep;
 
 export interface FlowGraph {
   successors: ReadonlyMap<string, ReadonlySet<string>>;
@@ -166,9 +189,9 @@ export interface Flow<TInput> extends FlowSpec<TInput> {
   rootSteps: string[];
 }
 
-export type FlowStatus = 'running' | 'succeeded' | 'failed' | 'aborted';
+export type FlowStatus = 'running' | 'succeeded' | 'failed' | 'aborted' | 'paused';
 
-export type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+export type StepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'paused';
 
 export interface StepState {
   status: StepStatus;
@@ -180,6 +203,17 @@ export interface StepState {
   errorMessage?: string | undefined;
 }
 
+/**
+ * Snapshot of an in-flight ask step recorded on the run while it waits for
+ * user input. Persisted alongside RunState so a resume in another process
+ * can reconstruct the prompt that was issued and avoid asking again.
+ */
+export interface AwaitingInput {
+  stepId: string;
+  questions: Question[];
+  promptedAt: string;
+}
+
 export interface RunState {
   runId: string;
   flowName: string;
@@ -189,4 +223,5 @@ export interface RunState {
   input: unknown;
   steps: Record<string, StepState>;
   status: FlowStatus;
+  awaitingInput?: AwaitingInput | undefined;
 }

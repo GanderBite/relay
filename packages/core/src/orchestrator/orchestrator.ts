@@ -1239,6 +1239,15 @@ export class Orchestrator {
               dispatch: (bodyStepId, bodyStep, loopIter) =>
                 runBodyStep(bodyStepId, bodyStep, loopIter, step.id),
             });
+          case 'ask':
+            // Ask-step execution is dispatched by a dedicated executor wired up
+            // in a follow-up change. Surface a clear error if a flow defines an
+            // ask step before that executor lands so callers see an actionable
+            // message instead of an opaque undefined return.
+            throw new FlowDefinitionError(
+              `ask step "${step.id}" cannot be executed: ask-step executor is not yet wired into the orchestrator`,
+              { stepId: step.id },
+            );
         }
       };
 
@@ -1444,6 +1453,7 @@ export class Orchestrator {
               pred !== undefined &&
               pred.kind !== 'terminal' &&
               pred.kind !== 'parallel' &&
+              pred.kind !== 'ask' &&
               pred.onFail === 'continue';
             const ok =
               predStatus === 'succeeded' ||
@@ -1462,7 +1472,7 @@ export class Orchestrator {
       };
 
       const stepOnFail = (step: Step): 'abort' | 'continue' | string => {
-        if (step.kind === 'terminal') return 'abort';
+        if (step.kind === 'terminal' || step.kind === 'ask') return 'abort';
         return step.onFail ?? 'abort';
       };
 

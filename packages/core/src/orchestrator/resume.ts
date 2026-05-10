@@ -153,6 +153,7 @@ export function seedReadyQueueForResume(flow: Flow<unknown>, state: RunState): s
         pred !== undefined &&
         pred.kind !== 'terminal' &&
         pred.kind !== 'parallel' &&
+        pred.kind !== 'ask' &&
         pred.onFail === 'continue';
       const okPred =
         predStatus === 'succeeded' ||
