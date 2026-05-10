@@ -267,7 +267,17 @@ export type {
 } from './orchestrator/event-log.js';
 /** Zod schema for validating EventRecord lines read from the events NDJSON file. */
 export { EventRecordSchema } from './orchestrator/event-log.js';
-
+/**
+ * Script env resolution — resolves a step's env map (which may contain
+ * `ScriptEnvFromSpec` dynamic references) against a runtime context.
+ *
+ * - `resolveScriptEnv(env, ctx)` — resolves all entries and returns a flat
+ *   `Record<string, string>`. Returns `err(FlowDefinitionError)` when a
+ *   required source is missing or an unrecognized `from` prefix is found.
+ * - `ScriptEnvContext` — the runtime context passed to `resolveScriptEnv`.
+ */
+export type { ScriptEnvContext } from './orchestrator/exec/script-env.js';
+export { resolveScriptEnv } from './orchestrator/exec/script-env.js';
 /** Type exports for the `Orchestrator` and its run options. */
 export type {
   BranchStepResult,

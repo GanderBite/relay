@@ -15,8 +15,15 @@
 
 import { access } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import type { BranchStep, Flow, PromptStep, ScriptStep, Step } from '@ganderbite/relay-core';
-import { FlowDefinitionError } from '@ganderbite/relay-core';
+import type {
+  BranchStep,
+  Flow,
+  PromptStep,
+  ScriptEnvContext,
+  ScriptStep,
+  Step,
+} from '@ganderbite/relay-core';
+import { FlowDefinitionError, isScriptEnvFromSpec, resolveScriptEnv } from '@ganderbite/relay-core';
 import { MARK, SYMBOLS } from '../brand.js';
 import { dim, green, red, yellow } from '../color.js';
 import { EXIT_CODES } from '../exit-codes.js';
@@ -82,7 +89,12 @@ async function printPromptStep(
   lines.push(`       prompt  ${fileStatus}`);
 }
 
-function printScriptLikeStep(num: number, step: ScriptStep | BranchStep, lines: string[]): void {
+function printScriptLikeStep(
+  num: number,
+  step: ScriptStep | BranchStep,
+  lines: string[],
+  envCtx: ScriptEnvContext,
+): void {
   const kindLabel = step.kind === 'branch' ? 'branch' : 'script';
   lines.push(
     `  ${dim(String(num).padStart(2, ' '))}  ${green(step.id.padEnd(24))}  ${dim(kindLabel)}`,
@@ -91,12 +103,56 @@ function printScriptLikeStep(num: number, step: ScriptStep | BranchStep, lines: 
   const run = Array.isArray(step.run) ? step.run.join(' ') : step.run;
   lines.push(`       run     ${run}`);
 
-  const env = step.env;
-  if (env !== undefined && Object.keys(env).length > 0) {
+  // Resolve each env entry independently against the dry-run context.
+  // For unresolvable from: sources, print a placeholder rather than failing.
+  const rawEnv = step.env;
+  const displayEntries: Array<[string, string]> = [];
+
+  if (rawEnv !== undefined) {
+    for (const [k, spec] of Object.entries(rawEnv)) {
+      if (isScriptEnvFromSpec(spec)) {
+        // Attempt to resolve this single entry.
+        const singleResult = resolveScriptEnv({ [k]: spec }, envCtx);
+        if (singleResult.isOk()) {
+          const resolved = singleResult.value[k] ?? '';
+          // Empty string means the optional source was absent — show placeholder.
+          displayEntries.push([k, resolved === '' ? `<from: ${spec.from}>` : resolved]);
+        } else {
+          // Unresolvable (e.g. required source missing) — show placeholder.
+          displayEntries.push([k, `<from: ${spec.from}>`]);
+        }
+      } else {
+        // String template value — resolve as a single-entry map.
+        const singleResult = resolveScriptEnv({ [k]: spec }, envCtx);
+        if (singleResult.isOk()) {
+          displayEntries.push([k, singleResult.value[k] ?? spec]);
+        } else {
+          // Template render failed — show raw template text.
+          displayEntries.push([k, spec]);
+        }
+      }
+    }
+  }
+
+  // Auto-injected RELAY_* vars.
+  const relayEntries: Array<[string, string]> = [
+    ['RELAY_RUN_DIR', envCtx.runDir],
+    ['RELAY_FLOW_DIR', envCtx.flowDir],
+    ['RELAY_HANDOFFS_DIR', envCtx.handoffsDir],
+    ['RELAY_INPUT_JSON', `${envCtx.runDir}/live/${step.id}.input.json`],
+  ];
+
+  const hasUserEnv = displayEntries.length > 0;
+  const hasEnv = hasUserEnv || relayEntries.length > 0;
+
+  if (hasEnv) {
     lines.push(`       env`);
-    for (const [k, v] of Object.entries(env)) {
+    for (const [k, v] of displayEntries) {
       const displayed = redactValue(k, v);
       lines.push(`               ${k}=${displayed}`);
+    }
+    for (const [k, v] of relayEntries) {
+      lines.push(`               ${dim(k)}=${dim(v)}`);
     }
   }
 }
@@ -111,11 +167,25 @@ function printOtherStep(num: number, step: Step, lines: string[]): void {
 // Plan renderer
 // ---------------------------------------------------------------------------
 
-async function renderPlan(flow: Flow<unknown>, dir: string): Promise<string> {
+async function renderPlan(
+  flow: Flow<unknown>,
+  dir: string,
+  input: Record<string, unknown>,
+): Promise<string> {
   const lines: string[] = [];
 
   lines.push(`${MARK}  ${flow.name}  ${dim('dry-run')}`);
   lines.push('');
+
+  // Build the dry-run ScriptEnvContext. runDir is a placeholder since no run
+  // has been started; flowDir is the real loaded directory.
+  const envCtx: ScriptEnvContext = {
+    input,
+    handoffs: {},
+    runDir: '<runDir>',
+    flowDir: dir,
+    handoffsDir: '<runDir>/handoffs',
+  };
 
   const counts: PlanCounts = { script: 0, prompt: 0, branch: 0, other: 0 };
 
@@ -131,10 +201,10 @@ async function renderPlan(flow: Flow<unknown>, dir: string): Promise<string> {
       await printPromptStep(num, step, lines, dir);
       counts.prompt++;
     } else if (step.kind === 'script') {
-      printScriptLikeStep(num, step, lines);
+      printScriptLikeStep(num, step, lines, envCtx);
       counts.script++;
     } else if (step.kind === 'branch') {
-      printScriptLikeStep(num, step, lines);
+      printScriptLikeStep(num, step, lines, envCtx);
       counts.branch++;
     } else {
       printOtherStep(num, step, lines);
@@ -200,7 +270,11 @@ export default async function dryRunCommand(args: unknown[], _opts: unknown): Pr
   }
 
   // Step 3 — render the step-by-step plan.
-  const plan = await renderPlan(flow as Flow<unknown>, dir);
+  const plan = await renderPlan(
+    flow as Flow<unknown>,
+    dir,
+    parseResult.value as Record<string, unknown>,
+  );
   process.stdout.write(plan);
 
   process.exit(EXIT_CODES.success);
