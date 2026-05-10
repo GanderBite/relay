@@ -33,6 +33,29 @@ export interface LoopExecutorContext {
    * once per body step per iteration.
    */
   dispatch: (bodyStepId: string, bodyStep: Step, loopIter: number) => Promise<StepResult>;
+  /**
+   * Optional hook invoked at the top of every iteration (after the abort
+   * check, before any body step dispatch). Lets the caller persist the
+   * current iteration to durable state so a mid-iteration crash can be
+   * resumed. Absent in callers that have no resume-aware state to update.
+   */
+  onIterationStart?: (iter: number) => Promise<void>;
+  /**
+   * Optional hook called once before the loop starts. Returns the iteration
+   * to resume from when the prior run paused mid-loop, or undefined to start
+   * fresh from iteration 1. The returned value is clamped only by the loop's
+   * configured maxIterations — out-of-range values exit the loop immediately
+   * via the for-loop bound.
+   */
+  getResumedIter?: () => number | undefined;
+  /**
+   * Optional predicate invoked before every body-step dispatch. Returns true
+   * when the body step already succeeded in this iteration on a prior run
+   * and the dispatch should be skipped. When skipped, the loop reads any
+   * iteration-scoped handoffs the prior run produced for this body step so
+   * the iteration's handoff set still tracks what materialised.
+   */
+  isBodyStepSucceeded?: (loopStepId: string, bodyStepId: string, iter: number) => boolean;
 }
 
 /**
@@ -137,9 +160,12 @@ function untilSatisfied(value: unknown, pattern: Record<string, unknown>): boole
  * matches or throws LoopMaxIterationsError when the configured ceiling is
  * reached without a match.
  *
- * Resume semantics: the orchestrator resets the loop step to pending on
- * resume so iterations always start from 1. No nested per-iteration state is
- * persisted; the iteration-scoped handoff files on disk are the only record.
+ * Resume semantics: the loop starts at iteration 1 unless the optional
+ * getResumedIter hook returns a higher value, in which case the loop picks
+ * up at the paused iteration and skips body steps the optional
+ * isBodyStepSucceeded hook reports as already completed in that iteration.
+ * Iteration-scoped handoff files on disk remain the source of truth for
+ * cross-iteration state.
  */
 export async function executeLoop(
   step: LoopStepSpec,
@@ -172,10 +198,14 @@ export async function executeLoop(
   // rather than only the names statically declared on prompt-step specs.
   let lastIterationHandoffs: string[] = [];
 
-  for (let iter = 1; iter <= maxIterations; iter += 1) {
+  const startIter = ctx.getResumedIter?.() ?? 1;
+
+  for (let iter = startIter; iter <= maxIterations; iter += 1) {
     if (ctx.abortSignal.aborted) {
       throw newAbortError();
     }
+
+    await ctx.onIterationStart?.(iter);
 
     ctx.logger.info(
       { event: 'loop.iteration.start', stepId: step.id, iter },
@@ -194,6 +224,41 @@ export async function executeLoop(
           `loop step "${step.id}" body is missing step "${bodyStepId}" referenced by its body graph`,
           { stepId: step.id },
         );
+      }
+
+      // When the optional resume hook reports this body step already
+      // succeeded in this iteration, skip the dispatch and reconstruct the
+      // iteration's handoff names from the body-step spec so the until
+      // condition and final body map see the same set the original run
+      // produced. Reads of the iteration-scoped files are best-effort:
+      // missing files (or any other read error) are silently omitted on the
+      // assumption that a successful body step that produced no handoff
+      // contributes nothing to the iteration handoff set anyway.
+      if (ctx.isBodyStepSucceeded?.(step.id, bodyStepId, iter) === true) {
+        ctx.logger.debug(
+          {
+            event: 'loop.body_step.skipped',
+            stepId: step.id,
+            bodyStepId,
+            iter,
+          },
+          'loop body step already succeeded in this iteration; skipping dispatch',
+        );
+
+        const skippedHandoffNames: string[] = [];
+        if (bodyStep.kind === 'prompt' && 'handoff' in bodyStep.output) {
+          skippedHandoffNames.push(bodyStep.output.handoff);
+        } else if (bodyStep.kind === 'ask') {
+          skippedHandoffNames.push(bodyStep.id);
+        }
+
+        for (const name of skippedHandoffNames) {
+          const readResult = await ctx.handoffStore.readIteration(step.id, iter, name);
+          if (readResult.isOk()) {
+            iterHandoffs.push(name);
+          }
+        }
+        continue;
       }
 
       const bodyResult = await ctx.dispatch(bodyStepId, bodyStep, iter);
