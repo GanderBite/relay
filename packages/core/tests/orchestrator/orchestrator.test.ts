@@ -351,13 +351,27 @@ describe('Step — abort handling (sprint 5 task_40)', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  it('[ABORT-001] SIGINT mid-run flips run status to aborted and persists state', async () => {
+  it('[ABORT-001] SIGINT mid-run flips run status to aborted and persists state', { // Timeout raised to 30s — SIGINT abort takes longer under coverage instrumentation overhead.
+    timeout: 30_000,
+  }, async () => {
+    // Gate: resolved by the response factory once the step is confirmed in-flight.
+    // A fixed-delay timer races against the orchestrator's async init (state.json
+    // writes, settings reads) and fires before the handler is registered under
+    // coverage instrumentation, causing SIGINT to be missed and the step to hang.
+    // Firing SIGINT only after the factory is called removes the race entirely.
+    let signalInflight!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      signalInflight = resolve;
+    });
+
     const provider = new MockProvider({
       responses: {
-        slow: () =>
-          new Promise(() => {
+        slow: () => {
+          signalInflight();
+          return new Promise(() => {
             /* hangs forever */
-          }) as unknown as InvocationResponse,
+          }) as unknown as InvocationResponse;
+        },
       },
     });
     const registry = new ProviderRegistry();
@@ -372,16 +386,14 @@ describe('Step — abort handling (sprint 5 task_40)', () => {
     });
 
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    // `worktree: false` skips the git-worktree probe so the 80ms SIGINT timer
-    // reliably fires while the step is running, not during the probe's ~80ms
-    // subprocess spawn. The abort contract under test is independent of the
-    // worktree feature; isolation is exercised by dedicated worktree tests.
     const p = orchestrator.run(
       flow,
       {},
       { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
     );
-    setTimeout(() => process.emit('SIGINT'), 80);
+    // Send SIGINT only after the step factory confirms it is in-flight so the
+    // orchestrator's SIGINT handler is guaranteed to be registered.
+    void inFlight.then(() => process.emit('SIGINT'));
     const result = await p.catch((e) => e);
 
     const stateRaw = await readFile(join(tmp, 'state.json'), 'utf8');
@@ -392,8 +404,20 @@ describe('Step — abort handling (sprint 5 task_40)', () => {
   });
 
   it('[ABORT-002] SIGTERM behaves identically to SIGINT', async () => {
+    // Same gate as ABORT-001: fire SIGTERM only after the step is in-flight.
+    // See ABORT-001 for the full rationale behind this pattern.
+    let signalInflight!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      signalInflight = resolve;
+    });
+
     const provider = new MockProvider({
-      responses: { slow: () => new Promise(() => undefined) as unknown as InvocationResponse },
+      responses: {
+        slow: () => {
+          signalInflight();
+          return new Promise(() => undefined) as unknown as InvocationResponse;
+        },
+      },
     });
     const registry = new ProviderRegistry();
     registry.register(provider);
@@ -406,13 +430,12 @@ describe('Step — abort handling (sprint 5 task_40)', () => {
       },
     });
     const orchestrator = createOrchestrator({ providers: registry, runDir: tmp });
-    // See ABORT-001 for the rationale behind `worktree: false`.
     const p = orchestrator.run(
       flow,
       {},
       { flowDir: tmp, authTimeoutMs: 1_000, flagProvider: 'mock', worktree: false },
     );
-    setTimeout(() => process.emit('SIGTERM'), 80);
+    void inFlight.then(() => process.emit('SIGTERM'));
     await p.catch(() => undefined);
     const state = JSON.parse(await readFile(join(tmp, 'state.json'), 'utf8'));
     expect(state.status).toBe('aborted');

@@ -23,22 +23,13 @@ import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import {
-  type AuthState,
-  defaultRegistry,
-  loadFlowSettings,
-  loadGlobalSettings,
-  Orchestrator,
-  type RunResult,
-  registerDefaultProviders,
-  resolveProvider,
-} from '@ganderbite/relay-core';
+import { type AuthState, Orchestrator, type RunResult } from '@ganderbite/relay-core';
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
 import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
-import { loadFlow } from '../flow-loader.js';
 import { normalizeArgvInput, parseInputFromArgv } from '../input-parser.js';
+import { loadFlowAndAuth } from '../load-flow-and-auth.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
@@ -106,17 +97,19 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   }
 
   // ---------------------------------------------------------------------------
-  // Step 1 — load the flow package
+  // Step 1 — load the flow package + resolve provider + authenticate
   // ---------------------------------------------------------------------------
-  const loadResult = await loadFlow(nameOrPath, process.cwd());
-  if (loadResult.isErr()) {
-    const loadErr = loadResult.error;
-    process.stderr.write(formatError(loadErr) + '\n');
-    process.exit(exitCodeFor(loadErr));
+  const loadAuthResult = await loadFlowAndAuth({
+    ...(options.provider !== undefined ? { provider: options.provider } : {}),
+    cwd: process.cwd(),
+    nameOrPath,
+  });
+  if (loadAuthResult.isErr()) {
+    process.stderr.write(formatError(loadAuthResult.error) + '\n');
+    process.exit(exitCodeFor(loadAuthResult.error));
   }
 
-  const loaded = loadResult.value;
-  const { flow, dir: flowDir } = loaded;
+  const { flow, flowDir, resolvedProvider, authState } = loadAuthResult.value;
 
   // ---------------------------------------------------------------------------
   // Step 2 — parse input from remaining argv
@@ -128,45 +121,6 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
   }
 
   const input = parseResult.value;
-
-  // ---------------------------------------------------------------------------
-  // Step 3 — resolve provider from settings, then authenticate
-  // ---------------------------------------------------------------------------
-
-  // Register both Claude providers idempotently so the resolver chain can
-  // find whichever the user (or settings) selected.
-  registerDefaultProviders();
-
-  // Load settings in parallel; failures are non-fatal — treat as null.
-  const [globalSettingsResult, flowSettingsResult] = await Promise.all([
-    loadGlobalSettings(),
-    loadFlowSettings(flowDir),
-  ]);
-
-  const globalSettings = globalSettingsResult.isOk() ? globalSettingsResult.value : null;
-  const flowSettings = flowSettingsResult.isOk() ? flowSettingsResult.value : null;
-
-  const resolveResult = resolveProvider({
-    ...(options.provider !== undefined ? { flagProvider: options.provider } : {}),
-    flowSettings: flowSettings ?? null,
-    globalSettings: globalSettings ?? null,
-    registry: defaultRegistry,
-  });
-
-  if (resolveResult.isErr()) {
-    process.stderr.write(formatError(resolveResult.error) + '\n');
-    process.exit(exitCodeFor(resolveResult.error));
-  }
-
-  const resolvedProvider = resolveResult.value;
-  const authResult = await resolvedProvider.authenticate();
-
-  if (authResult.isErr()) {
-    process.stderr.write(formatError(authResult.error) + '\n');
-    process.exit(exitCodeFor(authResult.error));
-  }
-
-  const authState: AuthState = authResult.value;
 
   // ---------------------------------------------------------------------------
   // Step 4 — pre-flight: generate run id and build paths

@@ -21,24 +21,14 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { AuthState, RunState, StepState } from '@ganderbite/relay-core';
-import {
-  ClaudeAuthError,
-  CostTracker,
-  defaultRegistry,
-  loadFlowSettings,
-  loadGlobalSettings,
-  loadState,
-  Orchestrator,
-  registerDefaultProviders,
-  resolveProvider,
-  StateNotFoundError,
-} from '@ganderbite/relay-core';
+import { CostTracker, loadState, Orchestrator, StateNotFoundError } from '@ganderbite/relay-core';
 import { renderFailureBanner, renderSuccessBanner } from '../banner.js';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
 import { exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { kvLine, STEP_NAME_WIDTH } from '../layout.js';
+import { authenticateProvider } from '../load-flow-and-auth.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
@@ -340,51 +330,20 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
 
   // ---- (7) Auth check — must happen before the Orchestrator so we can exit 3 on auth failure ----
   // Resolve the provider via the same chain Orchestrator.resume() uses below
-  // (--provider flag > race settings > global settings) so any auth failure
+  // (--provider flag > flow settings > global settings) so any auth failure
   // surfaces here with a clean exit code rather than mid-resume.
-  registerDefaultProviders();
   const flowDirForSettings = dirname(flowRef.flowPath);
-  const globalSettingsResult = await loadGlobalSettings();
-  if (globalSettingsResult.isErr()) {
-    process.stderr.write(formatError(globalSettingsResult.error) + '\n');
-    process.exit(exitCodeFor(globalSettingsResult.error));
-  }
-  const flowSettingsResult = await loadFlowSettings(flowDirForSettings);
-  if (flowSettingsResult.isErr()) {
-    process.stderr.write(formatError(flowSettingsResult.error) + '\n');
-    process.exit(exitCodeFor(flowSettingsResult.error));
-  }
-  const resolverArgs: Parameters<typeof resolveProvider>[0] = {
-    flowSettings: flowSettingsResult.value,
-    globalSettings: globalSettingsResult.value,
-    registry: defaultRegistry,
-  };
-  if (options.provider !== undefined) {
-    resolverArgs.flagProvider = options.provider;
-  }
-  const providerResult = resolveProvider(resolverArgs);
-  let auth: AuthState | undefined;
-  if (providerResult.isOk()) {
-    const authResult = await providerResult.value.authenticate();
-    if (authResult.isErr()) {
-      const authErr = authResult.error;
-      if (authErr instanceof ClaudeAuthError) {
-        process.stderr.write(formatError(authErr) + '\n');
-        process.exit(3);
-      }
-      process.stderr.write(formatError(authErr) + '\n');
-      process.exit(exitCodeFor(authErr));
-    }
-    auth = authResult.value;
-  } else {
-    // Surface NoProviderConfiguredError up front; falling through with no
-    // provider would silently downgrade the bill row to a fabricated
-    // subscription state and then crash the resume mid-walk.
-    process.stderr.write(formatError(providerResult.error) + '\n');
-    process.exit(exitCodeFor(providerResult.error));
+  const authCheckResult = await authenticateProvider({
+    ...(options.provider !== undefined ? { provider: options.provider } : {}),
+    cwd: process.cwd(),
+    flowDir: flowDirForSettings,
+  });
+  if (authCheckResult.isErr()) {
+    process.stderr.write(formatError(authCheckResult.error) + '\n');
+    process.exit(exitCodeFor(authCheckResult.error));
   }
 
-  const effectiveAuth: AuthState = auth;
+  const { resolvedProvider, authState: effectiveAuth } = authCheckResult.value;
 
   // ---- (8) Construct Orchestrator and start progress display ----
   const orchestrator = new Orchestrator({ runDir });
@@ -436,7 +395,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       resumeOpts.worktree = false;
     }
     const preAuthedMap = new Map<string, AuthState>();
-    preAuthedMap.set(providerResult.value.name, effectiveAuth);
+    preAuthedMap.set(resolvedProvider.name, effectiveAuth);
     resumeOpts.preAuthedState = preAuthedMap;
     resumeOpts.onStepComplete = (stepId, stepResult) => {
       if ('kind' in stepResult && stepResult.kind === 'prompt') {

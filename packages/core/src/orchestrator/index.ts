@@ -1,3 +1,12 @@
+export type { ResolveAndAuthenticateOptions } from './auth.js';
+export {
+  authenticateProvider,
+  authenticateProviders,
+  resolveAndAuthenticate,
+  resolveRunProvider,
+} from './auth.js';
+export type { DagWalkContext, WalkResult } from './dag-walk.js';
+export { walkDag } from './dag-walk.js';
 export type { AskStepResult } from './exec/ask.js';
 export {
   askAnswerHandoffKey,

@@ -12,8 +12,8 @@
 import { FlowDefinitionError } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../brand.js';
 import { green, red } from '../color.js';
-import { EXIT_CODES } from '../exit-codes.js';
-import { loadFlow } from '../flow-loader.js';
+import { EXIT_CODES, formatError } from '../exit-codes.js';
+import { loadFlowOnly } from '../load-flow-and-auth.js';
 
 /**
  * Entry point dispatched by the CLI for `relay validate <flow>`.
@@ -28,7 +28,7 @@ export default async function validateCommand(args: unknown[], _opts: unknown): 
     process.exit(EXIT_CODES.runner_failure);
   }
 
-  const loadResult = await loadFlow(nameOrPath, process.cwd());
+  const loadResult = await loadFlowOnly({ cwd: process.cwd(), nameOrPath });
 
   if (loadResult.isErr()) {
     const loadErr = loadResult.error;
@@ -36,7 +36,7 @@ export default async function validateCommand(args: unknown[], _opts: unknown): 
       loadErr instanceof FlowDefinitionError
         ? EXIT_CODES.definition_error
         : EXIT_CODES.runner_failure;
-    process.stderr.write(red(`${SYMBOLS.fail}  ${loadErr.message}`) + '\n');
+    process.stderr.write(formatError(loadErr) + '\n');
     process.exit(code);
   }
 
