@@ -7,6 +7,7 @@ import {
   QuestionSchema,
   QuestionsArraySchema,
 } from '../../src/flow/question.js';
+import { step } from '../../src/flow/step.js';
 import { askStep } from '../../src/flow/steps/ask.js';
 import type { AskStep, PromptStep, Step } from '../../src/flow/types.js';
 import { z } from '../../src/zod.js';
@@ -339,5 +340,124 @@ describe('graph validation — ask step with dynamic question source', () => {
     const result = buildGraph(steps, 'root');
     expect(result.isErr()).toBe(true);
     expect(result._unsafeUnwrapErr().message).toContain('my-data');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// concurrent ask steps in parallel barrier (compile-time rejection)
+// ---------------------------------------------------------------------------
+
+describe('concurrent ask steps in parallel barrier (compile-time rejection)', () => {
+  it('two ask steps in different branches of the same parallel step throw FlowDefinitionError', () => {
+    expect(() =>
+      defineFlow({
+        name: 'parallel-two-asks',
+        version: '0.0.1',
+        input: z.object({}),
+        steps: {
+          fan: step.parallel({ branches: ['ask-a', 'ask-b'] }),
+          'ask-a': step.ask({ questions: [{ id: 'q1', kind: 'text', label: 'Question A?' }] }),
+          'ask-b': step.ask({ questions: [{ id: 'q2', kind: 'text', label: 'Question B?' }] }),
+        },
+        start: 'fan',
+      }),
+    ).toThrow(FlowDefinitionError);
+
+    let caught: FlowDefinitionError | undefined;
+    try {
+      defineFlow({
+        name: 'parallel-two-asks',
+        version: '0.0.1',
+        input: z.object({}),
+        steps: {
+          fan: step.parallel({ branches: ['ask-a', 'ask-b'] }),
+          'ask-a': step.ask({ questions: [{ id: 'q1', kind: 'text', label: 'Question A?' }] }),
+          'ask-b': step.ask({ questions: [{ id: 'q2', kind: 'text', label: 'Question B?' }] }),
+        },
+        start: 'fan',
+      });
+    } catch (e) {
+      caught = e as FlowDefinitionError;
+    }
+    expect(caught).toBeInstanceOf(FlowDefinitionError);
+    expect(caught?.message).toContain('fan');
+    expect(caught?.message).toContain('ask-a');
+    expect(caught?.message).toContain('ask-b');
+    expect(caught?.message).toContain('concurrent asks are not supported');
+  });
+
+  it('one ask step in one branch and one non-ask step in the other branch succeeds', () => {
+    expect(() =>
+      defineFlow({
+        name: 'parallel-one-ask-one-prompt',
+        version: '0.0.1',
+        input: z.object({}),
+        steps: {
+          fan: step.parallel({ branches: ['gather', 'analyze'] }),
+          gather: step.ask({ questions: [{ id: 'q1', kind: 'text', label: 'Name?' }] }),
+          analyze: step.prompt({ promptFile: 'analyze.md', output: { handoff: 'analysis' } }),
+        },
+        start: 'fan',
+      }),
+    ).not.toThrow();
+  });
+
+  it('ask step inside a loop body inside a parallel branch AND another ask in a sibling branch throw FlowDefinitionError', () => {
+    expect(() =>
+      defineFlow({
+        name: 'parallel-loop-ask-and-sibling-ask',
+        version: '0.0.1',
+        input: z.object({}),
+        steps: {
+          fan: step.parallel({ branches: ['loop-branch', 'direct-ask'] }),
+          'loop-branch': step.loop({
+            body: {
+              'inner-ask': step.ask({
+                questions: [{ id: 'q1', kind: 'text', label: 'Inner question?' }],
+              }),
+              'inner-prompt': step.prompt({
+                promptFile: 'inner.md',
+                dependsOn: ['inner-ask'],
+                output: { handoff: 'loop-done' },
+              }),
+            },
+            until: { from: 'loop-done', when: { status: 'done' } },
+            maxIterations: 5,
+            start: 'inner-ask',
+          }),
+          'direct-ask': step.ask({
+            questions: [{ id: 'q2', kind: 'text', label: 'Direct question?' }],
+          }),
+        },
+        start: 'fan',
+      }),
+    ).toThrow(FlowDefinitionError);
+  });
+
+  it('ask step inside a loop body with no parallel ancestor succeeds', () => {
+    expect(() =>
+      defineFlow({
+        name: 'loop-ask-no-parallel',
+        version: '0.0.1',
+        input: z.object({}),
+        steps: {
+          'my-loop': step.loop({
+            body: {
+              'body-ask': step.ask({
+                questions: [{ id: 'q1', kind: 'text', label: 'Iteration question?' }],
+              }),
+              'body-prompt': step.prompt({
+                promptFile: 'body.md',
+                dependsOn: ['body-ask'],
+                output: { handoff: 'body-done' },
+              }),
+            },
+            until: { from: 'body-done', when: { status: 'done' } },
+            maxIterations: 3,
+            start: 'body-ask',
+          }),
+        },
+      }),
+    ).not.toThrow();
   });
 });

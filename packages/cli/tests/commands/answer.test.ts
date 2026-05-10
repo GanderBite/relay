@@ -304,6 +304,76 @@ describe('relay answer — resume outcomes', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Loop body ask path routing
+// ---------------------------------------------------------------------------
+
+describe('relay answer — loop body ask path routing', () => {
+  it('writes iteration-scoped path when loopStepId and loopIter are set', async () => {
+    const loopState = {
+      runId: 'run-abc',
+      flowName: 'test-flow',
+      flowVersion: '0.0.1',
+      status: 'paused' as const,
+      startedAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:01.000Z',
+      input: {},
+      steps: {
+        'fix_loop::feedback': { status: 'paused' as const, attempts: 1 },
+      },
+      awaitingInput: {
+        stepId: 'fix_loop::feedback',
+        loopStepId: 'fix_loop',
+        loopIter: 1,
+        questions: [{ id: 'q', kind: 'text' as const, label: 'Test' }],
+        promptedAt: '2024-01-01T00:00:00.000Z',
+      },
+    };
+    mockLoadState.mockResolvedValue(ok(loopState));
+
+    const jsonStr = JSON.stringify({ q: 'answer' });
+    await expect(answerCommand(['run-abc'], { json: jsonStr })).resolves.toBeUndefined();
+
+    expect(mockAtomicWriteJson).toHaveBeenCalledOnce();
+    const [writtenPath] = mockAtomicWriteJson.mock.calls[0] as [string, unknown];
+    expect(writtenPath).toContain('handoffs');
+    expect(writtenPath).toContain('fix_loop');
+    expect(writtenPath).toContain('iter_1');
+    expect(writtenPath).toContain('__ask_feedback__');
+  });
+
+  it('uses top-level path when loopStepId is absent', async () => {
+    const flatState = {
+      runId: 'run-abc',
+      flowName: 'test-flow',
+      flowVersion: '0.0.1',
+      status: 'paused' as const,
+      startedAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:01.000Z',
+      input: {},
+      steps: {
+        gather: { status: 'paused' as const, attempts: 1 },
+      },
+      awaitingInput: {
+        stepId: 'gather',
+        questions: [{ id: 'q', kind: 'text' as const, label: 'Test' }],
+        promptedAt: '2024-01-01T00:00:00.000Z',
+      },
+    };
+    mockLoadState.mockResolvedValue(ok(flatState));
+
+    const jsonStr = JSON.stringify({ q: 'answer' });
+    await expect(answerCommand(['run-abc'], { json: jsonStr })).resolves.toBeUndefined();
+
+    expect(mockAtomicWriteJson).toHaveBeenCalledOnce();
+    const [writtenPath] = mockAtomicWriteJson.mock.calls[0] as [string, unknown];
+    expect(writtenPath).toContain('handoffs');
+    expect(writtenPath).toContain('__ask_gather__');
+    // Must NOT contain iteration-scoped path segments.
+    expect(writtenPath).not.toContain('iter_');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // State not found
 // ---------------------------------------------------------------------------
 
