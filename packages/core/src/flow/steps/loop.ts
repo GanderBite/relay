@@ -47,6 +47,8 @@ function synthesizeBodyStep(
       return { ...raw, id };
     case 'terminal':
       return { ...raw, id };
+    case 'ask':
+      return { ...raw, id };
   }
 }
 

@@ -175,6 +175,9 @@ function buildGraphInternal(
   const ctxResult = validateContextFrom(keys, stepMap, ancestorSets, isBody);
   if (ctxResult.isErr()) return err(ctxResult.error);
 
+  const askResult = validateAskQuestionSources(keys, stepMap, ancestorSets);
+  if (askResult.isErr()) return err(askResult.error);
+
   const frozenSuccessors = new Map<string, ReadonlySet<string>>();
   const frozenPredecessors = new Map<string, ReadonlySet<string>>();
   for (const key of keys) {
@@ -477,6 +480,99 @@ function validateContextFrom(
           ),
         );
       }
+    }
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * Validate ask steps that source their questions dynamically from a prior
+ * step's handoff (`questions: { from: 'handoffName' }`). The referenced
+ * handoff must be produced by an upstream prompt step in the same scope —
+ * a handoff written exclusively inside a loop body cannot be read by an ask
+ * step that lives outside the loop, because the loop body's handoffs only
+ * resolve to the dotted address `<loopStepId>.<handoff>` from outside.
+ *
+ * Static question arrays need no graph-level check; their schema validation
+ * happens elsewhere and they carry no cross-step references.
+ */
+function validateAskQuestionSources(
+  keys: readonly string[],
+  stepMap: Map<string, Step>,
+  ancestorSets: ReadonlyMap<string, ReadonlySet<string>>,
+): Result<void, FlowDefinitionError> {
+  const producers = new Map<string, Set<string>>();
+  for (const key of keys) {
+    // Invariant: every `key` was inserted into `stepMap` by the caller.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+    const name = handoffNameOf(step);
+    if (name === undefined) continue;
+    let set = producers.get(name);
+    if (set === undefined) {
+      set = new Set<string>();
+      producers.set(name, set);
+    }
+    set.add(key);
+  }
+
+  // Reverse-lookup: a handoff name produced exclusively inside a loop body
+  // maps to the enclosing loop step id. Ask steps in the outer scope cannot
+  // reference these handoffs by their bare name.
+  const loopBodyHandoffs = new Map<string, string>();
+  for (const key of keys) {
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+    if (step.kind !== 'loop') continue;
+    for (const bodyStep of Object.values(step.body)) {
+      if (bodyStep === undefined) continue;
+      const bodyHandoff = handoffNameOf(bodyStep);
+      if (bodyHandoff !== undefined && !loopBodyHandoffs.has(bodyHandoff)) {
+        loopBodyHandoffs.set(bodyHandoff, key);
+      }
+    }
+  }
+
+  for (const key of keys) {
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+    if (step.kind !== 'ask') continue;
+    if (Array.isArray(step.questions)) continue;
+
+    const from = step.questions.from;
+    const writers = producers.get(from);
+
+    if (writers === undefined) {
+      const loopStepId = loopBodyHandoffs.get(from);
+      if (loopStepId !== undefined) {
+        return err(
+          new FlowDefinitionError(
+            `ask step "${key}" sources questions from handoff "${from}" which is produced inside loop step "${loopStepId}". A loop-scoped handoff cannot be read by an ask step outside the loop — move the ask step into the loop body, or have a step outside the loop produce handoff "${from}".`,
+          ),
+        );
+      }
+
+      return err(
+        new FlowDefinitionError(
+          `ask step "${key}" sources questions from unknown handoff "${from}". Add an upstream prompt step whose output declares handoff: "${from}", or replace the dynamic source with a static questions array in defineFlow(...).`,
+        ),
+      );
+    }
+
+    // Invariant: every `key` has an entry in `ancestorSets` (computed in topo order).
+    const ancestors = lookup(ancestorSets, key)._unsafeUnwrap();
+    let hasAncestorWriter = false;
+    for (const writer of writers) {
+      if (ancestors.has(writer)) {
+        hasAncestorWriter = true;
+        break;
+      }
+    }
+
+    if (!hasAncestorWriter) {
+      return err(
+        new FlowDefinitionError(
+          `ask step "${key}" sources questions from handoff "${from}" that is not produced by any upstream step. Add a dependsOn link from step "${key}" to the step that writes handoff "${from}" in defineFlow(...).`,
+        ),
+      );
     }
   }
 

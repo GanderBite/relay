@@ -2,6 +2,7 @@ import { FlowDefinitionError, toFlowDefError } from '../errors.js';
 import type { z } from '../zod.js';
 import { buildGraph } from './graph.js';
 import { flowSpecInputSchema } from './schemas.js';
+import type { AskStepBuilderOutput } from './steps/ask.js';
 import type { BranchStepBuilderOutput } from './steps/branch.js';
 import type { LoopStepBuilderOutput } from './steps/loop.js';
 import type { ParallelStepBuilderOutput } from './steps/parallel.js';
@@ -21,7 +22,8 @@ export type StepBuilderOutput =
   | BranchStepBuilderOutput
   | ParallelStepBuilderOutput
   | TerminalStepBuilderOutput
-  | LoopStepBuilderOutput;
+  | LoopStepBuilderOutput
+  | AskStepBuilderOutput;
 
 /**
  * Input shape for `defineFlow`. `steps` accepts builder outputs (without
@@ -50,6 +52,8 @@ function synthesizeStep(raw: StepBuilderOutput, id: string): Step {
     case 'terminal':
       return { ...raw, id };
     case 'loop':
+      return { ...raw, id };
+    case 'ask':
       return { ...raw, id };
   }
 }
