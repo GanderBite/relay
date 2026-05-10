@@ -343,7 +343,6 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   const flowDirForSettings = dirname(flowRef.flowPath);
   const authCheckResult = await authenticateProvider({
     ...(options.provider !== undefined ? { provider: options.provider } : {}),
-    cwd: process.cwd(),
     flowDir: flowDirForSettings,
   });
   if (authCheckResult.isErr()) {
@@ -396,9 +395,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     const resumeOpts: Parameters<typeof orchestrator.resume>[1] = {
       logToStdout: !process.stdout.isTTY,
     };
-    if (options.provider !== undefined) {
-      resumeOpts.flagProvider = options.provider;
-    }
+    resumeOpts.resolvedProviderName = resolvedProvider.name;
     if (options.worktree === false) {
       resumeOpts.worktree = false;
     }

@@ -42,11 +42,9 @@ export async function loadFlowOnly({
  */
 export async function authenticateProvider({
   provider: flagProvider,
-  cwd: _cwd,
   flowDir,
 }: {
   provider?: string;
-  cwd: string;
   flowDir: string;
 }): Promise<Result<{ resolvedProvider: Provider; authState: AuthState }, PipelineError>> {
   registerDefaultProviders();
@@ -101,7 +99,6 @@ export async function loadFlowAndAuth({
 
   const authResult = await authenticateProvider({
     ...(flagProvider !== undefined ? { provider: flagProvider } : {}),
-    cwd,
     flowDir,
   });
   if (authResult.isErr()) return err(authResult.error);
