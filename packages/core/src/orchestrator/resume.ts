@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 import { err, ok, type Result } from 'neverthrow';
 
-import { ERROR_CODES, PipelineError, StateCorruptError, StateNotFoundError } from '../errors.js';
+import { FlowImportError, StateCorruptError, StateNotFoundError } from '../errors.js';
 import type { Flow, RunState } from '../flow/types.js';
 import { parseWithSchema } from '../util/json.js';
 import { z } from '../zod.js';
@@ -95,20 +95,18 @@ export async function importFlow(flowPath: string): Promise<Flow<unknown>> {
     mod = (await import(href)) as Record<string, unknown>;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    throw new PipelineError(
+    throw new FlowImportError(
       `resume failed to import flow module at "${flowPath}": ${message}. ` +
-        'Resume requires the flow package to be built (run `pnpm build` in the flow package before invoking resume).',
-      ERROR_CODES.FLOW_DEFINITION,
-      { flowPath, cause: message },
+        'Run `pnpm build` in the flow package before invoking resume.',
+      { path: flowPath, reason: 'build-not-run' },
     );
   }
   const candidate = mod['default'] ?? mod['flow'];
   if (!isFlow(candidate)) {
-    throw new PipelineError(
-      `flow module at "${flowPath}" does not export a Flow. ` +
-        'Export the compiled flow as the default export or as a named "flow" export in flow.ts.',
-      ERROR_CODES.FLOW_DEFINITION,
-      { flowPath },
+    throw new FlowImportError(
+      `flow module at "${flowPath}" does not export a Flow — ` +
+        'export the compiled flow as the default export or as a named "flow" export in flow.ts.',
+      { path: flowPath, reason: 'missing-default-export' },
     );
   }
   return candidate;

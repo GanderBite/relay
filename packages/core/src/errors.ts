@@ -27,6 +27,7 @@ export const ERROR_CODES = {
   STEP_FAILURE: 'relay_STEP_FAILURE',
   TIMEOUT: 'relay_TIMEOUT',
   LOOP_MAX_ITERATIONS: 'relay_LOOP_MAX_ITERATIONS_EXCEEDED',
+  FLOW_IMPORT: 'relay_flow_import_error',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -99,6 +100,32 @@ export class FlowDefinitionError extends PipelineError<FlowDefinitionDetails> {
   ) {
     super(message, code, details);
     this.name = 'FlowDefinitionError';
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Typed details for `FlowImportError`.
+ */
+export interface FlowImportDetails extends Record<string, unknown> {
+  /** Absolute path to the flow module that could not be imported. */
+  path: string;
+  /** Why the import failed. */
+  reason: 'missing-file' | 'missing-default-export' | 'build-not-run';
+}
+
+/**
+ * Thrown when a flow module cannot be imported — the file is absent, the build
+ * has not been run, or the module has no default export.
+ *
+ * CLI exit code: 2 (definition_error)
+ */
+export class FlowImportError extends FlowDefinitionError {
+  constructor(message: string, details: FlowImportDetails) {
+    super(message, details, ERROR_CODES.FLOW_IMPORT);
+    this.name = 'FlowImportError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }

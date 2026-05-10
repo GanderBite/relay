@@ -21,6 +21,7 @@ import {
   ERROR_CODES,
   err,
   FlowDefinitionError,
+  FlowImportError,
   ok,
   PipelineError,
   z,
@@ -142,7 +143,7 @@ async function readPkg(dir: string): Promise<Record<string, unknown>> {
 async function importFlow(
   dir: string,
   source: FlowSource,
-): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError>> {
+): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError | FlowImportError>> {
   const entryPath = join(dir, 'dist', 'flow.js');
 
   let mod: unknown;
@@ -153,8 +154,21 @@ async function importFlow(
       return err(importErr);
     }
     const detail = importErr instanceof Error ? importErr.message : String(importErr);
+    if (isModuleNotFound(detail)) {
+      // The dist/flow.js file does not exist — the build has not been run.
+      return err(
+        new FlowImportError(
+          `flow module not found at ${entryPath}: run the flow package build before invoking relay`,
+          { path: entryPath, reason: 'build-not-run' },
+        ),
+      );
+    }
+    // The file exists but could not be imported (syntax error, missing dep, etc.).
     return err(
-      new FlowLoadError(`failed to import flow from ${entryPath}: ${detail}`, 'FLOW_INVALID'),
+      new FlowImportError(`failed to import flow from ${entryPath}: ${detail}`, {
+        path: entryPath,
+        reason: 'missing-file',
+      }),
     );
   }
 
@@ -164,12 +178,21 @@ async function importFlow(
       ? (mod as Record<string, unknown>)['default']
       : undefined;
 
+  if (defaultExport === undefined) {
+    return err(
+      new FlowImportError(
+        `${entryPath} has no default export — export the compiled flow as the default export in flow.ts`,
+        { path: entryPath, reason: 'missing-default-export' },
+      ),
+    );
+  }
+
   if (!isFlow(defaultExport)) {
     return err(
-      new FlowLoadError(
-        `${entryPath} does not export a valid Flow — expected an object with ` +
+      new FlowImportError(
+        `${entryPath} default export is not a valid Flow — expected an object with ` +
           `name (string), steps (object), and graph (FlowGraph)`,
-        'FLOW_INVALID',
+        { path: entryPath, reason: 'missing-default-export' },
       ),
     );
   }
@@ -194,7 +217,7 @@ async function importFlow(
 export async function loadFlow(
   nameOrPath: string,
   cwd: string,
-): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError>> {
+): Promise<Result<LoadedFlow, FlowLoadError | FlowDefinitionError | FlowImportError>> {
   // ---- (1) Path-like: resolve to absolute and import directly ----
   if (looksLikePath(nameOrPath)) {
     const absPath = resolve(cwd, nameOrPath);

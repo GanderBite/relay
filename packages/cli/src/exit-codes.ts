@@ -27,6 +27,7 @@ import {
   ClaudeAuthError,
   ERROR_CODES,
   FlowDefinitionError,
+  FlowImportError,
   HandoffSchemaError,
   LoopMaxIterationsError,
   PipelineError,
@@ -194,6 +195,53 @@ const errorRegistry = new Map<string, RegistryEntry>([
           BLANK,
           remediation('edit flow.ts to fix the definition error'),
           remediation('relay doctor'),
+        ].join('\n');
+      },
+    ),
+  ],
+
+  // FlowImportError — missing-file, missing-default-export, or build-not-run
+  [
+    ERROR_CODES.FLOW_IMPORT,
+    makeHandler(
+      EXIT_CODES.definition_error,
+      (e): e is FlowImportError => e instanceof FlowImportError,
+      (err) => {
+        const path = err.details?.path ?? '<unknown>';
+        const reason = err.details?.reason;
+
+        if (reason === 'build-not-run') {
+          return [
+            red('✕ Flow module not found — build has not been run'),
+            BLANK,
+            `${INDENT}${err.message}`,
+            BLANK,
+            remediation(`pnpm build    run in the flow package directory to compile it`),
+            remediation(`relay doctor  full environment check`),
+          ].join('\n');
+        }
+
+        if (reason === 'missing-default-export') {
+          return [
+            red('✕ Flow module has no default export'),
+            BLANK,
+            `${INDENT}${path} does not export a valid Flow as its default export.`,
+            BLANK,
+            remediation(
+              `edit flow.ts and add: export default defineFlow(...)   or   export { flow as default }`,
+            ),
+            remediation(`pnpm build    rebuild after editing`),
+          ].join('\n');
+        }
+
+        // missing-file (and unknown reasons)
+        return [
+          red('✕ Flow file not found'),
+          BLANK,
+          `${INDENT}${path} does not exist.`,
+          BLANK,
+          remediation(`relay run <path-to-flow>    specify the correct path`),
+          remediation(`relay doctor                full environment check`),
         ].join('\n');
       },
     ),
