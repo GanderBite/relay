@@ -382,43 +382,60 @@ function handoffNameOf(step: Step): string | undefined {
   return undefined;
 }
 
+/**
+ * Shared producer maps used by every cross-step handoff validator.
+ *
+ * `producers` maps a handoff name to the set of step ids in this scope that
+ * publish it (prompt steps via `output.handoff`, ask steps via their step id).
+ *
+ * `loopBodyHandoffs` maps a handoff name to the enclosing loop step id when
+ * the handoff is produced exclusively inside a loop body. Outer-scope steps
+ * cannot read those handoffs by their bare name and must use the dotted
+ * `<loopStepId>.<handoff>` address; the reverse-lookup lets validators emit
+ * a targeted error explaining the required form.
+ */
+function buildProducerMaps(
+  keys: readonly string[],
+  stepMap: Map<string, Step>,
+): { producers: Map<string, Set<string>>; loopBodyHandoffs: Map<string, string> } {
+  const producers = new Map<string, Set<string>>();
+  const loopBodyHandoffs = new Map<string, string>();
+
+  for (const key of keys) {
+    // Invariant: every `key` was inserted into `stepMap` by the caller.
+    const step = lookup(stepMap, key)._unsafeUnwrap();
+
+    const name = handoffNameOf(step);
+    if (name !== undefined) {
+      let set = producers.get(name);
+      if (set === undefined) {
+        set = new Set<string>();
+        producers.set(name, set);
+      }
+      set.add(key);
+    }
+
+    if (step.kind === 'loop') {
+      for (const bodyStep of Object.values(step.body)) {
+        if (bodyStep === undefined) continue;
+        const bodyHandoff = handoffNameOf(bodyStep);
+        if (bodyHandoff !== undefined && !loopBodyHandoffs.has(bodyHandoff)) {
+          loopBodyHandoffs.set(bodyHandoff, key);
+        }
+      }
+    }
+  }
+
+  return { producers, loopBodyHandoffs };
+}
+
 function validateContextFrom(
   keys: readonly string[],
   stepMap: Map<string, Step>,
   ancestorSets: ReadonlyMap<string, ReadonlySet<string>>,
   isBody: boolean,
 ): Result<void, FlowDefinitionError> {
-  const producers = new Map<string, Set<string>>();
-  for (const key of keys) {
-    // Invariant: every `key` was inserted into `stepMap` by the caller.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
-    const name = handoffNameOf(step);
-    if (name === undefined) continue;
-    let set = producers.get(name);
-    if (set === undefined) {
-      set = new Set<string>();
-      producers.set(name, set);
-    }
-    set.add(key);
-  }
-
-  // Build a reverse-lookup: handoffName -> loopStepId, for handoffs that are
-  // produced exclusively inside a loop step's body. Used to produce a
-  // targeted error message when a step references such a handoff without the
-  // required dotted-notation address.
-  const loopBodyHandoffs = new Map<string, string>();
-  for (const key of keys) {
-    // Invariant: every `key` was inserted into `stepMap` by the caller.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
-    if (step.kind !== 'loop') continue;
-    for (const bodyStep of Object.values(step.body)) {
-      if (bodyStep === undefined) continue;
-      const bodyHandoff = handoffNameOf(bodyStep);
-      if (bodyHandoff !== undefined && !loopBodyHandoffs.has(bodyHandoff)) {
-        loopBodyHandoffs.set(bodyHandoff, key);
-      }
-    }
-  }
+  const { producers, loopBodyHandoffs } = buildProducerMaps(keys, stepMap);
 
   for (const key of keys) {
     // Invariant: every `key` was inserted into `stepMap` by the caller.
@@ -510,35 +527,7 @@ function validateAskQuestionSources(
   stepMap: Map<string, Step>,
   ancestorSets: ReadonlyMap<string, ReadonlySet<string>>,
 ): Result<void, FlowDefinitionError> {
-  const producers = new Map<string, Set<string>>();
-  for (const key of keys) {
-    // Invariant: every `key` was inserted into `stepMap` by the caller.
-    const step = lookup(stepMap, key)._unsafeUnwrap();
-    const name = handoffNameOf(step);
-    if (name === undefined) continue;
-    let set = producers.get(name);
-    if (set === undefined) {
-      set = new Set<string>();
-      producers.set(name, set);
-    }
-    set.add(key);
-  }
-
-  // Reverse-lookup: a handoff name produced exclusively inside a loop body
-  // maps to the enclosing loop step id. Ask steps in the outer scope cannot
-  // reference these handoffs by their bare name.
-  const loopBodyHandoffs = new Map<string, string>();
-  for (const key of keys) {
-    const step = lookup(stepMap, key)._unsafeUnwrap();
-    if (step.kind !== 'loop') continue;
-    for (const bodyStep of Object.values(step.body)) {
-      if (bodyStep === undefined) continue;
-      const bodyHandoff = handoffNameOf(bodyStep);
-      if (bodyHandoff !== undefined && !loopBodyHandoffs.has(bodyHandoff)) {
-        loopBodyHandoffs.set(bodyHandoff, key);
-      }
-    }
-  }
+  const { producers, loopBodyHandoffs } = buildProducerMaps(keys, stepMap);
 
   for (const key of keys) {
     const step = lookup(stepMap, key)._unsafeUnwrap();
