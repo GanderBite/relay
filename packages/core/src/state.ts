@@ -551,10 +551,33 @@ export class StateMachine {
    * Lazily insert a pending state entry for a loop body step at the start of
    * an iteration. The entry lives at the synthesised key
    * `<loopStepId>::<bodyStepId>` and carries the `iter` index so a resume in
-   * another process can tell which iteration produced it. If an entry already
-   * exists for the same `iter`, this is a no-op; if the existing entry was
-   * seeded for a different iteration, it is replaced with a fresh pending
-   * entry. Caller is responsible for invoking save() to persist the snapshot
+   * another process can tell which iteration produced it.
+   *
+   * Postcondition: after this returns ok(), the entry exists at the requested
+   * `iter` with a status that startStep accepts (i.e. `pending`).
+   *
+   * Cases:
+   * - Missing entry: a fresh `{ status: 'pending', attempts: 0, iter }` is
+   *   written.
+   * - Existing entry at a different iter: replaced with a fresh pending entry
+   *   at the new iter.
+   * - Existing entry at the same iter, status `pending`: left untouched so the
+   *   `attempts` counter that the prior dispatch (or `resumePausedStep`)
+   *   carefully placed is not reset to zero.
+   * - Existing entry at the same iter, any non-`pending` status (`running`,
+   *   `failed`, `succeeded`, `paused`, `skipped`): driven back to a fresh
+   *   pending entry at the same iter with `attempts: 0`. This is what makes
+   *   an in-process retry of the enclosing loop step safe — without it, a
+   *   non-ask body-step throw on the first attempt would leave the
+   *   synthesised entry in `failed`, and the loop's retry would re-enter
+   *   `runBodyStep` and trip startStep's "cannot start step from status
+   *   failed" guard.
+   *
+   * The cached step result for the synthesised key is dropped whenever the
+   * entry transitions away from a non-pending status, so a stale value from
+   * the prior dispatch cannot leak into the next attempt's outcome.
+   *
+   * Caller is responsible for invoking save() to persist the snapshot
    * atomically.
    */
   seedBodyStep(
@@ -564,10 +587,16 @@ export class StateMachine {
   ): Result<void, StateTransitionError> {
     const key = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
     const existing = this.#state.steps[key];
-    if (existing !== undefined && existing.iter === iter) {
+    if (existing !== undefined && existing.iter === iter && existing.status === 'pending') {
       return ok(undefined);
     }
     this.#updateStep(key, { status: 'pending', attempts: 0, iter });
+    // A fresh pending entry must not carry over the prior dispatch's cached
+    // result — the next startStep will run the executor again and any stale
+    // value would be observed by the parallel executor's in-process cache.
+    if (existing !== undefined) {
+      this.#stepResults.delete(key);
+    }
     return ok(undefined);
   }
 

@@ -492,6 +492,230 @@ describe('StateMachine — sweepBodySteps post-state per starting status', () =>
   });
 });
 
+describe('StateMachine — seedBodyStep status normalisation', () => {
+  // The contract: after seedBodyStep returns ok(), the entry at the
+  // synthesised key is in 'pending' status at the requested iter, ready for
+  // startStep. The exception is a same-iter pending entry, which is left
+  // untouched so the prior dispatch's attempts counter is not zeroed.
+  let tmp: string;
+
+  const LOOP_ID = 'fix_loop';
+  const BODY_ID = 'implement';
+  const ITER = 1;
+  const KEY = StateMachine.bodyStepStateKey(LOOP_ID, BODY_ID);
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-seed-norm-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  // Seeds the loop's body-step entry then drives it to the named starting
+  // status via the StateMachine's transition graph. Mirrors the helper used
+  // by the sweepBodySteps describe block above.
+  async function seedAt(
+    status: 'pending' | 'running' | 'succeeded' | 'failed' | 'paused' | 'skipped',
+    iter: number = ITER,
+  ): Promise<StateMachine> {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init([LOOP_ID]);
+    expect(initR.isOk()).toBe(true);
+    const seedR = sm.seedBodyStep(LOOP_ID, BODY_ID, iter);
+    expect(seedR.isOk()).toBe(true);
+
+    switch (status) {
+      case 'pending':
+        return sm;
+      case 'running':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        return sm;
+      case 'succeeded':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        expect(sm.completeStep(KEY).isOk()).toBe(true);
+        return sm;
+      case 'failed':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        expect(sm.failStep(KEY, 'boom').isOk()).toBe(true);
+        return sm;
+      case 'paused': {
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        const q: Question[] = [{ id: 'q', kind: 'text', label: '?' }];
+        expect(sm.pauseStep(KEY, q, '2026-01-01T00:00:00.000Z', LOOP_ID, iter).isOk()).toBe(true);
+        return sm;
+      }
+      case 'skipped':
+        expect(sm.skipStep(KEY).isOk()).toBe(true);
+        return sm;
+    }
+  }
+
+  it('missing entry: seeds a fresh pending entry at the requested iter with attempts=0', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init([LOOP_ID]);
+    expect(initR.isOk()).toBe(true);
+    expect(sm.getState().steps[KEY]).toBeUndefined();
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('different iter: overwrites with a fresh pending entry at the new iter', async () => {
+    // Seed at iter 1, drive to succeeded, then re-seed at iter 2. The new
+    // iteration must wipe the prior entry's status/attempts and stamp the
+    // updated iter.
+    const sm = await seedAt('succeeded', 1);
+    expect(sm.getState().steps[KEY]?.status).toBe('succeeded');
+    expect(sm.getState().steps[KEY]?.iter).toBe(1);
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, 2);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(2);
+  });
+
+  it('same iter, status pending: no-op — attempts counter is preserved', async () => {
+    // The production scenario: resumePausedStep flipped a paused body-step
+    // entry back to pending while preserving iter and a non-zero attempts
+    // counter (so the retry budget survives resume). When the orchestrator
+    // re-enters runBodyStep, seedBodyStep must NOT reset that attempts
+    // counter to zero or the budget would silently expand by one each
+    // pause/resume cycle.
+    //
+    // Construct the precondition by hydrating a hand-built RunState — the
+    // public transition graph cannot land on { pending, attempts > 0, iter
+    // preserved } without going through resumePausedStep (which always
+    // decrements). Hydration is the same path resume uses to load on-disk
+    // state, so the shape is realistic.
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init([LOOP_ID]);
+    expect(initR.isOk()).toBe(true);
+    const baseState = sm.getState();
+    sm.hydrate({
+      ...baseState,
+      steps: {
+        ...baseState.steps,
+        [KEY]: { status: 'pending', attempts: 2, iter: ITER },
+      },
+    });
+    const before = sm.getState().steps[KEY];
+    expect(before?.status).toBe('pending');
+    expect(before?.attempts).toBe(2);
+    expect(before?.iter).toBe(ITER);
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    // Critical: attempts is NOT reset to zero when the iter matches and the
+    // entry is already pending. Without this guarantee, every pause/resume
+    // cycle would silently restore the full retry budget.
+    expect(after?.attempts).toBe(2);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('same iter, status running: driven to pending, attempts cleared, iter preserved', async () => {
+    const sm = await seedAt('running');
+    expect(sm.getState().steps[KEY]?.status).toBe('running');
+    expect(sm.getState().steps[KEY]?.attempts).toBe(1);
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+    // The next startStep must succeed — the whole point of the normalisation.
+    expect(sm.startStep(KEY).isOk()).toBe(true);
+  });
+
+  it('same iter, status failed: driven to pending, attempts cleared, iter preserved', async () => {
+    // Closes the loop-step retry deadlock: a non-ask body step that throws
+    // on the first attempt leaves the synthesised entry in 'failed'. The
+    // loop's withRetry wrapper retries executeLoop, which re-enters
+    // runBodyStep at the same iter. seedBodyStep must drive the failed
+    // entry back to pending so startStep does not trip its
+    // "cannot start step from status failed" guard.
+    const sm = await seedAt('failed');
+    expect(sm.getState().steps[KEY]?.status).toBe('failed');
+    expect(sm.getState().steps[KEY]?.attempts).toBe(1);
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+    expect(after?.errorMessage).toBeUndefined();
+    expect(sm.startStep(KEY).isOk()).toBe(true);
+  });
+
+  it('same iter, status succeeded: driven to pending, attempts cleared, iter preserved', async () => {
+    // Defensive: production code short-circuits via isBodyStepSucceeded
+    // before runBodyStep runs, so this case is not normally reachable. The
+    // contract still demands a clean pending entry on return.
+    const sm = await seedAt('succeeded');
+    expect(sm.getState().steps[KEY]?.status).toBe('succeeded');
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+    expect(after?.completedAt).toBeUndefined();
+    expect(sm.startStep(KEY).isOk()).toBe(true);
+  });
+
+  it('same iter, status paused: driven to pending, attempts cleared, iter preserved', async () => {
+    // Production resume path flips paused -> pending via resumePausedStep
+    // before re-entering the orchestrator's main dispatch. This branch is
+    // the defensive backstop for any code path that calls seedBodyStep on a
+    // paused entry without going through resumePausedStep first.
+    const sm = await seedAt('paused');
+    expect(sm.getState().steps[KEY]?.status).toBe('paused');
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+    expect(sm.startStep(KEY).isOk()).toBe(true);
+  });
+
+  it('same iter, status skipped: driven to pending, attempts cleared, iter preserved', async () => {
+    // skipStep is not invoked on body-step keys by current production code,
+    // but the contract is still total — every starting status must land
+    // back on pending at the requested iter.
+    const sm = await seedAt('skipped');
+    expect(sm.getState().steps[KEY]?.status).toBe('skipped');
+
+    const r = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+    expect(sm.startStep(KEY).isOk()).toBe(true);
+  });
+});
+
 describe('StateMachine — decrementAttempts', () => {
   let tmp: string;
 
