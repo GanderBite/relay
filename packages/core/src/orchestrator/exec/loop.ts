@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { FlowDefinitionError, LoopMaxIterationsError } from '../../errors.js';
+import { FlowDefinitionError, HandoffNotFoundError, LoopMaxIterationsError } from '../../errors.js';
 import type { LoopStepSpec, Step } from '../../flow/types.js';
 import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
@@ -230,10 +230,13 @@ export async function executeLoop(
       // succeeded in this iteration, skip the dispatch and reconstruct the
       // iteration's handoff names from the body-step spec so the until
       // condition and final body map see the same set the original run
-      // produced. Reads of the iteration-scoped files are best-effort:
-      // missing files (or any other read error) are silently omitted on the
-      // assumption that a successful body step that produced no handoff
-      // contributes nothing to the iteration handoff set anyway.
+      // produced. A missing iteration file is the expected case for body
+      // step kinds that may produce no handoff (e.g. a script step with
+      // no output.handoff) — we silently omit it. Any other read error
+      // (I/O failure, schema mismatch, invalid id) signals that a handoff
+      // the prior run wrote can no longer be loaded; we surface that as a
+      // warn-level breadcrumb so the operator sees the corruption instead
+      // of letting the until condition silently diverge.
       if (ctx.isBodyStepSucceeded?.(step.id, bodyStepId, iter) === true) {
         ctx.logger.debug(
           {
@@ -256,6 +259,19 @@ export async function executeLoop(
           const readResult = await ctx.handoffStore.readIteration(step.id, iter, name);
           if (readResult.isOk()) {
             iterHandoffs.push(name);
+          } else if (!(readResult.error instanceof HandoffNotFoundError)) {
+            ctx.logger.warn(
+              {
+                event: 'loop.iteration.replay_failed',
+                stepId: step.id,
+                bodyStepId,
+                iter,
+                name,
+                errorName: readResult.error.name,
+                error: readResult.error.message,
+              },
+              'iteration handoff replay failed; the until condition may diverge',
+            );
           }
         }
         continue;

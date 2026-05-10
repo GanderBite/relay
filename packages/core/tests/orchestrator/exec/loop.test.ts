@@ -2,10 +2,16 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { err } from 'neverthrow';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadHandoffValues } from '../../../src/context-inject.js';
 import type { PipelineError } from '../../../src/errors.js';
-import { FlowDefinitionError, LoopMaxIterationsError } from '../../../src/errors.js';
+import {
+  FlowDefinitionError,
+  HandoffIoError,
+  HandoffNotFoundError,
+  LoopMaxIterationsError,
+} from '../../../src/errors.js';
 import { defineFlow } from '../../../src/flow/define.js';
 import { buildGraph } from '../../../src/flow/graph.js';
 import { step } from '../../../src/flow/step.js';
@@ -626,6 +632,130 @@ describe('executeLoop', () => {
     // must NOT terminate the loop.
     expect(result.iterations).toBe(3);
     expect(callCount).toBe(3);
+  });
+
+  it('[LOOP-011] skip path: non-ENOENT readIteration error emits a warn breadcrumb', async () => {
+    // Simulates a resume where a prompt body step succeeded on a prior pass —
+    // its iteration handoff file exists but is corrupt (or unreadable). The
+    // skip path must surface the corruption with a warn-level log so the
+    // operator sees that the until condition may diverge, not silently
+    // swallow the error.
+    const reviewStep = promptBodyStep('review', 'review');
+    const loopSpec = buildLoopSpec({
+      id: 'fix_loop',
+      body: { review: reviewStep },
+      untilFrom: 'review',
+      untilWhen: { decision: 'done' },
+      maxIterations: 1,
+    });
+
+    // Seed a valid latest pointer so the until condition matches on iter 1
+    // and the loop terminates after the single iteration.
+    const writeLatest = await handoffStore.writeIteration('fix_loop', 1, 'review', {
+      decision: 'done',
+    });
+    if (writeLatest.isErr()) throw writeLatest.error;
+    const promote = await handoffStore.promoteIteration('fix_loop', 1, 'review');
+    if (promote.isErr()) throw promote.error;
+
+    // Force readIteration to surface a HandoffIoError, mimicking a corrupt
+    // JSON file or an EACCES from the iteration-scoped read.
+    const ioError = new HandoffIoError(
+      'failed to parse iteration handoff "fix_loop/iter_1/review"',
+      'fix_loop/iter_1/review',
+      { cause: 'unexpected end of JSON input' },
+    );
+    const spy = vi.spyOn(handoffStore, 'readIteration').mockResolvedValue(err(ioError) as never);
+
+    const warnSpy = vi.fn();
+    const stubLogger = {
+      info: () => {},
+      debug: () => {},
+      warn: warnSpy,
+      error: () => {},
+      child: () => stubLogger,
+    } as unknown as ReturnType<typeof createLogger>;
+
+    const ctx = makeCtx({
+      logger: stubLogger,
+      isBodyStepSucceeded: () => true,
+      dispatch: async () => {
+        throw new Error('dispatch must not be called when isBodyStepSucceeded is true');
+      },
+    });
+
+    const result = await executeLoop(loopSpec, ctx);
+    expect(result.iterations).toBe(1);
+
+    // The warn must have been called with the structured payload.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [payload, message] = warnSpy.mock.calls[0] ?? [];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        event: 'loop.iteration.replay_failed',
+        stepId: 'fix_loop',
+        bodyStepId: 'review',
+        iter: 1,
+        name: 'review',
+        errorName: 'HandoffIoError',
+      }),
+    );
+    expect(message).toBe('iteration handoff replay failed; the until condition may diverge');
+
+    spy.mockRestore();
+  });
+
+  it('[LOOP-012] skip path: ENOENT (HandoffNotFoundError) on readIteration is silently dropped', async () => {
+    // The body step legitimately produced no iteration handoff (or it was
+    // never persisted). The skip path treats ENOENT as the expected case and
+    // does NOT emit a warn — only true corruption surfaces.
+    const reviewStep = promptBodyStep('review', 'review');
+    const loopSpec = buildLoopSpec({
+      id: 'fix_loop',
+      body: { review: reviewStep },
+      untilFrom: 'review',
+      untilWhen: { decision: 'done' },
+      maxIterations: 1,
+    });
+
+    // Seed a latest pointer so the loop terminates after the skipped pass.
+    const writeLatest = await handoffStore.writeIteration('fix_loop', 1, 'review', {
+      decision: 'done',
+    });
+    if (writeLatest.isErr()) throw writeLatest.error;
+    const promote = await handoffStore.promoteIteration('fix_loop', 1, 'review');
+    if (promote.isErr()) throw promote.error;
+
+    const notFound = new HandoffNotFoundError(
+      'handoff "fix_loop/iter_1/review" not found',
+      'fix_loop/iter_1/review',
+    );
+    const spy = vi.spyOn(handoffStore, 'readIteration').mockResolvedValue(err(notFound) as never);
+
+    const warnSpy = vi.fn();
+    const stubLogger = {
+      info: () => {},
+      debug: () => {},
+      warn: warnSpy,
+      error: () => {},
+      child: () => stubLogger,
+    } as unknown as ReturnType<typeof createLogger>;
+
+    const ctx = makeCtx({
+      logger: stubLogger,
+      isBodyStepSucceeded: () => true,
+      dispatch: async () => {
+        throw new Error('dispatch must not be called when isBodyStepSucceeded is true');
+      },
+    });
+
+    const result = await executeLoop(loopSpec, ctx);
+    expect(result.iterations).toBe(1);
+
+    // No warn must fire for the expected-absence case.
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    spy.mockRestore();
   });
 
   it('[LOOP-013] loopStep rejects body prompt step that declares maxRetries', () => {
