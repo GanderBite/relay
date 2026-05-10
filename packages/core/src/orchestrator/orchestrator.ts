@@ -1482,6 +1482,49 @@ export class Orchestrator {
                   'state transition failed while pausing step',
                 );
               }
+              // Sibling parallel branches that were mid-flight when this ask
+              // step paused must not be left at status 'running' on disk —
+              // the resume seeder only re-queues 'pending'/'paused'/'failed'
+              // steps, so a zombie 'running' entry would deadlock the run.
+              // Sweep every running sibling back to pending here so the
+              // single save() below persists a clean snapshot atomically.
+              // attempts is preserved across the failStep -> resetStep chain
+              // so retry budgets carry across the pause.
+              const pausingStepId = caught.stepId;
+              for (const [siblingId, siblingState] of Object.entries(
+                stateMachine.getState().steps,
+              )) {
+                if (siblingState.status !== 'running') continue;
+                if (siblingId === pausingStepId) continue;
+                const failSibling = stateMachine.failStep(siblingId, 'aborted by sibling pause');
+                if (failSibling.isErr()) {
+                  logger.error(
+                    {
+                      event: 'state.transition_failed',
+                      stepId: siblingId,
+                      error: failSibling.error.message,
+                    },
+                    'state transition failed while sweeping sibling on pause',
+                  );
+                  continue;
+                }
+                const resetSibling = stateMachine.resetStep(siblingId);
+                if (resetSibling.isErr()) {
+                  logger.error(
+                    {
+                      event: 'state.transition_failed',
+                      stepId: siblingId,
+                      error: resetSibling.error.message,
+                    },
+                    'state transition failed while sweeping sibling on pause',
+                  );
+                  continue;
+                }
+                logger.debug(
+                  { event: 'run.paused.sibling_reset', id: siblingId },
+                  'sibling step swept to pending on pause',
+                );
+              }
               const pauseSave = await stateMachine.save();
               if (pauseSave.isErr()) {
                 logger.error(

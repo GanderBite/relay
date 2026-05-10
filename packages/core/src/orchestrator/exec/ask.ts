@@ -62,6 +62,27 @@ export function askAnswerHandoffPath(runDir: string, stepId: string): string {
   return join(runDir, 'handoffs', `${askAnswerHandoffKey(stepId)}.json`);
 }
 
+/**
+ * Resolve the on-disk path for an ask step that lives inside a loop body.
+ * Each iteration of the loop gets its own subdirectory so answer files from
+ * different iterations do not collide. The path follows the convention:
+ * `<runDir>/handoffs/<loopStepId>/iter_<iter>/__ask_<bodyStepId>__.json`.
+ */
+export function askIterationAnswerHandoffPath(
+  runDir: string,
+  loopStepId: string,
+  iter: number,
+  bodyStepId: string,
+): string {
+  return join(
+    runDir,
+    'handoffs',
+    loopStepId,
+    `iter_${iter}`,
+    `${askAnswerHandoffKey(bodyStepId)}.json`,
+  );
+}
+
 const AnswerMapSchema: z.ZodType<AnswerMap> = z.record(z.string(), z.unknown());
 
 function errnoOf(cause: unknown): string | undefined {
@@ -98,9 +119,10 @@ export async function executeAsk(
   handoffStore: HandoffStore,
   stepId: string,
   runDir: string,
+  answerPath?: string,
 ): Promise<Result<AnswerMap, AskExecError>> {
   const answerKey = askAnswerHandoffKey(stepId);
-  const answerPath = askAnswerHandoffPath(runDir, stepId);
+  const effectivePath = answerPath ?? askAnswerHandoffPath(runDir, stepId);
 
   // Resume path: a prior invocation already paused this step and the user
   // has since written an answer file via `relay answer`. Reading at the
@@ -110,7 +132,7 @@ export async function executeAsk(
   // first-pass case and falls through to the AwaitingInputSignal throw below.
   let raw: string;
   try {
-    raw = await readFile(answerPath, { encoding: 'utf8' });
+    raw = await readFile(effectivePath, { encoding: 'utf8' });
   } catch (cause) {
     const errno = errnoOf(cause);
     if (errno !== 'ENOENT') {

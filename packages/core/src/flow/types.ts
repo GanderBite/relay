@@ -201,6 +201,8 @@ export interface StepState {
   artifacts?: string[] | undefined;
   handoffs?: string[] | undefined;
   errorMessage?: string | undefined;
+  /** Loop iteration that seeded this body-step state entry. Absent for top-level steps. */
+  iter?: number | undefined;
 }
 
 /**
@@ -212,6 +214,10 @@ export interface AwaitingInput {
   stepId: string;
   questions: Question[];
   promptedAt: string;
+  /** Id of the enclosing loop step. Present only when the paused ask step lives inside a loop body. */
+  loopStepId?: string | undefined;
+  /** Loop iteration index at which the ask step was paused. Present only when inside a loop body. */
+  loopIter?: number | undefined;
 }
 
 export interface RunState {

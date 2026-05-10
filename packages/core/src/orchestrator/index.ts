@@ -1,5 +1,9 @@
 export type { AskStepResult } from './exec/ask.js';
-export { askAnswerHandoffKey, askAnswerHandoffPath } from './exec/ask.js';
+export {
+  askAnswerHandoffKey,
+  askAnswerHandoffPath,
+  askIterationAnswerHandoffPath,
+} from './exec/ask.js';
 export type { BranchStepResult } from './exec/branch.js';
 export type { LoopStepResult } from './exec/loop.js';
 export type { ParallelStepResult } from './exec/parallel.js';

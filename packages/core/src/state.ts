@@ -34,12 +34,15 @@ const stepStateSchema: z.ZodType<StepState> = z.object({
   errorMessage: z.string().optional(),
   artifacts: z.array(z.string()).optional(),
   handoffs: z.array(z.string()).optional(),
+  iter: z.number().int().nonnegative().optional(),
 });
 
 const awaitingInputSchema = z.object({
   stepId: z.string(),
   questions: z.array(QuestionSchema),
   promptedAt: z.string(),
+  loopStepId: z.string().optional(),
+  loopIter: z.number().int().nonnegative().optional(),
 });
 
 // Schema mirrors RunState from flow/types.ts. `input: z.unknown()` matches the

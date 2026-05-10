@@ -178,6 +178,9 @@ function buildGraphInternal(
   const askResult = validateAskQuestionSources(keys, stepMap, ancestorSets);
   if (askResult.isErr()) return err(askResult.error);
 
+  const parallelAskResult = validateParallelAskQuota(topoOrder, stepMap, successors);
+  if (parallelAskResult.isErr()) return err(parallelAskResult.error);
+
   const frozenSuccessors = new Map<string, ReadonlySet<string>>();
   const frozenPredecessors = new Map<string, ReadonlySet<string>>();
   for (const key of keys) {
@@ -574,6 +577,87 @@ function validateAskQuestionSources(
   }
 
   return ok(undefined);
+}
+
+/**
+ * Reject parallel barriers whose reachable subgraph contains more than one
+ * ask step. Concurrent ask steps cannot share the CLI's interactive prompt,
+ * so the runtime forbids fanning out to multiple ask steps from a single
+ * parallel step. Loop bodies reachable from a branch are walked recursively
+ * so an ask buried inside a loop body still counts toward the quota.
+ */
+function validateParallelAskQuota(
+  topoOrder: readonly string[],
+  stepMap: Map<string, Step>,
+  successors: Map<string, Set<string>>,
+): Result<void, FlowDefinitionError> {
+  for (const parallelId of topoOrder) {
+    const parallel = lookup(stepMap, parallelId)._unsafeUnwrap();
+    if (parallel.kind !== 'parallel') continue;
+
+    const reachable = new Set<string>();
+    const queue: string[] = [];
+    for (const branch of parallel.branches) {
+      if (!reachable.has(branch) && stepMap.has(branch)) {
+        reachable.add(branch);
+        queue.push(branch);
+      }
+    }
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined) break;
+      const succs = successors.get(current);
+      if (succs === undefined) continue;
+      for (const succ of succs) {
+        if (reachable.has(succ)) continue;
+        if (!stepMap.has(succ)) continue;
+        reachable.add(succ);
+        queue.push(succ);
+      }
+    }
+
+    const askIds: string[] = [];
+    for (const id of reachable) {
+      const step = lookup(stepMap, id)._unsafeUnwrap();
+      if (step.kind === 'ask') {
+        askIds.push(id);
+        continue;
+      }
+      if (step.kind === 'loop') {
+        collectLoopBodyAsks(step, askIds);
+      }
+    }
+
+    if (askIds.length > 1) {
+      askIds.sort();
+      return err(
+        new FlowDefinitionError(
+          `parallel step "${parallelId}" has ${askIds.length} concurrent ask steps in its branches (${askIds.join(', ')}): concurrent asks are not supported — sequence them before or after the barrier.`,
+        ),
+      );
+    }
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * Recursively collect ask step ids inside a loop body, descending through any
+ * nested loop bodies. Body steps are addressed by their bare id; the caller is
+ * responsible for deduping across the outer reachable set if needed.
+ */
+function collectLoopBodyAsks(loopStep: LoopStep, into: string[]): void {
+  for (const bodyStep of Object.values(loopStep.body)) {
+    if (bodyStep === undefined) continue;
+    if (bodyStep.kind === 'ask') {
+      into.push(bodyStep.id);
+      continue;
+    }
+    if (bodyStep.kind === 'loop') {
+      collectLoopBodyAsks(bodyStep, into);
+    }
+  }
 }
 
 /**
