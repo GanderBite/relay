@@ -26,7 +26,8 @@
     "test": "vitest run",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint:filesize": "node --import tsx/esm scripts/check-file-lengths.ts"
   },
   "dependencies": {
     "@ganderbite/relay-generator": "workspace:^",
@@ -47,6 +48,7 @@
     "@types/tar": "^7.0.87",
     "@vitest/coverage-v8": "4.1.4",
     "tsup": "8.5.1",
+    "tsx": "^4.8.1",
     "typescript": "6.0.3",
     "vitest": "4.1.4"
   },
