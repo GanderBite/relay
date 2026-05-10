@@ -4,6 +4,7 @@ import { looksLikePath } from './util/path.js';
 
 // All v1 command names — used for shorthand routing (first-positional bypass).
 const KNOWN_COMMANDS = new Set([
+  'answer',
   'init',
   'list',
   'search',
@@ -38,6 +39,7 @@ const COMMAND_LOADERS: Record<
   string,
   () => Promise<{ default: (args: unknown[], opts: unknown) => Promise<void> }>
 > = {
+  answer: () => import('./commands/answer.js'),
   init: () => import('./commands/init.js'),
   list: () => import('./commands/list.js'),
   search: () => import('./commands/search.js'),
@@ -165,6 +167,16 @@ export function buildProgram(): Command {
     .option('--no-worktree', 'disable per-run git worktree isolation')
     .action(async (runId: string, cmdOpts: { provider?: string; worktree?: boolean }) => {
       const handler = await loadCommand('resume');
+      await handler([runId], { ...program.opts(), ...cmdOpts });
+    });
+
+  // --------------------------------------------------------------- answer --
+  program
+    .command('answer <runId>')
+    .description('provide answers for a paused run and resume it')
+    .option('--json <jsonString>', 'answers as a JSON object string (non-interactive)')
+    .action(async (runId: string, cmdOpts: { json?: string }) => {
+      const handler = await loadCommand('answer');
       await handler([runId], { ...program.opts(), ...cmdOpts });
     });
 

@@ -4,8 +4,8 @@ import { defineFlow, step, z } from '@ganderbite/relay-core';
  * Interactive flow: pause for human input, then run a prompt that consumes
  * the answers. The `gather` step pauses the run and waits for `relay answer`
  * to provide values for each question. The `execute` step then reads those
- * answers from the ask-step's answer handoff (key: `__ask_<stepId>__`) and
- * produces a result.
+ * answers from the ask step's published handoff (named after the ask step
+ * id — `gather` here) and produces a result.
  *
  * Question kinds available on `step.ask`: text, multiline, select,
  * multiselect, confirm, number. Add or swap kinds to fit your task.
@@ -28,7 +28,7 @@ export default defineFlow({
     execute: step.prompt({
       promptFile: 'prompts/01_execute.md',
       dependsOn: ['gather'],
-      contextFrom: ['__ask_gather__'],
+      contextFrom: ['gather'],
       output: { handoff: 'result' },
     }),
   },

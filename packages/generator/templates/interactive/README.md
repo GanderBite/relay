@@ -4,13 +4,13 @@
 
 ## What it does
 
-A two-step interactive flow. The first step (`gather`) is an `ask` step — when the run reaches it, the orchestrator pauses, persists state, and exits. The operator then runs `relay answer <runId>` to provide values for each question; that command writes the answer handoff and resumes the run. The second step (`execute`) is a prompt step that reads the answer handoff and produces a result.
+A two-step interactive flow. The first step (`gather`) is an `ask` step — when the run reaches it, the orchestrator pauses, persists state, and exits. The operator then runs `relay answer <runId>` to provide values for each question; that command writes the answers and resumes the run. The second step (`execute`) is a prompt step that reads the published answer handoff and produces a result.
 
 Use this template when the work cannot start until a human supplies a goal, an approval, or a parameter that the prior steps could not produce on their own.
 
 ## Sample output
 
-`gather` writes its answers to a handoff named `__ask_gather__` (the canonical key for an ask step's answers). `execute` reads that handoff plus `input.topic` and emits a `result` handoff with shape `{ result: string }`. Add a transcript or screenshot to `examples/` once you have a real run.
+`gather` publishes its answers as a handoff named `gather` (the ask step's id is the canonical handoff name for its answer map). `execute` reads that handoff plus `input.topic` and emits a `result` handoff with shape `{ result: string }`. Add a transcript or screenshot to `examples/` once you have a real run.
 
 ## Estimated cost and duration
 
@@ -102,7 +102,7 @@ Common customizations:
 - **Add or change questions.** Edit the `questions` array in the `gather` step. Use `select` or `multiselect` for closed-set inputs; `number` for ranges; `multiline` for longer prose.
 - **Validate answers with a schema.** Pass `output: { schema: AnswerSchema }` on the `gather` step to reject malformed answer maps before the next step runs.
 - **Source questions dynamically.** Replace `questions: [...]` with `questions: { from: 'priorStepHandoff' }` to read the question list from an upstream step's handoff. The handoff value must be an array of `Question` objects.
-- **Add more downstream steps.** Each one can include `__ask_gather__` in its `contextFrom` to read the operator's answers.
+- **Add more downstream steps.** Each one can include `gather` in its `contextFrom` to read the operator's answers.
 
 ## License
 

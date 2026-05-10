@@ -311,7 +311,6 @@ export type {
   StepResult,
   TerminalStepResult,
 } from './orchestrator/index.js';
-
 /**
  * `Orchestrator` drives the execution of a compiled `Flow`.
  *
@@ -322,7 +321,21 @@ export type {
  * `resume(runDir, opts?)` continues a previously failed or aborted run from
  * its persisted checkpoint.
  */
-export { createOrchestrator, Orchestrator } from './orchestrator/index.js';
+/**
+ * Helpers for the conventional answer-file path used by ask steps.
+ *
+ * - `askAnswerHandoffKey(stepId)` returns the underscore-prefixed key
+ *   `__ask_<stepId>__` used to name the answer file on disk.
+ * - `askAnswerHandoffPath(runDir, stepId)` resolves the absolute path
+ *   `<runDir>/handoffs/<askAnswerHandoffKey(stepId)>.json` — the file the
+ *   `relay answer` CLI writes and the orchestrator reads on resume.
+ */
+export {
+  askAnswerHandoffKey,
+  askAnswerHandoffPath,
+  createOrchestrator,
+  Orchestrator,
+} from './orchestrator/index.js';
 
 /** Options for constructing a `ClaudeCliProvider`. */
 export type { ClaudeCliProviderOptions } from './providers/claude-cli/index.js';

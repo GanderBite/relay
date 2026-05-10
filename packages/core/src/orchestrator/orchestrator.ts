@@ -27,7 +27,7 @@ import { createWorktree, isGitRepo, removeWorktree } from '../util/worktree.js';
 import { z } from '../zod.js';
 
 import { checkCapabilities } from './capability-check.js';
-import { type AskStepResult, askAnswerHandoffKey, executeAsk } from './exec/ask.js';
+import { type AskStepResult, executeAsk } from './exec/ask.js';
 import { executeBranch } from './exec/branch.js';
 import { executeLoop } from './exec/loop.js';
 import { executeParallel } from './exec/parallel.js';
@@ -1288,19 +1288,31 @@ export class Orchestrator {
             });
           case 'ask': {
             // executeAsk has two paths: it throws AwaitingInputSignal on the
-            // first pass (no answer handoff present yet) so the orchestrator
-            // can pause the run, and returns ok(answerMap) on the resume pass
-            // when the answer handoff is already on disk. The signal
-            // propagates up through withRetry and is intercepted in
-            // dispatchStep's catch below; the resume pass falls through to
-            // the normal completeStep path.
-            const askResult = await executeAsk(step, handoffStore, step.id);
+            // first pass (no answer file present yet) so the orchestrator can
+            // pause the run, and returns ok(answerMap) on the resume pass
+            // when the answer file is already on disk. The signal propagates
+            // up through withRetry and is intercepted in dispatchStep's catch
+            // below; the resume pass falls through to the normal completeStep
+            // path. After reading the answer map, we publish it as a regular
+            // handoff under the ask step's id so downstream steps can consume
+            // it via `contextFrom: ['<askStepId>']` exactly like a prompt
+            // step's output. The on-disk __ask_<stepId>__ file remains the
+            // input the CLI writes; the <stepId> handoff is the orchestrator's
+            // canonical output the DAG sees.
+            const askResult = await executeAsk(step, handoffStore, step.id, runDir);
             if (askResult.isErr()) throw askResult.error;
+            const answers = askResult.value;
+            const writeResult = await handoffStore.write<unknown>(
+              step.id,
+              answers,
+              step.output?.schema,
+            );
+            if (writeResult.isErr()) throw writeResult.error;
             const result: AskStepResult = {
               kind: 'ask',
               stepId: step.id,
-              answers: askResult.value,
-              handoffs: [askAnswerHandoffKey(step.id)],
+              answers,
+              handoffs: [step.id],
             };
             return result;
           }

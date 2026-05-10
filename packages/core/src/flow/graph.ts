@@ -371,6 +371,14 @@ function handoffNameOf(step: Step): string | undefined {
   if (step.kind === 'prompt') {
     return 'handoff' in step.output ? step.output.handoff : undefined;
   }
+  // Ask steps publish the collected answer map as a handoff named after the
+  // step id. The on-disk __ask_<stepId>__ file is the input written by the
+  // CLI; the orchestrator reads it then writes the answer map under the
+  // step id so downstream `contextFrom: ['<askStepId>']` resolves through
+  // the standard handoff path.
+  if (step.kind === 'ask') {
+    return step.id;
+  }
   return undefined;
 }
 
