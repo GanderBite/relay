@@ -1193,6 +1193,14 @@ export class Orchestrator {
               attempt,
               abortSignal: abortController.signal,
               logger: stepLogger,
+              input: inputVars,
+              // Handoffs are not auto-injected into branch template context yet;
+              // a future change will load `contextFrom` for branch steps the
+              // way prompt steps do. Pass an empty record so {{handoff_id}}
+              // references render to empty rather than throwing.
+              handoffs: {},
+              flowDir,
+              handoffsDir: join(runDir, 'handoffs'),
             });
           case 'parallel':
             return executeParallel(step, {
