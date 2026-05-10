@@ -25,7 +25,10 @@
     "dist",
     "tsconfig.json"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/orchestrator/step-registrations.ts",
+    "./dist/orchestrator/step-registrations.js"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
