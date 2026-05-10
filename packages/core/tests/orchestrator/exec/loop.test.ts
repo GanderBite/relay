@@ -423,6 +423,7 @@ describe('executeLoop', () => {
           maxIterations: 3,
         }),
       },
+      start: 'implement',
       until: { from: 'implementation', when: { ok: true } },
       maxIterations: 5,
     });

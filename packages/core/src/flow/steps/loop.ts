@@ -24,6 +24,8 @@ export type LoopStepBuilderOutput = Omit<LoopStepSpec, 'id'> & { kind: 'loop' };
  */
 export type LoopStepBuilderInput = Omit<LoopStepSpec, 'id' | 'kind' | 'bodyGraph' | 'body'> & {
   body: Record<string, Exclude<StepBuilderOutput, LoopStepBuilderOutput>>;
+  /** Optional id for the loop step, used in error messages. Set by callers who have the record key available. */
+  id?: string | undefined;
 };
 
 /**
@@ -140,8 +142,9 @@ export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
   }
 
   if (spec.start !== undefined && spec.body[spec.start] === undefined) {
+    const loopId = spec.id !== undefined ? ` "${spec.id}"` : '';
     throw new FlowDefinitionError(
-      `loop step start "${spec.start}" does not match a body step id. Set start to one of: ${bodyKeys.join(', ')}.`,
+      `loop step${loopId} start "${spec.start}" does not match a body step id. Set start to one of: ${bodyKeys.join(', ')}.`,
     );
   }
 
@@ -158,16 +161,19 @@ export function loopStep(spec: LoopStepBuilderInput): LoopStepBuilderOutput {
     }
     const roots = bodyKeys.filter((k) => !referencedByDependsOn.has(k));
     if (roots.length > 1) {
+      const loopId = spec.id !== undefined ? ` "${spec.id}"` : '';
       throw new FlowDefinitionError(
-        `loop step body has multiple root steps (${roots.join(', ')}). Add dependsOn or set start on the loop to declare the entry point.`,
+        `loop step${loopId} body has multiple root steps (${roots.join(', ')}). Add dependsOn or set start on the loop to declare the entry point.`,
       );
     }
   }
 
   const compiledBody = compileBodySteps(spec.body);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { id: _id, ...specWithoutId } = spec;
   const assembled: LoopStepBuilderOutput = {
-    ...spec,
+    ...specWithoutId,
     kind: 'loop',
     body: compiledBody,
     bodyGraph: undefined,

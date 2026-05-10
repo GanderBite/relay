@@ -204,6 +204,7 @@ describe('loop graph compiler', () => {
       // step.loop(...) itself must throw before defineFlow is involved.
       expect(() => {
         step.loop({
+          id: 'fix_loop',
           body: {
             a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
             b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' }, dependsOn: ['a'] }),
@@ -217,6 +218,7 @@ describe('loop graph compiler', () => {
       let caught: unknown;
       try {
         step.loop({
+          id: 'fix_loop',
           body: {
             a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
             b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' }, dependsOn: ['a'] }),
@@ -229,6 +231,7 @@ describe('loop graph compiler', () => {
         caught = e;
       }
       expect(caught).toBeInstanceOf(FlowDefinitionError);
+      expect((caught as FlowDefinitionError).message).toContain('"fix_loop"');
       expect((caught as FlowDefinitionError).message).toMatch(/nope/);
       expect((caught as FlowDefinitionError).message).toMatch(/\ba\b/);
       expect((caught as FlowDefinitionError).message).toMatch(/\bb\b/);
@@ -239,6 +242,7 @@ describe('loop graph compiler', () => {
       let caught: unknown;
       try {
         step.loop({
+          id: 'fix_loop',
           body: {
             step_a: step.prompt({ promptFile: 'a.md', output: { handoff: 'a_out' } }),
             step_b: step.prompt({ promptFile: 'b.md', output: { handoff: 'b_out' } }),
@@ -251,6 +255,7 @@ describe('loop graph compiler', () => {
         caught = e;
       }
       expect(caught).toBeInstanceOf(FlowDefinitionError);
+      expect((caught as FlowDefinitionError).message).toContain('"fix_loop"');
       expect((caught as FlowDefinitionError).message).toMatch(/step_a/);
       expect((caught as FlowDefinitionError).message).toMatch(/step_b/);
       expect((caught as FlowDefinitionError).message).toMatch(/multiple root/);
