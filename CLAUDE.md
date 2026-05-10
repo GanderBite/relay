@@ -74,6 +74,8 @@ The harness runs four hook events to keep the loop tight:
 4. **ESM only, Node ≥20.10, TypeScript 5.4+.** No CJS dual-publish.
 5. **Atomic writes for any file other processes might read** (state.json, batons/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.
+7. **Internal vs public error discipline.** Public API functions return `Result<T, E>` via neverthrow — they never throw. Internal step executors under `packages/core/src/orchestrator/exec/` may throw `PipelineError` subclasses; the run loop catches and converts them. When adding a new executor, throw on unrecoverable step failure. Never throw in the public API surface.
+8. **CLI surfaces to update when adding a step kind.** After registering a new kind in `packages/core/src/orchestrator/step-registrations.ts`, check two files: `packages/cli/src/progress/render.ts` (distinct progress display for the kind, if needed) and `packages/cli/src/banner.ts` (distinct success/failure row shape, if needed).
 
 ## Commit message convention
 

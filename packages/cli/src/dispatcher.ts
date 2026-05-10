@@ -88,6 +88,9 @@ export function buildProgram(): Command {
   // can format unknown-command errors consistently.
   program.exitOverride();
 
+  // Enable Levenshtein-based did-you-mean suggestions for mistyped commands.
+  program.showSuggestionAfterError(true);
+
   // Initialize color once, after Commander has parsed global flags, before any
   // command action runs. initColor() applies all precedence rules (--no-color
   // flag, NO_COLOR env, settings.json color key, TTY auto-detect).

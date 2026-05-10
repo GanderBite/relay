@@ -313,13 +313,8 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // ---- (4) Load the flow module ----
   const flowResult = await loadFlow(flowRef.flowPath, process.cwd());
   if (flowResult.isErr()) {
-    // usage-error: formatError does not apply — FlowLoadError from loadFlow is surfaced via the error message directly
-    process.stderr.write(
-      red(`  ${SYMBOLS.fail} could not load flow for run ${runId}: ${flowResult.error.message}`) +
-        '\n',
-    );
-    process.stderr.write(gray('  ensure the flow package is built: pnpm build') + '\n');
-    process.exit(1);
+    process.stderr.write(formatError(flowResult.error) + '\n');
+    process.exit(exitCodeFor(flowResult.error));
   }
   const { flow } = flowResult.value;
 
