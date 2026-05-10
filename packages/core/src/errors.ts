@@ -136,11 +136,20 @@ export class FlowImportError extends FlowDefinitionError {
 /**
  * Discriminated union describing why a run was aborted.
  *
- * - `signal` — aborted by a POSIX signal delivered to the process.
- * - `sibling-failure` — aborted because a sibling step failed and the run
- *   policy does not allow partial continuation.
- * - `timeout` — aborted because the run exceeded its configured time limit.
- * - `unknown` — the abort source could not be determined.
+ * - `signal` — aborted by a POSIX signal delivered to the process. Produced by
+ *   the orchestrator's SIGINT/SIGTERM listeners.
+ * - `sibling-failure` — recorded when a parallel-step branch dispatch rejects;
+ *   carries the id of the first failed branch so RunResult.abortReason can
+ *   point an operator at the originating branch when the surrounding run also
+ *   terminates as aborted (typically because a signal arrives mid-failure).
+ * - `timeout` — reserved for future expansion. No producer site fires it
+ *   today: there is no top-level run timeout, and per-step timeouts surface
+ *   as `TimeoutError` via the retry loop without aborting the run. Kept on
+ *   the union so adding a top-level timeout (or a step-level timeout that
+ *   escalates to a run abort) does not require a breaking type change.
+ * - `unknown` — the abort source could not be determined; used as the
+ *   fallback when the run terminates as aborted but no producer recorded a
+ *   typed cause first.
  */
 export type AbortReason =
   | { kind: 'signal'; signal: string }

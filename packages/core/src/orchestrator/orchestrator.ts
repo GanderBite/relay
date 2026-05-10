@@ -402,6 +402,9 @@ export class Orchestrator {
           validatedInput,
           initialQueue: [...flow.graph.rootSteps],
           invocationCwd: worktree.worktreeCwd,
+          recordAbortSource: (reason) => {
+            if (abortSource === null) abortSource = reason;
+          },
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
           ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
@@ -703,6 +706,9 @@ export class Orchestrator {
           validatedInput: stateMachine.getState().input,
           initialQueue,
           invocationCwd: worktree.worktreeCwd,
+          recordAbortSource: (reason) => {
+            if (abortSource === null) abortSource = reason;
+          },
           ...(opts.onStepComplete !== undefined ? { onStepComplete: opts.onStepComplete } : {}),
           ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
         });
@@ -1110,6 +1116,13 @@ export class Orchestrator {
      * alongside each translated InvocationEvent when set.
      */
     verbose?: boolean;
+    /**
+     * Record a typed abort cause against the enclosing run. Setter-only — the
+     * walker never reads back the recorded value. The implementation in
+     * run()/resume() ignores subsequent calls when a cause is already set, so
+     * the first observer wins regardless of which abort site fires first.
+     */
+    recordAbortSource: (reason: AbortReason) => void;
   }): Promise<{
     status: 'succeeded' | 'failed' | 'aborted' | 'paused';
     firstError: Error | undefined;
@@ -1134,6 +1147,7 @@ export class Orchestrator {
       invocationCwd,
       onStepComplete,
       verbose,
+      recordAbortSource,
     } = args;
 
     const inputVars = isPlainRecord(validatedInput) ? validatedInput : {};
@@ -1303,6 +1317,9 @@ export class Orchestrator {
           getResumedLoopIter,
           onLoopIterationStart,
           isLoopBodyStepSucceeded,
+          signalSiblingFailureAbort: (branchStepId) => {
+            recordAbortSource({ kind: 'sibling-failure', stepId: branchStepId });
+          },
         };
 
         const entry = defaultStepRegistry.get(step.kind);

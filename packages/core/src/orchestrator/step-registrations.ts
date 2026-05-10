@@ -116,6 +116,12 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         // executor short-circuits via these snapshots.
         getBranchStatus: (branchStepId) => ctx.getBranchStatus(branchStepId),
         getBranchResult: (branchStepId) => ctx.getBranchResult(branchStepId),
+        // Surface the first failed branch as a typed sibling-failure abort
+        // cause so RunResult.abortReason can carry the originating branch id
+        // when the run terminates as aborted. The notifier only records the
+        // cause; aggregate failure still surfaces through the regular
+        // StepFailureError path.
+        onBranchFailure: (branchStepId) => ctx.signalSiblingFailureAbort(branchStepId),
       }),
   });
 

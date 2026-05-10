@@ -1,5 +1,10 @@
 import { join } from 'node:path';
-import { FlowDefinitionError, HandoffNotFoundError, LoopMaxIterationsError } from '../../errors.js';
+import {
+  AwaitingInputSignal,
+  FlowDefinitionError,
+  HandoffNotFoundError,
+  LoopMaxIterationsError,
+} from '../../errors.js';
 import type { LoopStepSpec, Step } from '../../flow/types.js';
 import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
@@ -165,16 +170,28 @@ function untilSatisfied(value: unknown, pattern: Record<string, unknown>): boole
  *                                            ├─[abort observed]──> aborted
  *                                            ├─[recordBodyStepSuccess]──> body-dispatching
  *                                            ├─[recordBodyStepSkipped]──> body-dispatching
+ *                                            ├─[pause]──> paused
  *                                            └─[finishIteration]──> until-checking
  *                                                                    ├─[abort observed]──> aborted
  *                                                                    ├─[evaluateUntil match]──> done
  *                                                                    └─[evaluateUntil miss]──> iterating
+ *
+ * The `paused` state is reached when a body step throws AwaitingInputSignal
+ * during dispatch. The signal propagates out of the loop's executor through
+ * the orchestrator's dispatch catch (which transitions the run-level
+ * StateMachine to 'paused'); the `pause()` transition here is observational
+ * — it closes the loop's own state diagram so a future feature that needs to
+ * resume mid-iteration has a documented re-entry point. Resume currently
+ * restarts from the paused iteration via getResumedIter, so the `paused`
+ * state's iteration context is preserved for inspection but not consumed by
+ * any downstream transition.
  */
 type LoopState =
   | { kind: 'idle' }
   | { kind: 'iterating'; nextIter: number }
   | { kind: 'body-dispatching'; iter: number; iterHandoffs: string[] }
   | { kind: 'until-checking'; iter: number; iterHandoffs: string[] }
+  | { kind: 'paused'; iter: number; iterHandoffs: string[] }
   | { kind: 'exhausted'; iterationsCompleted: number }
   | { kind: 'aborted' }
   | {
@@ -289,6 +306,30 @@ class LoopIterationStateMachine {
     this.#lastIterationHandoffs = [...this.#state.iterHandoffs];
     this.#state = {
       kind: 'until-checking',
+      iter: this.#state.iter,
+      iterHandoffs: this.#state.iterHandoffs,
+    };
+  }
+
+  /**
+   * Transition body-dispatching → paused. Called from the loop driver when a
+   * body step throws AwaitingInputSignal — the run-level StateMachine
+   * persists the pause via the orchestrator's dispatch catch, and this
+   * transition keeps the loop's own state diagram closed so the lifecycle is
+   * fully observable. The current iteration and the iteration's accumulated
+   * handoff names are preserved on the paused state for forward-compat
+   * inspection; they are not consumed by any downstream transition because
+   * resume restarts the iteration via getResumedIter rather than continuing
+   * mid-iteration. Illegal calls (any state other than body-dispatching)
+   * throw an Error so a misuse surfaces loudly rather than corrupting the
+   * lifecycle.
+   */
+  pause(): void {
+    if (this.#state.kind !== 'body-dispatching') {
+      throw new Error(`LoopIterationStateMachine.pause called in state ${this.#state.kind}`);
+    }
+    this.#state = {
+      kind: 'paused',
       iter: this.#state.iter,
       iterHandoffs: this.#state.iterHandoffs,
     };
@@ -528,7 +569,22 @@ export async function executeLoop(
         continue;
       }
 
-      const bodyResult = await ctx.dispatch(bodyStepId, bodyStep, iter);
+      let bodyResult: StepResult;
+      try {
+        bodyResult = await ctx.dispatch(bodyStepId, bodyStep, iter);
+      } catch (caught) {
+        // A body-step pause re-routes through the orchestrator's dispatch
+        // catch, which transitions the run-level StateMachine to 'paused'.
+        // Close the loop's own state diagram first so the lifecycle is
+        // observable end-to-end; the signal is then re-thrown unchanged so
+        // the orchestrator's existing pause flow runs. machine.pause()
+        // requires body-dispatching, which is the only state where a body
+        // step's dispatch can be in flight, so the invariant holds here.
+        if (caught instanceof AwaitingInputSignal) {
+          machine.pause();
+        }
+        throw caught;
+      }
 
       // Promote each handoff the body step produced into the iteration
       // namespace, then update the latest pointer. The body step has already

@@ -33,6 +33,16 @@ export interface ParallelExecutorContext {
   dispatch: (branchStepId: string) => Promise<unknown>;
   getBranchStatus?: (branchStepId: string) => BranchStatusSnapshot;
   getBranchResult?: (branchStepId: string) => unknown;
+  /**
+   * Optional notifier called once with the id of the first branch whose
+   * dispatch rejected when the parallel executor is about to throw the
+   * aggregate StepFailureError. Lets the orchestrator record a typed abort
+   * cause for the run before the failure propagates out — without it the
+   * parallel-branch failure path produces no observable AbortReason. The
+   * callback is best-effort and must not throw; thrown values are caught and
+   * ignored so a buggy notifier cannot mask the real failure.
+   */
+  onBranchFailure?: (branchStepId: string) => void;
 }
 
 export interface ParallelStepResult {
@@ -90,6 +100,19 @@ export async function executeParallel(
   );
 
   if (failures.length > 0) {
+    // Notify the orchestrator with the id of the first failed branch so a
+    // typed AbortReason can be recorded for the run before the aggregate
+    // failure throws. Best-effort: a bad notifier must not mask the real
+    // failure that's about to surface as a StepFailureError.
+    const firstFailure = failures[0];
+    if (ctx.onBranchFailure !== undefined && firstFailure !== undefined) {
+      try {
+        ctx.onBranchFailure(firstFailure.branchId);
+      } catch {
+        // intentionally swallowed
+      }
+    }
+
     const branchFailures = failures.map(
       ({
         branchId,

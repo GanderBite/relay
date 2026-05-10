@@ -115,4 +115,13 @@ export interface StepDispatchContext {
    * succeeded in this iteration on a prior run.
    */
   isLoopBodyStepSucceeded: (loopStepId: string, bodyStepId: string, iter: number) => boolean;
+  /**
+   * Notify the run that a parallel branch dispatch rejected so a typed
+   * `sibling-failure` AbortReason can be recorded against the run. The
+   * notifier records the source only when no prior abort cause is set;
+   * subsequent calls and competing causes (signal, etc.) leave the recorded
+   * reason untouched. Idempotent and side-effect free beyond the source
+   * mutation — does not trip the run-level abort signal on its own.
+   */
+  signalSiblingFailureAbort: (branchStepId: string) => void;
 }
