@@ -599,9 +599,14 @@ export class Orchestrator {
         const resetResult = stateMachine.resetStep(stepId);
         if (resetResult.isErr()) throw resetResult.error;
       } else if (stepState.status === 'paused') {
-        const isBodyStepKey = stepId.includes('::');
+        // Synthesised loop body-step entries carry the awaitingInput pointer
+        // that the enclosing loop's executor reads via getResumedIter to
+        // re-enter at the correct iteration; clearing the pointer here
+        // would force the loop back to iter 1 and pause again immediately.
+        // StateMachine.isBodyStepStateKey centralises the discriminator so
+        // the synthesis convention lives in one place.
         const resumeResult = stateMachine.resumePausedStep(stepId, {
-          preserveAwaitingInput: isBodyStepKey,
+          preserveAwaitingInput: StateMachine.isBodyStepStateKey(stepId),
         });
         if (resumeResult.isErr()) throw resumeResult.error;
       }
@@ -1387,21 +1392,23 @@ export class Orchestrator {
       };
 
       /**
-       * Dispatch a single body step inside a loop iteration. Most body-step
-       * kinds (prompt, script, branch, parallel, terminal) re-use the parent
-       * loop step's retry/abort context and delegate to runExecutor without
-       * any per-body-step state bookkeeping — the loop's iteration cycle is
-       * the recovery boundary for those kinds.
+       * Dispatch a single body step inside a loop iteration. Every body-step
+       * kind gets a synthesised state entry keyed by
+       * `<loopStepId>::<bodyStepId>` so resume can short-circuit body steps
+       * that already succeeded on a prior pass — without this, prompt/script
+       * body steps re-run on every pause-resume cycle, re-spending tokens
+       * and possibly producing a different handoff than the prior pass.
        *
-       * Ask body steps are special: they can throw AwaitingInputSignal to
-       * pause the run, which means a per-body-step state entry is required so
-       * the outer dispatch catch can call pauseStep on a step the StateMachine
-       * recognises. The synthesised key `<loopStepId>::<bodyStepId>` is
-       * seeded + transitioned through pending → running → succeeded around
-       * the executeAsk call. On AwaitingInputSignal the synthesised key is
-       * stamped onto the signal's stepId and loopContext is attached so the
-       * outer catch (pauseStep + sibling sweep) can take over without knowing
-       * about the loop body.
+       * The body step's executor runs with attempt=1; the loop's iteration
+       * cycle is the recovery boundary for body-step failures (the parent
+       * loop step's own retry budget governs whole-iteration retries).
+       *
+       * Ask body steps still need their special-case handling: they can
+       * throw AwaitingInputSignal to pause the run, so on that path the
+       * synthesised key is stamped onto the signal's stepId and
+       * loopContext is attached. The outer dispatch catch then calls
+       * pauseStep on an entry the StateMachine recognises and threads the
+       * loop pointer onto the awaitingInput record.
        */
       const runBodyStep = async (
         bodyStepId: string,
@@ -1409,10 +1416,6 @@ export class Orchestrator {
         loopIter: number,
         loopStepId: string,
       ): Promise<StepResult> => {
-        if (bodyStep.kind !== 'ask') {
-          return runExecutor(bodyStep, 1);
-        }
-
         const synthesisedKey = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
 
         const seedResult = stateMachine.seedBodyStep(loopStepId, bodyStepId, loopIter);
@@ -1421,41 +1424,51 @@ export class Orchestrator {
         if (startResult.isErr()) throw startResult.error;
 
         try {
-          const askResult = await executeAsk(
-            bodyStep,
-            handoffStore,
-            bodyStep.id,
-            runDir,
-            askIterationAnswerHandoffPath(runDir, loopStepId, loopIter, bodyStepId),
-          );
-          if (askResult.isErr()) throw askResult.error;
-          const answers = askResult.value;
-          const writeResult = await handoffStore.write<unknown>(
-            bodyStep.id,
-            answers,
-            bodyStep.output?.schema,
-          );
-          if (writeResult.isErr()) throw writeResult.error;
+          // Ask body steps drive executeAsk directly so the iteration-scoped
+          // answer-file path can be wired through. Other kinds delegate to
+          // runExecutor — same path top-level steps take, with attempt=1.
+          let result: StepResult;
+          if (bodyStep.kind === 'ask') {
+            const askResult = await executeAsk(
+              bodyStep,
+              handoffStore,
+              bodyStep.id,
+              runDir,
+              askIterationAnswerHandoffPath(runDir, loopStepId, loopIter, bodyStepId),
+            );
+            if (askResult.isErr()) throw askResult.error;
+            const answers = askResult.value;
+            const writeResult = await handoffStore.write<unknown>(
+              bodyStep.id,
+              answers,
+              bodyStep.output?.schema,
+            );
+            if (writeResult.isErr()) throw writeResult.error;
+            const askStepResult: AskStepResult = {
+              kind: 'ask',
+              stepId: bodyStep.id,
+              answers,
+              handoffs: [bodyStep.id],
+            };
+            result = askStepResult;
+          } else {
+            result = await runExecutor(bodyStep, 1);
+          }
 
-          const completeResult = stateMachine.completeStep(synthesisedKey, {
-            handoffs: [bodyStep.id],
-          });
+          const completeResult = stateMachine.completeStep(
+            synthesisedKey,
+            stepCompletionOutput(result),
+          );
           if (completeResult.isErr()) throw completeResult.error;
           const completeSave = await stateMachine.save();
           if (completeSave.isErr()) {
             logger.error(
               { event: 'state.save_failed', error: completeSave.error.message },
-              'state.json atomic write failed after loop body ask step completed',
+              'state.json atomic write failed after loop body step completed',
             );
             throw completeSave.error;
           }
 
-          const result: AskStepResult = {
-            kind: 'ask',
-            stepId: bodyStep.id,
-            answers,
-            handoffs: [bodyStep.id],
-          };
           return result;
         } catch (caught) {
           if (isAwaitingInputSignal(caught)) {
@@ -1463,8 +1476,30 @@ export class Orchestrator {
             // the outer dispatch catch can call pauseStep on an entry the
             // StateMachine recognises. Attach loopContext so the catch knows
             // to thread loopStepId/loopIter onto the awaitingInput record.
+            // The synthesised entry is currently 'running'; pauseStep will
+            // flip it to 'paused' from there.
             caught.stepId = synthesisedKey;
             caught.loopContext = { loopStepId, loopIter };
+            throw caught;
+          }
+          if (!isAbortLike(caught)) {
+            // Non-abort body-step failures fail the synthesised entry so the
+            // iteration sweep at the next iteration boundary lands it back
+            // on pending (or, for body steps that the parent loop's retry
+            // budget surfaces here, resetStep can pick the entry up). Save
+            // is fire-and-forget on this path — the throw below escalates
+            // to dispatchStep which performs its own save before unwinding.
+            const failResult = stateMachine.failStep(synthesisedKey, errorMessageOf(caught));
+            if (failResult.isErr()) {
+              logger.error(
+                {
+                  event: 'state.transition_failed',
+                  stepId: synthesisedKey,
+                  error: failResult.error.message,
+                },
+                'state transition failed after loop body step failure',
+              );
+            }
           }
           throw caught;
         }
@@ -1629,8 +1664,13 @@ export class Orchestrator {
               // steps, so a zombie 'running' entry would deadlock the run.
               // Sweep every running sibling back to pending here so the
               // single save() below persists a clean snapshot atomically.
-              // attempts is preserved across the failStep -> resetStep chain
-              // so retry budgets carry across the pause.
+              // The failStep -> resetStep chain preserves attempts; the
+              // matching decrementAttempts call after each reset rolls the
+              // counter back by one so the swept dispatch (which never ran
+              // its executor to completion) is no longer counted. Without
+              // the decrement the next dispatch's startStep increments
+              // attempts a second time per pause cycle, eroding the
+              // configured retry budget by one cycle each pass.
               const pausingStepId = caught.stepId;
               for (const [siblingId, siblingState] of Object.entries(
                 stateMachine.getState().steps,
@@ -1658,6 +1698,18 @@ export class Orchestrator {
                       error: resetSibling.error.message,
                     },
                     'state transition failed while sweeping sibling on pause',
+                  );
+                  continue;
+                }
+                const decrementSibling = stateMachine.decrementAttempts(siblingId);
+                if (decrementSibling.isErr()) {
+                  logger.error(
+                    {
+                      event: 'state.transition_failed',
+                      stepId: siblingId,
+                      error: decrementSibling.error.message,
+                    },
+                    'state transition failed while compensating sibling attempts',
                   );
                   continue;
                 }

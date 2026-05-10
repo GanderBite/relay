@@ -506,12 +506,45 @@ export class StateMachine {
 
   /**
    * Compose the synthesised state-key for a body step inside a loop. The
-   * double-colon separator is reserved for keys in `state.json` only — it is
-   * never used in handoff ids, the DAG, or anywhere a user-supplied id is
-   * accepted, so collisions with real step ids are impossible.
+   * double-colon separator is reserved for keys in `state.json` only — the
+   * stepId schema in flow/schemas.ts rejects `:` (along with every other
+   * path-unsafe character), so collisions with real user-supplied step ids
+   * are impossible.
    */
   static bodyStepStateKey(loopStepId: string, bodyStepId: string): string {
     return `${loopStepId}::${bodyStepId}`;
+  }
+
+  /**
+   * Returns true when `id` was produced by `bodyStepStateKey` — that is, it
+   * carries the synthesised `<loopStepId>::<bodyStepId>` shape used to track
+   * loop body steps separately from their enclosing loop. The discriminator
+   * is the literal `::` substring; user-supplied step ids cannot legitimately
+   * contain it because the stepId schema in flow/schemas.ts rejects `:` along
+   * with every other path-unsafe character. Centralising the check here keeps
+   * the synthesis convention in one place rather than scattered as
+   * string-includes calls across the codebase.
+   */
+  static isBodyStepStateKey(id: string): boolean {
+    return id.includes('::');
+  }
+
+  /**
+   * Decrement a step's `attempts` counter by one. Used by the sibling sweep
+   * to compensate for the fact that the swept step's prior dispatch was
+   * aborted before its executor finished — that dispatch should not count as
+   * a real retry against the next dispatch's budget. Clamps at zero rather
+   * than reporting an error when the counter is already there: the sweep is
+   * a best-effort housekeeping operation, not a guaranteed-balanced
+   * round-trip.
+   */
+  decrementAttempts(id: string): Result<void, StateTransitionError> {
+    const stepResult = this.#requireStep(id);
+    if (stepResult.isErr()) return err(stepResult.error);
+    const step = stepResult.value;
+    if (step.attempts === 0) return ok(undefined);
+    this.#updateStep(id, { ...step, attempts: step.attempts - 1 });
+    return ok(undefined);
   }
 
   /**

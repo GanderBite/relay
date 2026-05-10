@@ -339,3 +339,253 @@ describe('verifyCompatibility', () => {
     expect(r.isOk()).toBe(true);
   });
 });
+
+describe('StateMachine — sweepBodySteps post-state per starting status', () => {
+  let tmp: string;
+
+  const LOOP_ID = 'fix_loop';
+  const BODY_ID = 'implement';
+  const ITER = 1;
+  const KEY = StateMachine.bodyStepStateKey(LOOP_ID, BODY_ID);
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-sweep-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  // Seeds the loop's body-step entry then drives it to the named starting
+  // status via the StateMachine's transition graph. Returns the configured
+  // StateMachine so the caller can run the sweep.
+  async function seedAt(
+    status: 'pending' | 'running' | 'succeeded' | 'failed' | 'paused' | 'skipped',
+  ): Promise<StateMachine> {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init([LOOP_ID]);
+    expect(initR.isOk()).toBe(true);
+    const seedR = sm.seedBodyStep(LOOP_ID, BODY_ID, ITER);
+    expect(seedR.isOk()).toBe(true);
+
+    switch (status) {
+      case 'pending':
+        return sm;
+      case 'running':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        return sm;
+      case 'succeeded':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        expect(sm.completeStep(KEY).isOk()).toBe(true);
+        return sm;
+      case 'failed':
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        expect(sm.failStep(KEY, 'boom').isOk()).toBe(true);
+        return sm;
+      case 'paused': {
+        expect(sm.startStep(KEY).isOk()).toBe(true);
+        const q: Question[] = [{ id: 'q', kind: 'text', label: '?' }];
+        expect(sm.pauseStep(KEY, q, '2026-01-01T00:00:00.000Z', LOOP_ID, ITER).isOk()).toBe(true);
+        return sm;
+      }
+      case 'skipped':
+        expect(sm.skipStep(KEY).isOk()).toBe(true);
+        return sm;
+    }
+  }
+
+  it('pending entry is left untouched (status pending, attempts unchanged)', async () => {
+    const sm = await seedAt('pending');
+    const before = sm.getState().steps[KEY];
+    expect(before?.status).toBe('pending');
+    expect(before?.attempts).toBe(0);
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('running entry is failStep -> resetStep chained back to pending; iter preserved', async () => {
+    const sm = await seedAt('running');
+    expect(sm.getState().steps[KEY]?.status).toBe('running');
+    expect(sm.getState().steps[KEY]?.attempts).toBe(1);
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    // resetStep preserves the attempts counter from the prior failed entry.
+    expect(after?.attempts).toBe(1);
+    expect(after?.startedAt).toBeUndefined();
+    expect(after?.errorMessage).toBeUndefined();
+  });
+
+  it('failed entry is reset back to pending; attempts preserved', async () => {
+    const sm = await seedAt('failed');
+    expect(sm.getState().steps[KEY]?.status).toBe('failed');
+    expect(sm.getState().steps[KEY]?.attempts).toBe(1);
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(1);
+    expect(after?.errorMessage).toBeUndefined();
+  });
+
+  it('succeeded entry is rewritten to pending with attempts=0; iter preserved', async () => {
+    const sm = await seedAt('succeeded');
+    expect(sm.getState().steps[KEY]?.status).toBe('succeeded');
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('paused entry is rewritten to pending with attempts=0; iter preserved', async () => {
+    const sm = await seedAt('paused');
+    expect(sm.getState().steps[KEY]?.status).toBe('paused');
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('skipped entry is rewritten to pending with attempts=0; iter preserved', async () => {
+    const sm = await seedAt('skipped');
+    expect(sm.getState().steps[KEY]?.status).toBe('skipped');
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    const after = sm.getState().steps[KEY];
+    expect(after?.status).toBe('pending');
+    expect(after?.attempts).toBe(0);
+    expect(after?.iter).toBe(ITER);
+  });
+
+  it('missing key (no body-step entry seeded) is a no-op and does not throw', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init([LOOP_ID]);
+    expect(initR.isOk()).toBe(true);
+    // No seedBodyStep call — the entry does not exist.
+    expect(sm.getState().steps[KEY]).toBeUndefined();
+
+    const r = sm.sweepBodySteps(LOOP_ID);
+    expect(r.isOk()).toBe(true);
+
+    expect(sm.getState().steps[KEY]).toBeUndefined();
+  });
+});
+
+describe('StateMachine — decrementAttempts', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-decrement-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it('rolls back the attempts counter by one', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(['a']);
+    expect(initR.isOk()).toBe(true);
+    expect(sm.startStep('a').isOk()).toBe(true);
+    expect(sm.getState().steps['a']?.attempts).toBe(1);
+
+    const r = sm.decrementAttempts('a');
+    expect(r.isOk()).toBe(true);
+    expect(sm.getState().steps['a']?.attempts).toBe(0);
+  });
+
+  it('clamps at zero — calling on an already-zero counter is a no-op', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(['a']);
+    expect(initR.isOk()).toBe(true);
+    expect(sm.getState().steps['a']?.attempts).toBe(0);
+
+    const r = sm.decrementAttempts('a');
+    expect(r.isOk()).toBe(true);
+    expect(sm.getState().steps['a']?.attempts).toBe(0);
+  });
+
+  it('returns StateTransitionError for unknown step ids', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(['a']);
+    expect(initR.isOk()).toBe(true);
+
+    const r = sm.decrementAttempts('does-not-exist');
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr()).toBeInstanceOf(StateTransitionError);
+  });
+});
+
+describe('StateMachine — sibling sweep + decrement keeps attempts at one across pause cycles', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-pause-cycles-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  // Mirrors the orchestrator's sibling sweep on AwaitingInputSignal: failStep
+  // -> resetStep -> decrementAttempts. Without the decrement the counter
+  // doubles per pause cycle and erodes the configured retry budget.
+  function applySiblingSweep(sm: StateMachine, siblingId: string): void {
+    expect(sm.failStep(siblingId, 'aborted by sibling pause').isOk()).toBe(true);
+    expect(sm.resetStep(siblingId).isOk()).toBe(true);
+    expect(sm.decrementAttempts(siblingId).isOk()).toBe(true);
+  }
+
+  it('after N pause-resume cycles, the swept loop step shows attempts === 1 (matches a single dispatch)', async () => {
+    const sm = new StateMachine(tmp, RACE_NAME, RACE_VERSION, RUN_ID);
+    const initR = await sm.init(['fix_loop']);
+    expect(initR.isOk()).toBe(true);
+
+    // Simulate three pause/resume cycles. Each cycle: dispatch increments
+    // attempts to 1; the inner ask body step pauses; the sibling sweep is
+    // applied to the loop step (which is still 'running'); resume
+    // re-dispatches via startStep.
+    const CYCLES = 3;
+    for (let i = 0; i < CYCLES; i += 1) {
+      // Dispatch.
+      expect(sm.startStep('fix_loop').isOk()).toBe(true);
+      expect(sm.getState().steps['fix_loop']?.attempts).toBe(1);
+
+      // Sibling sweep (loop step is the swept entry, not the pausing step).
+      applySiblingSweep(sm, 'fix_loop');
+
+      // After sweep: status is pending, attempts is back to 0 — ready for
+      // the next dispatch's startStep to re-increment to 1.
+      const swept = sm.getState().steps['fix_loop'];
+      expect(swept?.status).toBe('pending');
+      expect(swept?.attempts).toBe(0);
+    }
+
+    // Re-dispatch one more time after the final cycle to confirm the
+    // counter still lands at 1 — without the decrement it would have
+    // climbed to CYCLES + 1.
+    expect(sm.startStep('fix_loop').isOk()).toBe(true);
+    expect(sm.getState().steps['fix_loop']?.attempts).toBe(1);
+  });
+});

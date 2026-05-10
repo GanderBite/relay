@@ -16,7 +16,17 @@ import type {
 // a non-empty string today. Keep them separate so tightening one does not
 // silently affect the other.
 const nonEmptyString = z.string().min(1);
-const stepId = nonEmptyString;
+// Step ids share the same character set as handoff ids: alphanumeric leading
+// character, then alphanumerics / dot / underscore / dash. The ban on `:` is
+// load-bearing — the StateMachine reserves the `::` substring for synthesised
+// loop body-step state keys, and StateMachine.isBodyStepStateKey relies on it
+// being absent from any user-supplied id. Tightening here keeps that invariant
+// provable rather than coincidental.
+const STEP_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const stepId = z.string().min(1).regex(STEP_ID_PATTERN, {
+  error:
+    'step id must start with an alphanumeric character and contain only [A-Za-z0-9._-] (no colons, slashes, spaces)',
+});
 const runCommand = z.union([nonEmptyString, z.array(nonEmptyString).min(1)]);
 
 const zodSchemaValue = z.custom<z.ZodType>((v) => v instanceof z.ZodType, {
