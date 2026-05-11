@@ -227,6 +227,8 @@ export interface ResumeCommandOptions {
    * Undefined or true leaves the Orchestrator default ('auto') in effect.
    */
   worktree?: boolean;
+  /** When true, render the verbose event sub-stream under each running step. */
+  verbose?: boolean;
 }
 
 /**
@@ -393,6 +395,9 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     resumeOpts.resolvedProviderName = resolvedProvider.name;
     if (options.worktree === false) {
       resumeOpts.worktree = false;
+    }
+    if (options.verbose === true) {
+      resumeOpts.verbose = true;
     }
     const preAuthedMap = new Map<string, AuthState>();
     preAuthedMap.set(resolvedProvider.name, effectiveAuth);

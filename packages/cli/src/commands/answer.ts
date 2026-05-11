@@ -15,9 +15,16 @@
  *   7. Call orchestrator.resume; exit 0 on success, 75 if paused again.
  */
 
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { AnswerMap, AwaitingInput, Question, RunState } from '@ganderbite/relay-core';
+import type {
+  AnswerMap,
+  AuthState,
+  AwaitingInput,
+  Question,
+  RunState,
+} from '@ganderbite/relay-core';
 import {
   askAnswerHandoffKey,
   askAnswerHandoffPath,
@@ -25,12 +32,24 @@ import {
   atomicWriteJson,
   loadState,
   Orchestrator,
+  registerDefaultProviders,
   StateMachine,
   StateNotFoundError,
 } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../brand.js';
 import { gray, red, yellow } from '../color.js';
-import { EXIT_CODES } from '../exit-codes.js';
+import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
+import { authenticateProvider } from '../load-flow-and-auth.js';
+
+// ---------------------------------------------------------------------------
+// FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
+// ---------------------------------------------------------------------------
+
+interface FlowRef {
+  flowName: string;
+  flowVersion: string;
+  flowPath: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Interactive prompting helpers
@@ -213,7 +232,67 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     process.exit(1);
   }
 
-  // ---- (4) Resolve the paused ask step ----
+  // ---- (4) Load flow-ref.json ----
+  // The orchestrator.resume() call below executes the run through the same
+  // path as `relay resume`: it must have a provider registered and an auth
+  // state preflighted, otherwise provider resolution inside executeRun throws
+  // "unknown provider: claude-cli". Mirror resume.ts: load flow-ref to find
+  // the flow directory (settings live next to the flow), then run the auth
+  // guard before constructing the Orchestrator.
+  let flowRef: FlowRef;
+  try {
+    const raw = await readFile(join(runDir, 'flow-ref.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      typeof (parsed as Record<string, unknown>)['flowName'] !== 'string' ||
+      typeof (parsed as Record<string, unknown>)['flowVersion'] !== 'string'
+    ) {
+      throw new Error('flow-ref.json is malformed');
+    }
+    const p = parsed as Record<string, unknown>;
+    flowRef = {
+      flowName: p['flowName'] as string,
+      flowVersion: p['flowVersion'] as string,
+      flowPath: typeof p['flowPath'] === 'string' ? p['flowPath'] : null,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // usage-error: formatError does not apply — malformed or missing flow-ref.json, not a PipelineError type
+    process.stderr.write(
+      red(`  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${msg}`) + '\n',
+    );
+    process.stderr.write(gray('  did you mean: relay runs') + '\n');
+    process.exit(1);
+  }
+
+  if (flowRef.flowPath === null) {
+    // usage-error: formatError does not apply — missing flowPath in persisted ref, not a PipelineError type
+    process.stderr.write(red(`  ${SYMBOLS.fail} run has no recorded flow path`) + '\n');
+    process.exit(1);
+  }
+
+  // ---- (5) Register providers and authenticate ----
+  // registerDefaultProviders() populates the defaultRegistry that executeRun
+  // reads from; authenticateProvider() runs the §8.1 billing-safety guard
+  // before any tokens can be spent. We forward the resulting AuthState into
+  // orchestrator.resume() via preAuthedState so the orchestrator does not
+  // re-authenticate (and so the user is not prompted twice for a passphrase
+  // on subscription auth).
+  registerDefaultProviders();
+
+  const authResult = await authenticateProvider({
+    flowDir: dirname(flowRef.flowPath),
+  });
+  if (authResult.isErr()) {
+    process.stderr.write(formatError(authResult.error) + '\n');
+    process.exit(exitCodeFor(authResult.error));
+  }
+  const { resolvedProvider, authState } = authResult.value;
+
+  // ---- (6) Resolve the paused ask step ----
   const awaitingInput: AwaitingInput | undefined = state.awaitingInput;
 
   // Find the paused step id — prefer awaitingInput.stepId, fall back to
@@ -239,7 +318,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   const questions: Question[] = awaitingInput?.questions ?? [];
 
-  // ---- (5) Collect answers ----
+  // ---- (7) Collect answers ----
   let answers: AnswerMap;
 
   if (options.json !== undefined) {
@@ -288,7 +367,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     }
   }
 
-  // ---- (6) Write the answer handoff ----
+  // ---- (8) Write the answer handoff ----
   // We write directly via atomicWriteJson rather than HandoffStore.write
   // because the answer key (__ask_<stepId>__) starts with underscores, which
   // HandoffStore.write rejects. The file lands at the exact same path that
@@ -328,7 +407,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     process.exit(EXIT_CODES.io_error);
   }
 
-  // ---- (7) Transition paused step back to pending ----
+  // ---- (9) Transition paused step back to pending ----
   const machine = new StateMachine(runDir, state.flowName, state.flowVersion, state.runId);
   machine.hydrate(state);
 
@@ -352,13 +431,17 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     process.exit(EXIT_CODES.io_error);
   }
 
-  // ---- (8) Auto-resume the orchestrator ----
+  // ---- (10) Auto-resume the orchestrator ----
   const orchestrator = new Orchestrator({ runDir });
+
+  const preAuthedMap = new Map<string, AuthState>();
+  preAuthedMap.set(resolvedProvider.name, authState);
 
   let exitCode = 0;
   try {
     const result = await orchestrator.resume(runDir, {
       logToStdout: !process.stdout.isTTY,
+      preAuthedState: preAuthedMap,
     });
 
     if (result.status === 'paused') {
