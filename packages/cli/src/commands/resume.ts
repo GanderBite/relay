@@ -438,7 +438,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       // A step.ask was encountered mid-resume. In an interactive TTY, prompt
       // for answers inline. In non-TTY callers, exit 75 so the caller detects
       // the pause.
-      if (process.stdout.isTTY) {
+      if (process.stdout.isTTY && process.stdin.isTTY) {
         process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
         const { default: answerCommand } = await import('./answer.js');
         await answerCommand([runId], {});

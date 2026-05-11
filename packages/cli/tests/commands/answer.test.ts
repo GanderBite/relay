@@ -391,6 +391,20 @@ describe('relay answer — resume outcomes', () => {
     expect(combined).not.toContain('paused again');
     expect(combined).not.toContain('relay answer run-abc');
   });
+
+  it('[ANS-resume-failed] orchestrator returns failed: prints failure message and exits 1', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+    mockOrchestratorResume.mockResolvedValue(makeRunResult('failed'));
+
+    await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    const stderrCalls = vi.mocked(process.stderr.write).mock.calls.map((c) => String(c[0]));
+    const combined = stderrCalls.join('');
+    expect(combined).toContain('failed after resume');
+    // Paused banner must NOT be called — this is a terminal failure, not a pause.
+    expect(mockRenderPausedBanner).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -483,6 +497,27 @@ describe('relay answer — missing run', () => {
 });
 
 // ---------------------------------------------------------------------------
+// flow-ref.json load failures
+// ---------------------------------------------------------------------------
+
+describe('relay answer — flow-ref.json load failures', () => {
+  it('[ANS-flowref-malformed] malformed flow-ref.json prints error and exits 1', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+    // Replace the default valid JSON with unparseable content.
+    mockReadFile.mockResolvedValue('{ not json');
+
+    await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    const stderrCalls = vi.mocked(process.stderr.write).mock.calls.map((c) => String(c[0]));
+    const combined = stderrCalls.join('');
+    expect(combined).toContain('could not load flow-ref.json');
+    // Orchestrator must not be invoked when flow-ref is unreadable.
+    expect(mockOrchestratorResume).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Provider registration and auth (Defect 1)
 // ---------------------------------------------------------------------------
 
@@ -548,8 +583,12 @@ describe('answer command — re-pause banner', () => {
     // renderPausedBanner must be called exactly once.
     expect(mockRenderPausedBanner).toHaveBeenCalledOnce();
 
-    // The awaitingInput argument must carry the next paused step id.
     const callArgs = mockRenderPausedBanner.mock.calls[0] as unknown[];
+
+    // The first argument must be state.flowName (not flowRef.flowName).
+    expect(callArgs[0]).toBe('test-flow');
+
+    // The awaitingInput argument (5th) must carry the next paused step id.
     const awaitingInput = callArgs[4] as { stepId: string } | undefined;
     expect(awaitingInput).toBeDefined();
     expect(awaitingInput?.stepId).toBe('step2');
@@ -562,5 +601,31 @@ describe('answer command — re-pause banner', () => {
     const combined = stdoutCalls.join('');
     expect(combined).not.toContain('paused again');
     expect(combined).not.toContain('relay answer run-abc');
+  });
+
+  it('[B2] calls renderPausedBanner with topoOrder=[] when loadFlow fails', async () => {
+    // loadFlow fails — the branch that sets topoOrder = [] must fire, and
+    // renderPausedBanner must still be called with the empty array.
+    mockLoadFlow.mockResolvedValue(err(new Error('flow file not found')));
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+    mockOrchestratorResume.mockResolvedValue({
+      status: 'paused',
+      pausedStepId: 'step3',
+      runId: 'run-abc',
+      runDir: '',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 0,
+    });
+
+    await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
+
+    expect(mockRenderPausedBanner).toHaveBeenCalledOnce();
+
+    // 4th argument (index 3) is topoOrder — must be the empty array fallback.
+    const callArgs = mockRenderPausedBanner.mock.calls[0] as unknown[];
+    expect(callArgs[3]).toEqual([]);
+
+    expect(process.exit).toHaveBeenCalledWith(75);
   });
 });

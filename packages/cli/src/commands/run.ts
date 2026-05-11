@@ -350,7 +350,7 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
     // inline via answerCommand so the user never has to open a second terminal.
     // In non-TTY (scripted) callers, preserve exit 75 so the caller can detect
     // the pause. Telemetry is skipped: paused is not a terminal outcome.
-    if (process.stdout.isTTY) {
+    if (process.stdout.isTTY && process.stdin.isTTY) {
       process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
       const { default: answerCommand } = await import('./answer.js');
       await answerCommand([result.runId], {});

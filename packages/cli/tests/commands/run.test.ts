@@ -273,25 +273,37 @@ describe('relay run — SIGINT paused banner', () => {
 });
 
 describe('relay run — inline answer on pause', () => {
-  let originalIsTTY: boolean | undefined;
+  let originalStdoutIsTTY: boolean | undefined;
+  let originalStdinIsTTY: boolean | undefined;
 
   beforeEach(() => {
-    // Save the original descriptor value before overriding.
-    originalIsTTY = process.stdout.isTTY;
+    // Save the original descriptor values before overriding.
+    originalStdoutIsTTY = process.stdout.isTTY;
+    originalStdinIsTTY = process.stdin.isTTY;
     mockAnswerCommand.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
-    // Restore isTTY to the saved value so other tests are unaffected.
+    // Restore isTTY to the saved values so other tests are unaffected.
     Object.defineProperty(process.stdout, 'isTTY', {
-      value: originalIsTTY,
+      value: originalStdoutIsTTY,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalStdinIsTTY,
       configurable: true,
       writable: true,
     });
   });
 
-  it('[C1] calls answerCommand inline when TTY and result is paused', async () => {
+  it('[C1] calls answerCommand inline when both stdout and stdin are TTY and result is paused', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
       value: true,
       configurable: true,
       writable: true,
@@ -310,8 +322,36 @@ describe('relay run — inline answer on pause', () => {
     expect(called75).toBe(false);
   });
 
-  it('[C2] exits 75 when not TTY and result is paused', async () => {
+  it('[C2] exits 75 when stdout is not TTY and result is paused', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    mockRunnerRun.mockResolvedValue(makePausedResult('r1'));
+
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
+
+    expect(process.exit).toHaveBeenCalledWith(75);
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
+  });
+
+  it('[C2b] exits 75 when stdout is TTY but stdin is not TTY and result is paused', async () => {
+    // Simulates: relay run … < /dev/null — stdout stays on a TTY but stdin is
+    // redirected. The readline prompt inside answerCommand would receive EOF
+    // immediately, so the command must fall through to the exit-75 path.
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
       value: false,
       configurable: true,
       writable: true,

@@ -385,23 +385,35 @@ function setupSuccessfulResumePipeline(resumeResult: unknown): void {
 }
 
 describe('relay resume — inline answer on pause', () => {
-  let originalIsTTY: boolean | undefined;
+  let originalStdoutIsTTY: boolean | undefined;
+  let originalStdinIsTTY: boolean | undefined;
 
   beforeEach(() => {
-    originalIsTTY = process.stdout.isTTY;
+    originalStdoutIsTTY = process.stdout.isTTY;
+    originalStdinIsTTY = process.stdin.isTTY;
     mockAnswerCommand.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     Object.defineProperty(process.stdout, 'isTTY', {
-      value: originalIsTTY,
+      value: originalStdoutIsTTY,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalStdinIsTTY,
       configurable: true,
       writable: true,
     });
   });
 
-  it('[C3] calls answerCommand inline when TTY and result is paused', async () => {
+  it('[C3] calls answerCommand inline when both stdout and stdin are TTY and result is paused', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
       value: true,
       configurable: true,
       writable: true,
@@ -427,8 +439,13 @@ describe('relay resume — inline answer on pause', () => {
     expect(called75).toBe(false);
   });
 
-  it('[C4] exits 75 when not TTY and result is paused', async () => {
+  it('[C4] exits 75 when stdout is not TTY and result is paused', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
       value: false,
       configurable: true,
       writable: true,
@@ -439,6 +456,44 @@ describe('relay resume — inline answer on pause', () => {
     // handler and re-mapped to exit(1).
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
       // Intentionally a no-op — we assert on the recorded call below.
+      return undefined as never;
+    });
+
+    setupSuccessfulResumePipeline({
+      status: 'paused',
+      pausedStepId: 'gather',
+      runId: 'abc123',
+      runDir: '/tmp/test-flow/abc123',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 0,
+    });
+
+    await resumeCommand(['abc123'], {});
+
+    expect(exitSpy).toHaveBeenCalledWith(75);
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
+  });
+
+  it('[C4b] exits 75 when stdout is TTY but stdin is not TTY and result is paused', async () => {
+    // Simulates: relay resume <id> < /dev/null — stdout stays on a TTY but
+    // stdin is redirected. The readline prompt would receive EOF immediately,
+    // so the command must fall through to the exit-75 path.
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    // Override process.exit to record the call without throwing so that the
+    // process.exit(75) inside the try block does not get caught by the catch
+    // handler and re-mapped to exit(1).
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
       return undefined as never;
     });
 
