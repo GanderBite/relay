@@ -3,24 +3,6 @@
  *
  * These tests exercise the dispatcher layer in-process without spawning a
  * subprocess and without loading any command handlers.
- *
- * Design note on did-you-mean suggestion reachability
- * ---------------------------------------------------
- * The dispatcher registers a root-level .action() handler (the flow-name
- * shorthand and splash-help fallback). Commander's internal _parseCommand
- * evaluates `if (this._actionHandler)` before the `unknownCommand()` branch,
- * so a mistyped subcommand name (e.g. 'rsume') is consumed by the root action
- * path rather than the unknownCommand() path. The root action has no declared
- * positional arguments, so Commander emits "too many arguments" via
- * _excessArguments() — the unknownCommand() / suggestSimilar() branch is
- * structurally unreachable at root level.
- *
- * showSuggestionAfterError(true) IS reachable for mistyped options (e.g.
- * 'relay --verbos' suggests '--verbose') because checkForUnknownOptions() runs
- * inside the _actionHandler branch before the action is invoked.
- *
- * The tests below assert the actually-reachable behaviour rather than the
- * conceptual "relay rsume → Did you mean resume?" scenario from the finding.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,13 +11,18 @@ import { buildProgram } from '../src/dispatcher.js';
 
 describe('buildProgram — unknown input error messages', () => {
   let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      throw new Error(`process.exit(${_code})`);
+    });
   });
 
   afterEach(() => {
     stderrSpy.mockRestore();
+    exitSpy.mockRestore();
   });
 
   function capturedStderr(): string {
@@ -69,19 +56,49 @@ describe('buildProgram — unknown input error messages', () => {
     expect(output).toContain("error: unknown option '--verbos'");
   });
 
-  it('emits a too-many-arguments error when a near-miss subcommand name is used at root level', async () => {
-    // Because the root program registers a .action() handler, Commander routes
-    // 'rsume' through _processArguments() rather than unknownCommand(). The
-    // result is "too many arguments" not "unknown command / did you mean".
-    // This test locks in the actual current behaviour so a refactor that
-    // accidentally changes the error text is caught.
+  it('emits a did-you-mean suggestion and exits non-zero for a near-miss subcommand typo', async () => {
+    // 'rsume' is one deletion away from 'resume'. The root .action() handler
+    // now performs a Levenshtein check before the flow-shorthand fallthrough,
+    // routing near-miss typos to a suggestion rather than silently treating
+    // them as flow names.
     try {
       await buildProgram().parseAsync(['node', 'relay', 'rsume']);
     } catch {
-      // expected — Commander throws CommanderError via exitOverride()
+      // expected — process.exit() is mocked to throw
     }
 
     const output = capturedStderr();
-    expect(output).toContain('error: too many arguments');
+    expect(output).toContain("error: unknown command 'rsume'. Did you mean 'resume'?");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('does not intercept an exact subcommand name with the typo check', async () => {
+    // 'run' is an exact match in KNOWN_COMMANDS and a registered subcommand.
+    // The typo check must not fire; Commander should dispatch to the run command.
+    // Since we do not mock command handlers here, the run command will throw
+    // when it cannot find a flow — but it must NOT emit a did-you-mean message.
+    try {
+      await buildProgram().parseAsync(['node', 'relay', 'run', 'nonexistent-flow']);
+    } catch {
+      // expected — run handler will fail without a valid flow path
+    }
+
+    const output = capturedStderr();
+    expect(output).not.toContain('Did you mean');
+  });
+
+  it('does not intercept a path-shaped positional with the typo check', async () => {
+    // './examples/hello-world' contains '/' so looksLikePath() returns true.
+    // The typo check is skipped for path-shaped positionals; the root action
+    // should fall through to the flow-shorthand (run) handler instead.
+    // The run handler will fail without a valid flow — that is expected.
+    try {
+      await buildProgram().parseAsync(['node', 'relay', './examples/hello-world']);
+    } catch {
+      // expected — run handler will fail without a real flow at that path
+    }
+
+    const output = capturedStderr();
+    expect(output).not.toContain('Did you mean');
   });
 });

@@ -2,6 +2,30 @@ import { Command } from 'commander';
 import { initColor } from './color.js';
 import { looksLikePath } from './util/path.js';
 
+/**
+ * Classic two-row dynamic-programming Levenshtein distance.
+ * Returns the edit distance between strings a and b.
+ */
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  // prev[j] holds the distance for the row above; curr[j] for the current row.
+  const prev: number[] = Array.from({ length: n + 1 }, (_, i) => i);
+  const curr: number[] = new Array(n + 1).fill(0) as number[];
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const sub = prev[j - 1] ?? 0;
+      const del = prev[j] ?? 0;
+      const ins = curr[j - 1] ?? 0;
+      curr[j] = a[i - 1] === b[j - 1] ? sub : 1 + Math.min(del, ins, sub);
+    }
+    // Swap rows for next iteration.
+    for (let k = 0; k <= n; k++) prev[k] = curr[k] ?? 0;
+  }
+  return prev[n] ?? 0;
+}
+
 // All v1 command names — used for shorthand routing (first-positional bypass).
 const KNOWN_COMMANDS = new Set([
   'answer',
@@ -79,6 +103,11 @@ export function buildProgram(): Command {
     .name('relay')
     .description('Claude pipelines you can run twice')
     .allowUnknownOption(false)
+    // Allow positional arguments so the root action receives them for the
+    // flow-shorthand path and the near-miss typo check. Without this,
+    // Commander's _excessArguments() fires before the action body is entered
+    // and the positional is never inspected.
+    .allowExcessArguments(true)
     // Global options
     .option('--verbose', 'print debug-level output')
     .option('--run-dir <path>', 'override the run directory (.relay/runs by default)')
@@ -334,11 +363,40 @@ export function buildProgram(): Command {
   // When no subcommand is provided and the first positional is not a known
   // command name, silently re-route to `run` if it looks like a flow ref or
   // path (the `relay <flow> [input]` shorthand form).
+  //
+  // Before that fallthrough, check whether the positional looks like a
+  // near-miss subcommand typo and surface a suggestion. Commander's own
+  // suggestSimilar() code is not invoked at root level when an .action()
+  // handler is registered — the argument reaches _processArguments() rather
+  // than unknownCommand(), so we do the check ourselves here.
   program.action(async () => {
     const rawArgs = program.args;
 
     if (rawArgs.length > 0) {
       const first = rawArgs[0];
+      if (first !== undefined && !KNOWN_COMMANDS.has(first) && !looksLikePath(first)) {
+        // Find the closest registered subcommand name by Levenshtein distance.
+        const subcommandNames = program.commands
+          .map((c) => c.name())
+          .filter((n) => n !== 'help' && n !== '');
+        let closest = '';
+        let minDist = Infinity;
+        for (const name of subcommandNames) {
+          const d = levenshtein(first, name);
+          if (d < minDist) {
+            minDist = d;
+            closest = name;
+          }
+        }
+        // Threshold of 2 catches single-char transpositions and deletions
+        // (e.g. "rsume", "reusme") without false-positives on legitimate
+        // short flow names.
+        if (minDist <= 2 && closest !== '') {
+          process.stderr.write(`error: unknown command '${first}'. Did you mean '${closest}'?\n`);
+          process.exit(1);
+        }
+      }
+
       if (
         first !== undefined &&
         !KNOWN_COMMANDS.has(first) &&
