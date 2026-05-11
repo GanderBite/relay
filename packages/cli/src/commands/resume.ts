@@ -25,7 +25,7 @@ import { CostTracker, loadState, Orchestrator, StateNotFoundError } from '@gande
 import { renderFailureBanner, renderSuccessBanner } from '../banner.js';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
-import { exitCodeFor, formatError } from '../exit-codes.js';
+import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
 import { loadFlow } from '../flow-loader.js';
 import { kvLine, STEP_NAME_WIDTH } from '../layout.js';
 import { authenticateProvider } from '../load-flow-and-auth.js';
@@ -434,6 +434,24 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
           outputPath,
         }),
       );
+    } else if (result.status === 'paused') {
+      // A step.ask was encountered mid-resume. In an interactive TTY, prompt
+      // for answers inline. In non-TTY callers, exit 75 so the caller detects
+      // the pause.
+      if (process.stdout.isTTY) {
+        process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
+        const { default: answerCommand } = await import('./answer.js');
+        await answerCommand([runId], {});
+        return;
+      }
+      await renderPausedBanner(
+        flowRef.flowName,
+        runId,
+        runDir,
+        [...flow.graph.topoOrder],
+        result.pausedStepId !== undefined ? { stepId: result.pausedStepId } : undefined,
+      );
+      process.exit(EXIT_CODES.paused);
     } else if (result.status === 'aborted' && wasInterrupted) {
       // Ctrl-C paused — render paused banner, exit 130 (SIGINT convention).
       // This is not an error: state is saved, the run can be resumed.

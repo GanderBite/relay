@@ -27,6 +27,7 @@ import { type AuthState, Orchestrator, type RunResult } from '@ganderbite/relay-
 
 import type { FailureStepRow, SuccessStepRow } from '../banner.js';
 import { renderFailureBanner, renderStartBanner, renderSuccessBanner } from '../banner.js';
+import { SYMBOLS } from '../brand.js';
 import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
 import { normalizeArgvInput, parseInputFromArgv } from '../input-parser.js';
 import { loadFlowAndAuth } from '../load-flow-and-auth.js';
@@ -345,10 +346,16 @@ export default async function runCommand(args: unknown[], opts: unknown): Promis
 
     process.exit(0);
   } else if (result.status === 'paused') {
-    // A step.ask halted execution — render the paused banner with the answer
-    // hint so the user knows the next command. Telemetry is skipped: paused is
-    // not a terminal outcome and extending the RunEvent status union for a
-    // transient state adds more complexity than it removes.
+    // A step.ask halted execution. In an interactive TTY, prompt for answers
+    // inline via answerCommand so the user never has to open a second terminal.
+    // In non-TTY (scripted) callers, preserve exit 75 so the caller can detect
+    // the pause. Telemetry is skipped: paused is not a terminal outcome.
+    if (process.stdout.isTTY) {
+      process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
+      const { default: answerCommand } = await import('./answer.js');
+      await answerCommand([result.runId], {});
+      return;
+    }
     await renderPausedBanner(
       flow.name,
       result.runId,
