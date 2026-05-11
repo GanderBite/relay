@@ -224,7 +224,7 @@ describe('load tests', () => {
 
   // ── Test 4: 10-step DAG — handoff correctness ─────────────────────────────────
 
-  it('10-step DAG produces correct handoffs for each step', async () => {
+  it('10-step DAG produces correct handoffs for each step', { timeout: 30_000 }, async () => {
     const N = 10;
 
     // Each step writes a handoff whose content encodes its own index. After

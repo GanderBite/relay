@@ -5,6 +5,11 @@
  *   1. flow-ref.json contains invalid JSON  → StateCorruptError wrapped in PipelineError
  *   2. flow-ref.json points to a non-existent dist/flow.js → FlowImportError (reason: 'absent')
  *   3. Positive path: valid flow-ref.json pointing to a real fixture flow → resume returns succeeded result
+ *
+ * PREREQUISITE: The positive-path test (case 3) loads fixtures/crash-test-flow.ts which imports
+ *   @ganderbite/relay-core — resolved to packages/core/dist/index.js in the workspace.
+ *   Run `pnpm -F @ganderbite/relay-core build` before `pnpm test` cold.
+ *   CI builds before test (see .github/workflows/ci.yml), so CI is unaffected.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -12,11 +17,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ok, type Result } from 'neverthrow';
+import { err, ok, type Result } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { PipelineError } from '../../src/errors.js';
-import { ERROR_CODES, FlowImportError } from '../../src/errors.js';
+import { ERROR_CODES, FlowImportError, PipelineError } from '../../src/errors.js';
 import type { RunState } from '../../src/flow/types.js';
 import { createOrchestrator } from '../../src/orchestrator/orchestrator.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
@@ -62,7 +66,13 @@ class GuardProvider implements Provider {
     _req: InvocationRequest,
     ctx: InvocationContext,
   ): Promise<Result<InvocationResponse, PipelineError>> {
-    throw new Error(`invoke must not be called — got stepId "${ctx.stepId}"`);
+    return err(
+      new PipelineError(
+        `invoke must not be called — got stepId "${ctx.stepId}"`,
+        ERROR_CODES.STEP_FAILURE,
+        { stepId: ctx.stepId },
+      ),
+    );
   }
 
   stream(

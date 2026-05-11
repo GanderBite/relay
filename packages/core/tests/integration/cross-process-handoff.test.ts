@@ -16,6 +16,10 @@
  *   @ganderbite/relay-core. This avoids TypeScript compilation in the child and
  *   avoids relying on workspace package resolution from an arbitrary temp dir.
  *   The shim receives two argv arguments: <payloadJson> and <outPath>.
+ *
+ * PREREQUISITE: This suite depends on packages/core/dist/index.js. Run
+ *   `pnpm -F @ganderbite/relay-core build` before `pnpm test` cold.
+ *   CI builds before test (see .github/workflows/ci.yml), so CI is unaffected.
  */
 
 import { spawn } from 'node:child_process';
