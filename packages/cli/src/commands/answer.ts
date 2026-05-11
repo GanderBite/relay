@@ -39,7 +39,9 @@ import {
 import { SYMBOLS } from '../brand.js';
 import { gray, red, yellow } from '../color.js';
 import { EXIT_CODES, exitCodeFor, formatError } from '../exit-codes.js';
+import { loadFlow } from '../flow-loader.js';
 import { authenticateProvider } from '../load-flow-and-auth.js';
+import { renderPausedBanner } from '../paused-banner.js';
 
 // ---------------------------------------------------------------------------
 // FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
@@ -445,12 +447,12 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     });
 
     if (result.status === 'paused') {
-      // A subsequent ask step paused the run again.
+      // A subsequent ask step paused the run again — render the full paused
+      // banner so the user sees step grid, cost, and the next command.
       const nextStepId = result.pausedStepId ?? 'unknown';
-      process.stdout.write(
-        yellow(`  ${SYMBOLS.warn} run paused again at step ${nextStepId}`) + '\n',
-      );
-      process.stdout.write(gray(`  provide answers with: relay answer ${runId}`) + '\n');
+      const flowLoadResult = await loadFlow(flowRef.flowPath, process.cwd());
+      const topoOrder = flowLoadResult.isOk() ? flowLoadResult.value.flow.graph.topoOrder : [];
+      await renderPausedBanner(state.flowName, runId, runDir, topoOrder, { stepId: nextStepId });
       exitCode = EXIT_CODES.paused;
     } else if (result.status === 'succeeded') {
       process.stdout.write(`  ${SYMBOLS.ok} run ${runId} completed\n`);
