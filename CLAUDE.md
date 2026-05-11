@@ -85,9 +85,8 @@ All commits follow [Conventional Commits](https://www.conventionalcommits.org/):
 Valid types: `feat`, `fix`, `refactor`, `test`, `chore`, `ci`, `docs`, `build`.
 
 Commit subjects and bodies MUST NOT contain sprint-internal identifiers:
-- `task_N` — use only in sprint JSON and code review artifacts
-- `FLAG-N` — use only in code review `.code_review.md` files
-- `BLOCK-N` — use only in code review `.code_review.md` files
+- `task_N` — use only in sprint JSON and code review artifacts. Never in commit messages.
+- `FLAG-N` and `BLOCK-N` — use only in code review `.code_review.md` files AND in commits that explicitly address those findings (review-fix commits may enumerate the finding IDs they close).
 
 The hard rule that 'each task ends with one atomic commit' means the commit is the unit of delivery. The message describes *what changed and why* — it does not identify which sprint task produced the change.
 
