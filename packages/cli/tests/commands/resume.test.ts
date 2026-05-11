@@ -28,6 +28,7 @@ const mockCostTrackerSummary = vi.hoisted(() => vi.fn());
 const mockProgressDisplayStart = vi.hoisted(() => vi.fn());
 const mockProgressDisplayStop = vi.hoisted(() => vi.fn());
 const mockProgressDisplayUpdateRunnerMetrics = vi.hoisted(() => vi.fn());
+const mockAnswerCommand = vi.hoisted(() => vi.fn());
 
 const mockStateNotFoundError = vi.hoisted(() => {
   class FakeStateNotFoundError extends Error {
@@ -102,6 +103,10 @@ vi.mock('../../src/paused-banner.js', () => ({
 vi.mock('../../src/step-data.js', () => ({
   buildSuccessStepRows: () => Promise.resolve([]),
   buildFailureStepRows: () => Promise.resolve([]),
+}));
+
+vi.mock('../../src/commands/answer.js', () => ({
+  default: (...args: unknown[]) => mockAnswerCommand(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -349,5 +354,145 @@ describe('relay resume — auth failure', () => {
     expect(process.exit).toHaveBeenCalled();
     const stderrCalls = vi.mocked(process.stderr.write).mock.calls.map((c) => String(c[0]));
     expect(stderrCalls.join('')).toContain('auth failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared setup for post-resume paused and verbose tests
+// ---------------------------------------------------------------------------
+
+/** Set up all mocks through to orchestrator.resume so the command reaches the
+ * post-resume result branch. Accepts an override for the resume result. */
+function setupSuccessfulResumePipeline(resumeResult: unknown): void {
+  mockLoadState.mockResolvedValue(ok(makeRunState({ step1: 'failed' })));
+  mockReadFile.mockResolvedValue(
+    JSON.stringify({
+      flowName: 'test-flow',
+      flowVersion: '0.1.0',
+      flowPath: '/tmp/test-flow',
+    }),
+  );
+  mockLoadFlow.mockResolvedValue(ok({ flow: makeMinimalFlow(['step1']), dir: '/tmp/test-flow' }));
+  mockCostTrackerLoad.mockResolvedValue(ok(undefined));
+  mockCostTrackerSummary.mockReturnValue({ totalUsd: 0 });
+  mockAuthenticateProvider.mockResolvedValue(
+    ok({
+      resolvedProvider: { name: 'claude-cli', capabilities: {} },
+      authState: { ok: true, billingSource: 'subscription', detail: 'subscription (test)' },
+    }),
+  );
+  mockOrchestratorResume.mockResolvedValue(resumeResult);
+}
+
+describe('relay resume — inline answer on pause', () => {
+  let originalIsTTY: boolean | undefined;
+
+  beforeEach(() => {
+    originalIsTTY = process.stdout.isTTY;
+    mockAnswerCommand.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: originalIsTTY,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('[C3] calls answerCommand inline when TTY and result is paused', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+
+    setupSuccessfulResumePipeline({
+      status: 'paused',
+      pausedStepId: 'gather',
+      runId: 'abc123',
+      runDir: '/tmp/test-flow/abc123',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 0,
+    });
+
+    // answerCommand resolves without calling process.exit — command returns normally.
+    await resumeCommand(['abc123'], {});
+
+    expect(mockAnswerCommand).toHaveBeenCalledOnce();
+    expect(mockAnswerCommand).toHaveBeenCalledWith(['abc123'], {});
+    const exitCalls = vi.mocked(process.exit).mock.calls;
+    const called75 = exitCalls.some((c) => c[0] === 75);
+    expect(called75).toBe(false);
+  });
+
+  it('[C4] exits 75 when not TTY and result is paused', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    // Override process.exit to record the call without throwing so that the
+    // process.exit(75) inside the try block does not get caught by the catch
+    // handler and re-mapped to exit(1).
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      // Intentionally a no-op — we assert on the recorded call below.
+      return undefined as never;
+    });
+
+    setupSuccessfulResumePipeline({
+      status: 'paused',
+      pausedStepId: 'gather',
+      runId: 'abc123',
+      runDir: '/tmp/test-flow/abc123',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 0,
+    });
+
+    await resumeCommand(['abc123'], {});
+
+    expect(exitSpy).toHaveBeenCalledWith(75);
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay resume — verbose flag forwarding', () => {
+  it('[D1] forwards verbose: true to orchestrator.resume when --verbose is set', async () => {
+    setupSuccessfulResumePipeline({
+      status: 'succeeded',
+      runId: 'abc123',
+      runDir: '/tmp/test-flow/abc123',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 100,
+    });
+
+    // The success path returns normally — no process.exit call.
+    await resumeCommand(['abc123'], { verbose: true });
+
+    expect(mockOrchestratorResume).toHaveBeenCalledOnce();
+    const resumeOpts = mockOrchestratorResume.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(resumeOpts['verbose']).toBe(true);
+  });
+
+  it('[D2] does not set verbose when flag is absent', async () => {
+    setupSuccessfulResumePipeline({
+      status: 'succeeded',
+      runId: 'abc123',
+      runDir: '/tmp/test-flow/abc123',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 100,
+    });
+
+    // The success path returns normally — no process.exit call.
+    await resumeCommand(['abc123'], {});
+
+    expect(mockOrchestratorResume).toHaveBeenCalledOnce();
+    const resumeOpts = mockOrchestratorResume.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(resumeOpts['verbose']).not.toBe(true);
   });
 });

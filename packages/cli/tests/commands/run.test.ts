@@ -22,6 +22,7 @@ const mockResolveProvider = vi.hoisted(() => vi.fn());
 const mockResolveAndAuthenticate = vi.hoisted(() => vi.fn());
 const mockRenderStartBanner = vi.hoisted(() => vi.fn());
 const mockRenderSuccessBanner = vi.hoisted(() => vi.fn());
+const mockAnswerCommand = vi.hoisted(() => vi.fn());
 
 vi.mock('@ganderbite/relay-core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
@@ -66,6 +67,10 @@ vi.mock('../../src/progress.js', () => ({
 
 vi.mock('../../src/telemetry.js', () => ({
   maybeSendRunEvent: vi.fn(),
+}));
+
+vi.mock('../../src/commands/answer.js', () => ({
+  default: (...args: unknown[]) => mockAnswerCommand(...args),
 }));
 
 vi.mock('../../src/exit-codes.js', async (importOriginal) => {
@@ -118,6 +123,19 @@ function makeRunResult(runId = 'abc123') {
     cost: { totalUsd: 0, totalTokens: 0 },
     artifacts: [],
     durationMs: 100,
+  };
+}
+
+/** Minimal paused RunResult. */
+function makePausedResult(runId = 'r1') {
+  return {
+    runId,
+    runDir: `/tmp/.relay/runs/${runId}`,
+    status: 'paused' as const,
+    pausedStepId: 'gather',
+    cost: { totalUsd: 0, totalTokens: 0 },
+    artifacts: [],
+    durationMs: 0,
   };
 }
 
@@ -251,5 +269,59 @@ describe('relay run — SIGINT paused banner', () => {
 
     // Exit code must be 130 (SIGINT convention).
     expect(process.exit).toHaveBeenCalledWith(130);
+  });
+});
+
+describe('relay run — inline answer on pause', () => {
+  let originalIsTTY: boolean | undefined;
+
+  beforeEach(() => {
+    // Save the original descriptor value before overriding.
+    originalIsTTY = process.stdout.isTTY;
+    mockAnswerCommand.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    // Restore isTTY to the saved value so other tests are unaffected.
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: originalIsTTY,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('[C1] calls answerCommand inline when TTY and result is paused', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+
+    mockRunnerRun.mockResolvedValue(makePausedResult('r1'));
+
+    // answerCommand resolves without calling process.exit — the command returns normally.
+    await runCommand(['test-flow', '.'], {});
+
+    expect(mockAnswerCommand).toHaveBeenCalledOnce();
+    expect(mockAnswerCommand).toHaveBeenCalledWith(['r1'], {});
+    // process.exit must NOT have been called with 75.
+    const exitCalls = vi.mocked(process.exit).mock.calls;
+    const called75 = exitCalls.some((c) => c[0] === 75);
+    expect(called75).toBe(false);
+  });
+
+  it('[C2] exits 75 when not TTY and result is paused', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    mockRunnerRun.mockResolvedValue(makePausedResult('r1'));
+
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
+
+    expect(process.exit).toHaveBeenCalledWith(75);
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
   });
 });

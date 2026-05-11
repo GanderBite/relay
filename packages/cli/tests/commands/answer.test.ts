@@ -2,9 +2,11 @@
  * Tests for `relay answer` command.
  *
  * Covers: non-paused run rejection, --json mode (valid, missing required,
- * malformed JSON), empty-question auto-resume, and resume outcome paths
- * (succeeded and re-paused). All orchestrator and state I/O is mocked — no
- * live Claude subprocess calls and no real filesystem writes outside temp dirs.
+ * malformed JSON), empty-question auto-resume, resume outcome paths
+ * (succeeded and re-paused), provider registration and auth (Defect 1), and
+ * re-pause banner rendering (Defect 2). All orchestrator and state I/O is
+ * mocked — no live Claude subprocess calls and no real filesystem writes
+ * outside temp dirs.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +30,7 @@ const mockStateMachineHydrate = vi.hoisted(() => vi.fn());
 const mockStateMachineResumePausedStep = vi.hoisted(() => vi.fn());
 const mockStateMachineSave = vi.hoisted(() => vi.fn());
 const mockOrchestratorResume = vi.hoisted(() => vi.fn());
+const mockRegisterDefaultProviders = vi.hoisted(() => vi.fn());
 
 vi.mock('@ganderbite/relay-core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@ganderbite/relay-core')>();
@@ -44,19 +47,86 @@ vi.mock('@ganderbite/relay-core', async (importOriginal) => {
     Orchestrator: class MockOrchestrator {
       resume = mockOrchestratorResume;
     },
+    registerDefaultProviders: () => mockRegisterDefaultProviders(),
   };
 });
+
+// ---------------------------------------------------------------------------
+// Mock node:fs/promises so flow-ref.json reads return a controlled payload.
+// ---------------------------------------------------------------------------
+
+const mockReadFile = vi.hoisted(() => vi.fn());
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    readFile: (...args: unknown[]) => mockReadFile(...args),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Mock ../load-flow-and-auth.js — authenticateProvider is the auth guard.
+// ---------------------------------------------------------------------------
+
+const mockAuthenticateProvider = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/load-flow-and-auth.js', () => ({
+  authenticateProvider: (...args: unknown[]) => mockAuthenticateProvider(...args),
+  loadFlowOnly: vi.fn(),
+  loadFlowAndAuth: vi.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock ../flow-loader.js — loadFlow is called in the re-paused branch.
+// ---------------------------------------------------------------------------
+
+const mockLoadFlow = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/flow-loader.js', () => ({
+  loadFlow: (...args: unknown[]) => mockLoadFlow(...args),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock ../paused-banner.js — renderPausedBanner is called on re-pause.
+// ---------------------------------------------------------------------------
+
+const mockRenderPausedBanner = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/paused-banner.js', () => ({
+  renderPausedBanner: (...args: unknown[]) => mockRenderPausedBanner(...args),
+}));
 
 // ---------------------------------------------------------------------------
 // Imports after mock registration.
 // ---------------------------------------------------------------------------
 
-import { err, ok } from '@ganderbite/relay-core';
+import { ERROR_CODES, err, ok, PipelineError } from '@ganderbite/relay-core';
 import answerCommand from '../../src/commands/answer.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Minimal valid flow-ref.json payload as a JSON string. */
+const FLOW_REF_JSON = JSON.stringify({
+  flowName: 'test-flow',
+  flowVersion: '0.0.1',
+  flowPath: '/fake/flows/test-flow/flow.ts',
+});
+
+/** Minimal AuthState returned by authenticateProvider on success. */
+function makeAuthState() {
+  return {
+    billingSource: 'subscription' as const,
+    warning: undefined,
+  };
+}
+
+/** Minimal Provider object returned alongside AuthState. */
+function makeResolvedProvider(name = 'claude-cli') {
+  return { name };
+}
 
 /** Build a minimal RunState that reports status:paused with one paused step. */
 function makePausedState(
@@ -130,6 +200,25 @@ beforeEach(() => {
 
   // Default orchestrator resume: success.
   mockOrchestratorResume.mockResolvedValue(makeRunResult('succeeded'));
+
+  // Default: flow-ref.json is readable and valid.
+  mockReadFile.mockResolvedValue(FLOW_REF_JSON);
+
+  // Default: authentication succeeds.
+  mockAuthenticateProvider.mockResolvedValue(
+    ok({ resolvedProvider: makeResolvedProvider(), authState: makeAuthState() }),
+  );
+
+  // Default: registerDefaultProviders is a no-op.
+  mockRegisterDefaultProviders.mockReturnValue(undefined);
+
+  // Default: loadFlow returns a minimal flow result.
+  mockLoadFlow.mockResolvedValue(
+    ok({ flow: { graph: { topoOrder: [] } }, dir: '/fake/flows/test-flow' }),
+  );
+
+  // Default: renderPausedBanner resolves without writing.
+  mockRenderPausedBanner.mockResolvedValue(undefined);
 
   vi.spyOn(process, 'exit').mockImplementation(() => {
     throw new Error('process.exit called');
@@ -287,19 +376,20 @@ describe('relay answer — resume outcomes', () => {
     expect(process.exit).not.toHaveBeenCalled();
   });
 
-  it('[ANS-008] orchestrator returns paused again: prints warning and exits 75', async () => {
+  it('[ANS-008] orchestrator returns paused again: calls renderPausedBanner and exits 75', async () => {
     mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
-    mockOrchestratorResume.mockResolvedValue(makeRunResult('paused', 'next-step'));
+    mockOrchestratorResume.mockResolvedValue(makeRunResult('paused', 'step2'));
 
     await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
 
     expect(process.exit).toHaveBeenCalledWith(75);
-    // Warn message must mention the paused step and guidance to call relay answer again.
+    // renderPausedBanner must have been called instead of legacy plain-text output.
+    expect(mockRenderPausedBanner).toHaveBeenCalledOnce();
+    // Old plain-text warn lines must NOT appear on stdout.
     const stdoutCalls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
     const combined = stdoutCalls.join('');
-    expect(combined).toContain('paused again');
-    expect(combined).toContain('next-step');
-    expect(combined).toContain('relay answer run-abc');
+    expect(combined).not.toContain('paused again');
+    expect(combined).not.toContain('relay answer run-abc');
   });
 });
 
@@ -389,5 +479,88 @@ describe('relay answer — missing run', () => {
     const stderrCalls = vi.mocked(process.stderr.write).mock.calls.map((c) => String(c[0]));
     expect(stderrCalls.join('')).toContain('run-abc');
     expect(mockOrchestratorResume).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Provider registration and auth (Defect 1)
+// ---------------------------------------------------------------------------
+
+describe('answer command — provider registration and auth', () => {
+  it('[A1] calls registerDefaultProviders before Orchestrator.resume', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+
+    await expect(answerCommand(['run-abc'], {})).resolves.toBeUndefined();
+
+    expect(mockRegisterDefaultProviders).toHaveBeenCalled();
+    expect(mockOrchestratorResume).toHaveBeenCalledOnce();
+  });
+
+  it('[A2] passes preAuthedState into orchestrator.resume options', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+
+    await expect(answerCommand(['run-abc'], {})).resolves.toBeUndefined();
+
+    expect(mockOrchestratorResume).toHaveBeenCalledOnce();
+    const [, resumeOptions] = mockOrchestratorResume.mock.calls[0] as [
+      unknown,
+      { preAuthedState?: Map<string, unknown> },
+    ];
+    expect(resumeOptions).toBeDefined();
+    expect(resumeOptions.preAuthedState).toBeInstanceOf(Map);
+    expect(resumeOptions.preAuthedState?.size).toBe(1);
+  });
+
+  it('[A3] exits with auth error code when authenticateProvider fails', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+    mockAuthenticateProvider.mockResolvedValue(
+      err(new PipelineError('auth failed', ERROR_CODES.PROVIDER_AUTH)),
+    );
+
+    await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
+
+    // Auth errors map to exit code 3.
+    expect(process.exit).toHaveBeenCalledWith(3);
+    // Orchestrator must not be invoked when auth fails.
+    expect(mockOrchestratorResume).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Re-pause banner (Defect 2)
+// ---------------------------------------------------------------------------
+
+describe('answer command — re-pause banner', () => {
+  it('[B1] calls renderPausedBanner with awaitingInput when orchestrator.resume returns paused', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
+    mockOrchestratorResume.mockResolvedValue({
+      status: 'paused',
+      pausedStepId: 'step2',
+      runId: 'run-abc',
+      runDir: '',
+      cost: { totalUsd: 0, totalTokens: 0 },
+      artifacts: [],
+      durationMs: 0,
+    });
+
+    await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
+
+    // renderPausedBanner must be called exactly once.
+    expect(mockRenderPausedBanner).toHaveBeenCalledOnce();
+
+    // The awaitingInput argument must carry the next paused step id.
+    const callArgs = mockRenderPausedBanner.mock.calls[0] as unknown[];
+    const awaitingInput = callArgs[4] as { stepId: string } | undefined;
+    expect(awaitingInput).toBeDefined();
+    expect(awaitingInput?.stepId).toBe('step2');
+
+    // Exit code must be 75 (paused).
+    expect(process.exit).toHaveBeenCalledWith(75);
+
+    // Old plain-text lines must NOT appear on stdout (renderPausedBanner owns the output).
+    const stdoutCalls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
+    const combined = stdoutCalls.join('');
+    expect(combined).not.toContain('paused again');
+    expect(combined).not.toContain('relay answer run-abc');
   });
 });
