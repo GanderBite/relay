@@ -180,11 +180,12 @@ export function buildProgram(): Command {
     .option('--provider <name>', 'provider to use (overrides settings)')
     .option('--fresh', 'start a new run, ignoring any cached state')
     .option('--no-worktree', 'disable per-run git worktree isolation')
+    .option('--verbose', 'print debug-level output')
     .action(
       async (
         flow: string,
         input: string[],
-        cmdOpts: { provider?: string; fresh?: boolean; worktree?: boolean },
+        cmdOpts: { provider?: string; fresh?: boolean; worktree?: boolean; verbose?: boolean },
       ) => {
         const handler = await loadCommand('run');
         await handler([flow, ...input], { ...program.opts(), ...cmdOpts });
@@ -197,10 +198,16 @@ export function buildProgram(): Command {
     .description('continue a failed or stopped run')
     .option('--provider <name>', 'provider to use (overrides settings)')
     .option('--no-worktree', 'disable per-run git worktree isolation')
-    .action(async (runId: string, cmdOpts: { provider?: string; worktree?: boolean }) => {
-      const handler = await loadCommand('resume');
-      await handler([runId], { ...program.opts(), ...cmdOpts });
-    });
+    .option('--verbose', 'print debug-level output')
+    .action(
+      async (
+        runId: string,
+        cmdOpts: { provider?: string; worktree?: boolean; verbose?: boolean },
+      ) => {
+        const handler = await loadCommand('resume');
+        await handler([runId], { ...program.opts(), ...cmdOpts });
+      },
+    );
 
   // --------------------------------------------------------------- answer --
   program
