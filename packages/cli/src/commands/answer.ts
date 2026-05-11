@@ -278,8 +278,8 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   // ---- (5) Register providers and authenticate ----
   // registerDefaultProviders() populates the defaultRegistry that executeRun
-  // reads from; authenticateProvider() runs the §8.1 billing-safety guard
-  // before any tokens can be spent. We forward the resulting AuthState into
+  // reads from; authenticateProvider() runs the billing-safety guard before
+  // any tokens can be spent. We forward the resulting AuthState into
   // orchestrator.resume() via preAuthedState so the orchestrator does not
   // re-authenticate (and so the user is not prompted twice for a passphrase
   // on subscription auth).
