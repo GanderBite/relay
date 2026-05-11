@@ -83,6 +83,8 @@ error hierarchy to the CLI. No user-facing output lives here.
 | `orchestrator/exec/branch.ts` | Executor for `branch` steps — evaluates the condition and sets the active branch. |
 | `orchestrator/exec/parallel.ts` | Executor for `parallel` steps — fans out and collects child results. |
 | `orchestrator/exec/loop.ts` | Executor for `loop` steps — iterates until exit condition or limit. |
+| `orchestrator/exec/ask.ts` | Executor for `ask` steps — pauses the run and writes the pending question set. |
+| `orchestrator/exec/terminal.ts` | Executor for `terminal` steps — spawns an interactive shell session. |
 
 **Providers**
 
@@ -108,9 +110,7 @@ error hierarchy to the CLI. No user-facing output lives here.
 
 ## Adding a new step kind
 
-Add the builder in `flow/steps/<kind>.ts`, the executor in `orchestrator/exec/<kind>.ts`,
-then call `registry.register({ kind, synthesize, execute })` in `orchestrator/step-registrations.ts`.
-That single call wires synthesis and dispatch for the new kind across the entire runtime.
+Add the builder in `flow/steps/<kind>.ts`, the executor in `orchestrator/exec/<kind>.ts`, then call `registry.register({ kind, synthesize, execute })` in `orchestrator/step-registrations.ts`. That single call wires synthesis and dispatch for the new kind across the entire runtime.
 
 ## Adding a new provider
 

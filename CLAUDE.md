@@ -75,7 +75,7 @@ The harness runs four hook events to keep the loop tight:
 5. **Atomic writes for any file other processes might read** (state.json, batons/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.
 7. **Internal vs public error discipline.** Public API functions return `Result<T, E>` via neverthrow — they never throw. Internal step executors under `packages/core/src/orchestrator/exec/` may throw `PipelineError` subclasses; the run loop catches and converts them. When adding a new executor, throw on unrecoverable step failure. Never throw in the public API surface.
-8. **CLI surfaces to update when adding a step kind.** After registering a new kind in `packages/core/src/orchestrator/step-registrations.ts`, check two files: `packages/cli/src/progress/render.ts` (distinct progress display for the kind, if needed) and `packages/cli/src/banner.ts` (distinct success/failure row shape, if needed).
+8. **CLI surfaces to update when adding a step kind.** After registering a new kind in `packages/core/src/orchestrator/step-registrations.ts`, check the `packages/cli/src/progress/` rendering tree (per-step row, status formatter) and `packages/cli/src/banner.ts` (distinct success/failure row shape), updating each only if the new kind needs distinct display behaviour.
 9. **CLI source files are capped at 400 lines.** Run `pnpm -F @ganderbite/relay lint:filesize` to check. Thin re-export shims are exempt.
 
 ## Commit message convention
@@ -90,6 +90,13 @@ Commit subjects and bodies MUST NOT contain sprint-internal identifiers:
 - `BLOCK-N` — use only in code review `.code_review.md` files
 
 The hard rule that 'each task ends with one atomic commit' means the commit is the unit of delivery. The message describes *what changed and why* — it does not identify which sprint task produced the change.
+
+Concretely — write the subject as what changed, not which task ordered it:
+
+- DO: `docs(core): add module map to ARCHITECTURE.md`
+- DON'T: `task_143: add packages/core/src/ARCHITECTURE.md with module map`
+
+Drop any `Closes task_X` trailers from commit bodies.
 
 ## Spec section references
 
