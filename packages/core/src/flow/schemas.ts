@@ -1,6 +1,8 @@
 import { z } from '../zod.js';
 import { DynamicQuestionSourceSchema, QuestionsArraySchema } from './question.js';
 import type {
+  AgentDefinition,
+  AgentsFromSpec,
   AskStepSpec,
   BranchStepSpec,
   LoopStepSpec,
@@ -51,6 +53,37 @@ export const scriptEnvValueSpecSchema: z.ZodType<ScriptEnvValueSpec> = z.union([
   }),
 ]);
 
+export const agentDefinitionSchema: z.ZodType<AgentDefinition> = z
+  .strictObject({
+    name: nonEmptyString,
+    extends: z.string().optional(),
+    description: z.string().optional(),
+    model: z.string().optional(),
+    tools: z.array(z.string()).optional(),
+    skills: z.array(z.string()).optional(),
+    systemPrompt: z.string().optional(),
+    skillsMerge: z.enum(['replace', 'append']).optional(),
+  })
+  .refine((def) => def.extends !== undefined || def.systemPrompt !== undefined, {
+    message: 'agentDefinition must have either extends or systemPrompt',
+  });
+
+export const agentsFromSpecSchema: z.ZodType<AgentsFromSpec> = z.strictObject({
+  from: nonEmptyString,
+  path: z.string().optional(),
+  required: z.boolean().optional(),
+});
+
+const agentsFieldSchema = z.union([
+  z
+    .array(agentDefinitionSchema)
+    .min(1)
+    .refine((arr) => new Set(arr.map((a) => a.name)).size === arr.length, {
+      message: 'agent names must be unique within the agents array',
+    }),
+  agentsFromSpecSchema,
+]);
+
 // Output variant for prompt steps. Modelled as an explicit union of the three
 // shapes the spec enumerates — no single-object-with-refine shortcut that
 // could admit a fourth combination.
@@ -90,6 +123,7 @@ export const promptStepSpecSchema: z.ZodType<PromptStepSpec> = z.strictObject({
   maxRetries: z.number().int().nonnegative().optional(),
   maxBudgetUsd: z.number().optional(),
   timeoutMs: z.number().int().nonnegative().default(DEFAULT_PROMPT_TIMEOUT_MS),
+  agents: agentsFieldSchema.optional(),
   onFail: onFailValue.optional(),
 });
 

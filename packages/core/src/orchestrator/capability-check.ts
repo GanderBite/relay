@@ -126,4 +126,15 @@ function checkPromptStep(stepId: string, step: PromptStep, provider: Provider): 
       { stepId, providerName: provider.name, requestedBudget: step.maxBudgetUsd },
     );
   }
+
+  // Check: agents
+  if (step.agents !== undefined && !capabilities.supportsAgents) {
+    throw new ProviderCapabilityError(
+      `Step "${stepId}" declares agents, but provider "${provider.name}" does not support dynamic subagents. ` +
+        `Remove the agents field, or switch to a provider that advertises supportsAgents: true.`,
+      provider.name,
+      'supportsAgents',
+      { stepId, providerName: provider.name },
+    );
+  }
 }

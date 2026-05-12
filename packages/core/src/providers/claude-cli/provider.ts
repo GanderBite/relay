@@ -72,6 +72,7 @@ const CAPABILITIES: ProviderCapabilities = {
   ],
   multimodal: true,
   budgetCap: true,
+  supportsAgents: true,
   models: ['haiku', 'sonnet', 'opus', 'claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-7'],
   maxContextTokens: 200_000,
 };

@@ -16,10 +16,31 @@ const FIXED_PREFIX: readonly string[] = [
   '--verbose',
 ];
 
-export function buildCliArgs(
-  req: InvocationRequest,
-  _opts: ClaudeCliProviderOptions,
-): string[] {
+/**
+ * Translate relay's AgentDefinition shape to the claude CLI --agents wire
+ * format. The wire is a JSON object keyed by agent name, where each value is
+ * an object containing description, prompt (NOT systemPrompt), tools, model,
+ * skills, etc. Relay-only resolution fields (extends, skillsMerge) are
+ * stripped before serialization.
+ */
+function translateAgents(
+  agents: Array<Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  const wire: Record<string, Record<string, unknown>> = {};
+  for (const agent of agents) {
+    const name = agent['name'] as string;
+    const entry: Record<string, unknown> = {};
+    if (agent['description'] !== undefined) entry['description'] = agent['description'];
+    if (agent['systemPrompt'] !== undefined) entry['prompt'] = agent['systemPrompt'];
+    if (agent['tools'] !== undefined) entry['tools'] = agent['tools'];
+    if (agent['model'] !== undefined) entry['model'] = agent['model'];
+    if (agent['skills'] !== undefined) entry['skills'] = agent['skills'];
+    wire[name] = entry;
+  }
+  return wire;
+}
+
+export function buildCliArgs(req: InvocationRequest, _opts: ClaudeCliProviderOptions): string[] {
   const args: string[] = [...FIXED_PREFIX];
 
   if (req.model !== undefined) {
@@ -40,6 +61,10 @@ export function buildCliArgs(
 
   if (req.maxBudgetUsd !== undefined) {
     args.push('--max-budget-usd', String(req.maxBudgetUsd));
+  }
+
+  if (req.agents !== undefined && req.agents.length > 0) {
+    args.push('--agents', JSON.stringify(translateAgents(req.agents)));
   }
 
   return args;

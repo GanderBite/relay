@@ -30,6 +30,7 @@ const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   builtInTools: [],
   multimodal: true,
   budgetCap: true,
+  supportsAgents: true,
   models: ['mock-model'],
   maxContextTokens: 200_000,
 };
