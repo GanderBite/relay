@@ -8,7 +8,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CostTracker } from '../../../src/cost.js';
-import { HandoffOutputError, StepFailureError } from '../../../src/errors.js';
+import {
+  AgentsResolutionError,
+  HandoffOutputError,
+  StepFailureError,
+} from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
@@ -521,6 +525,97 @@ describe('executePrompt (sprint 5 task_33)', () => {
       expect(capturedPrompt).toContain(`OK ${handoffId}`);
       // The Bash command must also reference the handoff id for routing.
       expect(capturedPrompt).toContain(`write ${handoffId} --from`);
+    });
+  });
+
+  describe('agents field wiring', () => {
+    it('sets InvocationRequest.agents when step.agents is an inline array', async () => {
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: { handoff: 'result' },
+        agents: [{ name: 'helper', systemPrompt: 'Be helpful.', description: 'Helper agent' }],
+      });
+      const stepId = s.id || 'p';
+
+      let capturedRequest: Parameters<MockProvider['invoke']>[0] | undefined;
+      const handoffsDir = join(tmp, 'handoffs');
+      const provider = new MockProvider({
+        responses: {
+          [stepId]: async (req) => {
+            capturedRequest = req;
+            await mkdir(handoffsDir, { recursive: true });
+            await writeFile(join(handoffsDir, 'result.json'), JSON.stringify({ ok: true }), 'utf8');
+            return { ...canned, text: '{"ok":true}' };
+          },
+        },
+      });
+
+      const ctx = { ...makeCtxBase(), stepId, step: s, provider, attempt: 1 };
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+      expect(capturedRequest).toBeDefined();
+      expect(capturedRequest?.agents).toHaveLength(1);
+      const agent = capturedRequest?.agents?.[0] as Record<string, unknown> | undefined;
+      // In-memory shape: name and systemPrompt are present.
+      expect(agent?.name).toBe('helper');
+      expect(agent?.systemPrompt).toBe('Be helpful.');
+      // Relay-only fields must not be forwarded to the provider.
+      expect(agent).not.toHaveProperty('extends');
+      expect(agent).not.toHaveProperty('skillsMerge');
+    });
+
+    it('sets InvocationRequest.agents undefined when step.agents is absent', async () => {
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: { handoff: 'result' },
+        // No agents field.
+      });
+      const stepId = s.id || 'p';
+
+      let capturedRequest: Parameters<MockProvider['invoke']>[0] | undefined;
+      const provider = new MockProvider({
+        responses: {
+          [stepId]: (req) => {
+            capturedRequest = req;
+            return { ...canned, text: '{"ok":true}' };
+          },
+        },
+      });
+
+      const ctx = { ...makeCtxBase(), stepId, step: s, provider, attempt: 1 };
+      await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+
+      expect(capturedRequest).toBeDefined();
+      expect(capturedRequest?.agents).toBeUndefined();
+    });
+
+    it('propagates AgentsResolutionError as-is (not wrapped in StepFailureError)', async () => {
+      // step.agents references a handoff that was never written — triggers
+      // AgentsResolutionError in resolveAgents before the provider is called.
+      const s = step.prompt({
+        promptFile: 'prompts/p.md',
+        output: { handoff: 'result' },
+        agents: { from: 'handoff.plan', required: true },
+      });
+      const stepId = s.id || 'p';
+
+      const provider = new MockProvider({
+        responses: {
+          [stepId]: canned,
+        },
+      });
+
+      const ctx = { ...makeCtxBase(), stepId, step: s, provider, attempt: 1 };
+      let caught: unknown;
+      try {
+        await executePrompt(s, ctx as unknown as Parameters<typeof executePrompt>[1]);
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(AgentsResolutionError);
+      // Must NOT be wrapped in StepFailureError.
+      expect(caught).not.toBeInstanceOf(StepFailureError);
     });
   });
 });

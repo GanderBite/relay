@@ -172,11 +172,6 @@ describe('buildCliArgs', () => {
       expect(buildCliArgs(req, emptyOpts)).not.toContain('--mcp-config');
     });
 
-    it('never produces --agents', () => {
-      const req: InvocationRequest = { prompt: 'p' };
-      expect(buildCliArgs(req, emptyOpts)).not.toContain('--agents');
-    });
-
     it('never produces --add-dir', () => {
       const req: InvocationRequest = { prompt: 'p' };
       expect(buildCliArgs(req, emptyOpts)).not.toContain('--add-dir');
@@ -185,6 +180,82 @@ describe('buildCliArgs', () => {
     it('never produces --permission-mode', () => {
       const req: InvocationRequest = { prompt: 'p' };
       expect(buildCliArgs(req, emptyOpts)).not.toContain('--permission-mode');
+    });
+  });
+
+  describe('--agents flag', () => {
+    it('appends --agents when req.agents is non-empty', () => {
+      const req: InvocationRequest = {
+        prompt: 'p',
+        agents: [
+          {
+            name: 'reviewer',
+            systemPrompt: 'You review code.',
+            description: 'Reviewer',
+            tools: ['Read'],
+          },
+        ],
+      };
+      const args = buildCliArgs(req, emptyOpts);
+      expect(args).toContain('--agents');
+    });
+
+    it('serializes to keyed-by-name JSON with prompt field', () => {
+      const req: InvocationRequest = {
+        prompt: 'p',
+        agents: [
+          {
+            name: 'reviewer',
+            systemPrompt: 'You review code.',
+            description: 'Reviewer',
+            tools: ['Read'],
+          },
+        ],
+      };
+      const args = buildCliArgs(req, emptyOpts);
+      const idx = args.indexOf('--agents');
+      expect(idx).toBeGreaterThan(-1);
+      const parsed = JSON.parse(args[idx + 1] ?? '{}') as Record<string, Record<string, unknown>>;
+      expect(parsed.reviewer).toEqual({
+        prompt: 'You review code.',
+        description: 'Reviewer',
+        tools: ['Read'],
+      });
+    });
+
+    it('strips name, extends, skillsMerge from wire value', () => {
+      const req: InvocationRequest = {
+        prompt: 'p',
+        agents: [
+          {
+            name: 'tester',
+            systemPrompt: 'Run tests.',
+            description: 'Tester',
+            extends: 'base-agent',
+            skillsMerge: 'shallow',
+          },
+        ],
+      };
+      const args = buildCliArgs(req, emptyOpts);
+      const idx = args.indexOf('--agents');
+      const parsed = JSON.parse(args[idx + 1] ?? '{}') as Record<string, Record<string, unknown>>;
+      const entry = parsed.tester;
+      expect(entry).toBeDefined();
+      expect(entry).not.toHaveProperty('name');
+      expect(entry).not.toHaveProperty('systemPrompt');
+      expect(entry).not.toHaveProperty('extends');
+      expect(entry).not.toHaveProperty('skillsMerge');
+      expect(entry.prompt).toBe('Run tests.');
+    });
+
+    it('omits --agents when req.agents is undefined', () => {
+      const req: InvocationRequest = { prompt: 'p' };
+      expect(buildCliArgs(req, emptyOpts)).not.toContain('--agents');
+    });
+
+    it('omits --agents when req.agents is empty array', () => {
+      const req: InvocationRequest = { prompt: 'p', agents: [] };
+      expect(buildCliArgs(req, emptyOpts)).not.toContain('--agents');
     });
   });
 });

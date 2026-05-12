@@ -129,4 +129,78 @@ describe('capability-check', () => {
     });
     expect(resolved.isOk() && resolved.value).toBe(providerA);
   });
+
+  describe('supportsAgents', () => {
+    it('throws ProviderCapabilityError when agents is set and supportsAgents is false', () => {
+      const provider = new MockProvider({
+        responses: {},
+        capabilities: { supportsAgents: false },
+      });
+
+      const flow = makeFlow(() => ({
+        name: 'f',
+        version: '0.1.0',
+        input: z.object({}),
+        steps: {
+          a: step.prompt({
+            promptFile: 'p.md',
+            agents: [{ name: 'x', systemPrompt: 'sys' }],
+            output: { handoff: 'x' },
+          }),
+        },
+      }));
+
+      expect(() => checkCapabilities(flow, provider)).toThrow(ProviderCapabilityError);
+
+      try {
+        checkCapabilities(flow, provider);
+      } catch (e) {
+        expect(e).toBeInstanceOf(ProviderCapabilityError);
+        expect((e as ProviderCapabilityError).capability).toBe('supportsAgents');
+      }
+    });
+
+    it('does not throw when agents is undefined regardless of supportsAgents', () => {
+      const provider = new MockProvider({
+        responses: {},
+        capabilities: { supportsAgents: false },
+      });
+
+      const flow = makeFlow(() => ({
+        name: 'f',
+        version: '0.1.0',
+        input: z.object({}),
+        steps: {
+          a: step.prompt({
+            promptFile: 'p.md',
+            output: { handoff: 'x' },
+          }),
+        },
+      }));
+
+      expect(() => checkCapabilities(flow, provider)).not.toThrow();
+    });
+
+    it('does not throw when agents is set and supportsAgents is true', () => {
+      const provider = new MockProvider({
+        responses: {},
+        capabilities: { supportsAgents: true },
+      });
+
+      const flow = makeFlow(() => ({
+        name: 'f',
+        version: '0.1.0',
+        input: z.object({}),
+        steps: {
+          a: step.prompt({
+            promptFile: 'p.md',
+            agents: [{ name: 'x', systemPrompt: 'sys' }],
+            output: { handoff: 'x' },
+          }),
+        },
+      }));
+
+      expect(() => checkCapabilities(flow, provider)).not.toThrow();
+    });
+  });
 });
