@@ -5,6 +5,16 @@ export interface ClaudeCliProviderOptions {
   binaryPath?: string;
 }
 
+// The fixed prefix is the same for every claude -p invocation. The
+// --dangerously-skip-permissions flag is paired with --tools so that
+// headless runs never block on a permission prompt: the model is allowed
+// to execute any tool present in req.tools without prompting. The tool
+// set in req.tools is therefore authoritative and auto-approved — every
+// name that reaches the subprocess will be executed without a user
+// confirmation gate. The upstream capability-check in
+// orchestrator/capability-check.ts gates req.tools against the
+// provider's declared builtInTools list, which is the only safeguard
+// against an unknown tool name reaching the subprocess.
 const FIXED_PREFIX: readonly string[] = [
   '-p',
   '--output-format',
