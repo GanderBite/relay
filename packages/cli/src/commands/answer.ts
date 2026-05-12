@@ -2,17 +2,14 @@
  * `relay answer <runId> [--json <jsonString>]` — collect answers for a paused
  * run and auto-resume it.
  *
- * Flow:
- *   1. Load state.json; reject non-paused runs with exit 1.
- *   2. If awaitingInput has no questions, write empty answer handoff and resume.
- *   3. --json mode: parse the JSON string as AnswerMap, validate required fields.
- *   4. Interactive mode: prompt each question via readline.
- *   5. Write the answer handoff at <runDir>/handoffs/__ask_<stepId>__.json
- *      directly via atomicWriteJson (HandoffStore validates ids against a
- *      pattern that rejects leading underscores; the ask key __ask_<stepId>__
- *      uses double-underscore prefix by convention so we bypass the store).
- *   6. Transition the paused step back to pending via StateMachine.resumePausedStep.
- *   7. Call orchestrator.resume with ProgressDisplay; exit 0 on success, 75 if paused again.
+ * 1. Load state.json; reject non-paused runs with exit 1.
+ * 2. If awaitingInput has no questions, write empty answer handoff and resume.
+ * 3. --json mode: parse AnswerMap, validate required fields.
+ * 4. Interactive mode: prompt each question via readline.
+ * 5. Write the answer handoff at <runDir>/handoffs/__ask_<stepId>__.json via
+ *    atomicWriteJson (bypasses HandoffStore, which rejects __ prefixes).
+ * 6. Transition the paused step back to pending via StateMachine.resumePausedStep.
+ * 7. Call orchestrator.resume with ProgressDisplay; exit 0/75/1 on outcome.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -45,34 +42,24 @@ import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
 import { askQuestion, collectMissingRequired, makeReadline } from './answer-prompt.js';
 
-// ---------------------------------------------------------------------------
-// FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
-// ---------------------------------------------------------------------------
-
 interface FlowRef {
   flowName: string;
   flowVersion: string;
   flowPath: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Main command
-// ---------------------------------------------------------------------------
-
 export interface AnswerCommandOptions {
   json?: string;
   verbose?: boolean;
 }
 
-/**
- * Entry point for `relay answer <runId> [--json <jsonString>]`.
- */
 export default async function answerCommand(args: unknown[], opts: unknown): Promise<void> {
   const options = (opts ?? {}) as AnswerCommandOptions;
 
   // ---- (1) Parse runId ----
   const runId = typeof args[0] === 'string' ? args[0] : undefined;
   if (runId === undefined || runId.trim() === '') {
+    // usage-error: formatError does not apply
     process.stderr.write(red(`  ${SYMBOLS.fail} relay answer requires a run id`) + '\n');
     process.stderr.write(gray('  relay runs') + '\n');
     process.exit(1);
@@ -85,9 +72,11 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   if (stateResult.isErr()) {
     const e = stateResult.error;
     if (e instanceof StateNotFoundError) {
+      // usage-error: formatError does not apply
       process.stderr.write(red(`  ${SYMBOLS.fail} no run found at ${runId}`) + '\n');
       process.stderr.write(gray('  did you mean: relay runs') + '\n');
     } else {
+      // usage-error: formatError does not apply
       process.stderr.write(
         red(`  ${SYMBOLS.fail} could not read run state for ${runId}: ${e.message}`) + '\n',
       );
@@ -133,6 +122,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // usage-error: formatError does not apply
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${msg}`) + '\n',
     );
@@ -141,6 +131,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
 
   if (flowRef.flowPath === null) {
+    // usage-error: formatError does not apply
     process.stderr.write(red(`  ${SYMBOLS.fail} run has no recorded flow path`) + '\n');
     process.exit(1);
   }
@@ -169,6 +160,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
 
   if (pausedStepId === undefined) {
+    // usage-error: formatError does not apply
     process.stderr.write(
       red(`  ${SYMBOLS.fail} run ${runId} is paused but has no awaiting step`) + '\n',
     );
@@ -186,16 +178,19 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     try {
       parsed = JSON.parse(options.json);
     } catch {
+      // usage-error: formatError does not apply
       process.stderr.write(red(`  ${SYMBOLS.fail} --json value is not valid JSON`) + '\n');
       process.exit(1);
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      // usage-error: formatError does not apply
       process.stderr.write(red(`  ${SYMBOLS.fail} --json value must be a JSON object`) + '\n');
       process.exit(1);
     }
     answers = parsed as AnswerMap;
     const missing = collectMissingRequired(questions, answers);
     if (missing.length > 0) {
+      // usage-error: formatError does not apply
       process.stderr.write(
         red(`  ${SYMBOLS.fail} missing answers for: ${missing.join(', ')}`) + '\n',
       );
@@ -217,9 +212,8 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
 
   // ---- (8) Write the answer handoff ----
-  // Written via atomicWriteJson rather than HandoffStore.write because the
-  // answer key (__ask_<stepId>__) starts with underscores, which HandoffStore
-  // rejects. When inside a loop body, route to the iteration-scoped path.
+  // atomicWriteJson bypasses HandoffStore (rejects __ prefixes). Route to
+  // iteration-scoped path when inside a loop body.
   let handoffPath: string;
   if (
     awaitingInput !== undefined &&
@@ -241,6 +235,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
   const writeResult = await atomicWriteJson(handoffPath, answers);
   if (writeResult.isErr()) {
+    // usage-error: formatError does not apply
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not write answer handoff: ${writeResult.error.message}`) + '\n',
     );
@@ -253,6 +248,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   const resumeResult = machine.resumePausedStep(pausedStepId);
   if (resumeResult.isErr()) {
+    // usage-error: formatError does not apply
     process.stderr.write(
       red(
         `  ${SYMBOLS.fail} could not transition step ${pausedStepId} to pending: ${resumeResult.error.message}`,
@@ -263,6 +259,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
 
   const saveResult = await machine.save();
   if (saveResult.isErr()) {
+    // usage-error: formatError does not apply
     process.stderr.write(
       red(`  ${SYMBOLS.fail} could not persist run state: ${saveResult.error.message}`) + '\n',
     );
@@ -270,27 +267,19 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   }
 
   // ---- (10) Auto-resume with ProgressDisplay + banners ----
+  // Load the flow module for ProgressDisplay and banner rendering.
+  // If the load fails, fall back to a no-display path: the orchestrator still
+  // runs and banners render with topoOrder = [].
   const flowLoadResult = await loadFlow(flowRef.flowPath, process.cwd());
-  if (flowLoadResult.isErr()) {
-    // Bare fallback when the flow module cannot be loaded.
-    const orch = new Orchestrator({ runDir });
-    const fbMap = new Map<string, AuthState>();
-    fbMap.set(resolvedProvider.name, authState);
-    try {
-      const r = await orch.resume(runDir, {
-        logToStdout: !process.stdout.isTTY,
-        preAuthedState: fbMap,
-      });
-      if (r.status === 'paused') process.exit(EXIT_CODES.paused);
-      else if (r.status !== 'succeeded') process.exit(1);
-    } catch (caught) {
-      process.stderr.write(formatError(caught) + '\n');
-      process.exit(exitCodeFor(caught));
-    }
-    return;
+  const flow = flowLoadResult.isOk() ? flowLoadResult.value.flow : null;
+  if (flow === null) {
+    process.stderr.write(
+      yellow(
+        `  ${SYMBOLS.warn} could not load flow module for display: continuing without progress`,
+      ) + '\n',
+    );
   }
 
-  const flow = flowLoadResult.value.flow;
   const orchestrator = new Orchestrator({ runDir });
 
   const authInfo: AuthInfo = {
@@ -298,8 +287,10 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     estUsd: 0,
   };
 
-  const display = new ProgressDisplay(runDir, flow, authInfo, options.verbose === true);
-  display.start(runId);
+  // Only construct ProgressDisplay when we have a valid flow module.
+  const display =
+    flow !== null ? new ProgressDisplay(runDir, flow, authInfo, options.verbose === true) : null;
+  if (display !== null) display.start(runId);
 
   let wasInterrupted = false;
   let lastSigintMs = 0;
@@ -314,6 +305,8 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   };
   process.on('SIGINT', sigintHandler);
 
+  const topoOrder = flow?.graph.topoOrder ?? [];
+
   let exitCode = 0;
   try {
     const preAuthedMap = new Map<string, AuthState>();
@@ -324,24 +317,27 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     resumeOpts.resolvedProviderName = resolvedProvider.name;
     if (options.verbose === true) resumeOpts.verbose = true;
     resumeOpts.preAuthedState = preAuthedMap;
-    resumeOpts.onStepComplete = (stepId, stepResult) => {
-      if ('kind' in stepResult && stepResult.kind === 'prompt') {
-        display.updateRunnerMetrics(stepId, {
-          tokensIn: stepResult.tokensIn,
-          tokensOut: stepResult.tokensOut,
-          costUsd: stepResult.costUsd,
-          durationMs: stepResult.durationMs,
-          model: stepResult.model,
-        });
-      }
-    };
+    if (display !== null) {
+      resumeOpts.onStepComplete = (stepId, stepResult) => {
+        if ('kind' in stepResult && stepResult.kind === 'prompt') {
+          display.updateRunnerMetrics(stepId, {
+            tokensIn: stepResult.tokensIn,
+            tokensOut: stepResult.tokensOut,
+            costUsd: stepResult.costUsd,
+            durationMs: stepResult.durationMs,
+            model: stepResult.model,
+          });
+        }
+      };
+    }
     const result = await orchestrator.resume(runDir, resumeOpts);
 
     process.removeListener('SIGINT', sigintHandler);
-    await display.stop();
+    // await so the events-file watcher fully drains before the banner prints
+    if (display !== null) await display.stop();
 
     if (result.status === 'succeeded') {
-      const stepRows = await buildSuccessStepRows(runDir, [...flow.graph.topoOrder]);
+      const stepRows = await buildSuccessStepRows(runDir, [...topoOrder]);
       const outputPath = result.artifacts[0] ?? `.relay/runs/${runId}`;
       process.stdout.write(
         renderSuccessBanner({
@@ -365,15 +361,15 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
         flowRef.flowName,
         runId,
         runDir,
-        [...flow.graph.topoOrder],
+        [...topoOrder],
         result.pausedStepId !== undefined ? { stepId: result.pausedStepId } : undefined,
       );
       process.exit(EXIT_CODES.paused);
     } else if (result.status === 'aborted' && wasInterrupted) {
-      await renderPausedBanner(flowRef.flowName, runId, runDir, flow.graph.topoOrder);
+      await renderPausedBanner(flowRef.flowName, runId, runDir, topoOrder);
       process.exit(130);
     } else {
-      const failureSteps = await buildFailureStepRows(runDir, [...flow.graph.topoOrder]);
+      const failureSteps = await buildFailureStepRows(runDir, [...topoOrder]);
       process.stdout.write(
         renderFailureBanner({
           flowName: flowRef.flowName,
@@ -386,7 +382,8 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
     }
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
-    await display.stop();
+    // await so the events-file watcher fully drains before the banner prints
+    if (display !== null) await display.stop();
     process.stderr.write(formatError(caught) + '\n');
     exitCode = exitCodeFor(caught);
   }

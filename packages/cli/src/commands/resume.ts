@@ -416,7 +416,8 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     const result = await orchestrator.resume(runDir, resumeOpts);
 
     process.removeListener('SIGINT', sigintHandler);
-    display.stop();
+    // await so the events-file watcher fully drains before the banner prints
+    await display.stop();
 
     // ---- (9) Post-resume banner ----
     if (result.status === 'succeeded') {
@@ -473,7 +474,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     }
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
-    display.stop();
+    await display.stop();
     process.stderr.write(formatError(caught) + '\n');
     exitCode = exitCodeFor(caught);
   }

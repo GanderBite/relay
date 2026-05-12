@@ -98,6 +98,44 @@ vi.mock('../../src/paused-banner.js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock ../banner.js — renderSuccessBanner and renderFailureBanner.
+// ---------------------------------------------------------------------------
+
+const mockRenderSuccessBanner = vi.hoisted(() => vi.fn());
+const mockRenderFailureBanner = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/banner.js', () => ({
+  renderSuccessBanner: (...args: unknown[]) => mockRenderSuccessBanner(...args),
+  renderFailureBanner: (...args: unknown[]) => mockRenderFailureBanner(...args),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock ../step-data.js — buildSuccessStepRows and buildFailureStepRows.
+// ---------------------------------------------------------------------------
+
+vi.mock('../../src/step-data.js', () => ({
+  buildSuccessStepRows: vi.fn().mockResolvedValue([]),
+  buildFailureStepRows: vi.fn().mockResolvedValue([]),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock ../progress.js — ProgressDisplay constructor, start, stop.
+// ---------------------------------------------------------------------------
+
+const mockProgressDisplayStart = vi.hoisted(() => vi.fn());
+const mockProgressDisplayStop = vi.hoisted(() => vi.fn<() => Promise<void>>());
+const mockProgressDisplayUpdateRunnerMetrics = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/progress.js', () => {
+  class MockProgressDisplay {
+    start = mockProgressDisplayStart;
+    stop = mockProgressDisplayStop;
+    updateRunnerMetrics = mockProgressDisplayUpdateRunnerMetrics;
+  }
+  return { ProgressDisplay: MockProgressDisplay };
+});
+
+// ---------------------------------------------------------------------------
 // Imports after mock registration.
 // ---------------------------------------------------------------------------
 
@@ -219,6 +257,13 @@ beforeEach(() => {
 
   // Default: renderPausedBanner resolves without writing.
   mockRenderPausedBanner.mockResolvedValue(undefined);
+
+  // Default: banner functions return sentinel strings for assertion.
+  mockRenderSuccessBanner.mockReturnValue('success-banner\n');
+  mockRenderFailureBanner.mockReturnValue('failure-banner\n');
+
+  // Default: ProgressDisplay.stop() resolves immediately.
+  mockProgressDisplayStop.mockResolvedValue(undefined);
 
   vi.spyOn(process, 'exit').mockImplementation(() => {
     throw new Error('process.exit called');
@@ -362,16 +407,18 @@ describe('relay answer — empty questions', () => {
 // ---------------------------------------------------------------------------
 
 describe('relay answer — resume outcomes', () => {
-  it('[ANS-007] orchestrator returns succeeded: prints success message and exits 0', async () => {
+  it('[ANS-007] orchestrator returns succeeded: calls renderSuccessBanner and exits 0', async () => {
     mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
     mockOrchestratorResume.mockResolvedValue(makeRunResult('succeeded'));
 
     await expect(answerCommand(['run-abc'], {})).resolves.toBeUndefined();
 
-    // Success line must appear on stdout.
+    // renderSuccessBanner must be called with the correct flow name.
+    expect(mockRenderSuccessBanner).toHaveBeenCalledOnce();
+    expect(mockRenderSuccessBanner.mock.calls[0]?.[0]).toMatchObject({ flowName: 'test-flow' });
+    // The banner return value must appear on stdout.
     const stdoutCalls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
-    expect(stdoutCalls.join('')).toContain('run-abc');
-    expect(stdoutCalls.join('')).toContain('completed');
+    expect(stdoutCalls.join('')).toContain('success-banner');
     // No non-zero exit.
     expect(process.exit).not.toHaveBeenCalled();
   });
@@ -392,16 +439,19 @@ describe('relay answer — resume outcomes', () => {
     expect(combined).not.toContain('relay answer run-abc');
   });
 
-  it('[ANS-resume-failed] orchestrator returns failed: prints failure message and exits 1', async () => {
+  it('[ANS-resume-failed] orchestrator returns failed: calls renderFailureBanner and exits 1', async () => {
     mockLoadState.mockResolvedValue(ok(makePausedState('gather', [])));
     mockOrchestratorResume.mockResolvedValue(makeRunResult('failed'));
 
     await expect(answerCommand(['run-abc'], {})).rejects.toThrow('process.exit called');
 
     expect(process.exit).toHaveBeenCalledWith(1);
-    const stderrCalls = vi.mocked(process.stderr.write).mock.calls.map((c) => String(c[0]));
-    const combined = stderrCalls.join('');
-    expect(combined).toContain('failed after resume');
+    // renderFailureBanner must be called with the correct flow name.
+    expect(mockRenderFailureBanner).toHaveBeenCalledOnce();
+    expect(mockRenderFailureBanner.mock.calls[0]?.[0]).toMatchObject({ flowName: 'test-flow' });
+    // The banner return value must appear on stdout.
+    const stdoutCalls = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
+    expect(stdoutCalls.join('')).toContain('failure-banner');
     // Paused banner must NOT be called — this is a terminal failure, not a pause.
     expect(mockRenderPausedBanner).not.toHaveBeenCalled();
   });
