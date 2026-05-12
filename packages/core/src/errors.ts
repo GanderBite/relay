@@ -28,6 +28,7 @@ export const ERROR_CODES = {
   TIMEOUT: 'relay_TIMEOUT',
   LOOP_MAX_ITERATIONS: 'relay_LOOP_MAX_ITERATIONS_EXCEEDED',
   FLOW_IMPORT: 'relay_FLOW_IMPORT',
+  AGENTS_RESOLUTION: 'relay_AGENTS_RESOLUTION',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -794,6 +795,47 @@ export class LoopMaxIterationsError extends PipelineError<LoopMaxIterationsDetai
     this.loopStepId = loopStepId;
     this.maxIterations = maxIterations;
     this.iterationsRun = iterationsRun;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+  }
+}
+
+/**
+ * Typed details for `AgentsResolutionError`.
+ *
+ * Captures the failure mode and the optional reference that caused it so
+ * tooling can surface a precise message without re-parsing the error string.
+ *
+ * `reason` discriminates the five distinct resolution failure modes:
+ * - `handoff-shape-invalid`  — a handoff's declared schema is structurally invalid.
+ * - `extends-not-found`      — an agent definition references a base that cannot be located.
+ * - `duplicate-name`         — two or more agents share the same name within a flow.
+ * - `handoff-missing`        — a handoff required by an agent step is absent from the store.
+ * - `frontmatter-parse-error` — the YAML/JSON frontmatter in an agent file could not be parsed.
+ */
+export interface AgentsResolutionDetails extends Record<string, unknown> {
+  reason:
+    | 'handoff-shape-invalid'
+    | 'extends-not-found'
+    | 'duplicate-name'
+    | 'handoff-missing'
+    | 'frontmatter-parse-error';
+  ref?: string;
+  agentName?: string;
+  stepId?: string;
+  cause?: unknown;
+}
+
+/**
+ * Thrown when the agents resolver cannot build a valid agent graph from the
+ * flow's agent definitions. Always thrown before any invocation runs so no
+ * tokens are spent.
+ */
+export class AgentsResolutionError extends PipelineError<AgentsResolutionDetails> {
+  constructor(message: string, details: AgentsResolutionDetails) {
+    super(message, ERROR_CODES.AGENTS_RESOLUTION, details);
+    this.name = 'AgentsResolutionError';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, new.target);
     }

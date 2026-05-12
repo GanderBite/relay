@@ -23,6 +23,44 @@ export function isScriptEnvFromSpec(v: ScriptEnvValueSpec): v is ScriptEnvFromSp
 }
 
 /**
+ * A reference to an external agents file that provides agent definitions.
+ * When used in a prompt step, the runtime loads agent definitions from
+ * the file at `path` relative to `from` (or the flow root if `path` is absent).
+ * If `required` is true, the run halts when the file cannot be resolved.
+ */
+export interface AgentsFromSpec {
+  from: string;
+  path?: string | undefined;
+  required?: boolean | undefined;
+}
+
+/**
+ * Inline definition of a sub-agent that a prompt step may spawn.
+ * `extends` names another agent definition to inherit from before
+ * applying the overrides declared here. `skillsMerge` controls whether
+ * the inherited skills list is replaced entirely or appended to.
+ */
+export interface AgentDefinition {
+  name: string;
+  extends?: string | undefined;
+  description?: string | undefined;
+  model?: string | undefined;
+  tools?: string[] | undefined;
+  skills?: string[] | undefined;
+  systemPrompt?: string | undefined;
+  skillsMerge?: 'replace' | 'append' | undefined;
+}
+
+/**
+ * Type guard that narrows `AgentDefinition[] | AgentsFromSpec` to `AgentsFromSpec`.
+ * Returns true when the value is a single object with a `from` field rather
+ * than an array of inline agent definitions.
+ */
+export function isAgentsFromSpec(v: AgentDefinition[] | AgentsFromSpec): v is AgentsFromSpec {
+  return !Array.isArray(v) && typeof v === 'object' && 'from' in v;
+}
+
+/**
  * The minimum fields shared by every step type.
  * Each per-kind spec explicitly opts in to the additional fields (retry,
  * timeout, contextFrom, onFail, etc.) that apply to it — nothing is silently
@@ -61,6 +99,7 @@ export interface PromptStepSpec extends StepBase {
   model?: string | undefined;
   tools?: string[] | undefined;
   systemPrompt?: string | undefined;
+  agents?: AgentDefinition[] | AgentsFromSpec | undefined;
   contextFrom?: string[] | undefined;
   output: PromptStepOutput;
   maxRetries?: number | undefined;

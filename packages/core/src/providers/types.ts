@@ -42,6 +42,9 @@ export interface ProviderCapabilities {
   /** True if the provider can be told a per-call USD budget cap. */
   budgetCap: boolean;
 
+  /** True if the provider supports forwarding ephemeral subagent definitions to the underlying runtime. */
+  supportsAgents: boolean;
+
   /**
    * Catalog of model identifiers this provider accepts in `InvocationRequest.model`.
    *
@@ -140,6 +143,13 @@ export interface InvocationRequest {
 
   maxBudgetUsd?: number;
   timeoutMs?: number;
+
+  /**
+   * Resolved subagent definitions forwarded to the provider wire format.
+   * Typed as Array<Record<string, unknown>> to avoid a circular import with
+   * flow/types; the executor casts at the call site.
+   */
+  agents?: Array<Record<string, unknown>> | undefined;
 }
 
 // ---------------------------------------------------------------------------
