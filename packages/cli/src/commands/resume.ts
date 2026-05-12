@@ -357,7 +357,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     estUsd: 0,
   };
 
-  const display = new ProgressDisplay(runDir, flow, authInfo);
+  const display = new ProgressDisplay(runDir, flow, authInfo, options.verbose === true);
   display.start(runId);
 
   // ---------------------------------------------------------------------------

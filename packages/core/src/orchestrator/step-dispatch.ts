@@ -385,6 +385,13 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         throw startSave.error;
       }
 
+      void writeLiveState(runDir, stepId, {
+        status: 'running',
+        attempt: stateMachine.getState().steps[stepId]?.attempts ?? 1,
+        startedAt: new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      });
+
       try {
         const value = await raceAbort(
           withRetry((attempt) => runExecutor(step, attempt), {
