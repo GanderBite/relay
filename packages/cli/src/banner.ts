@@ -346,9 +346,8 @@ export function renderFailureBanner(opts: FailureBannerOptions): string {
         stepLines.push(gray(`     ${line2}`));
       }
     } else {
-      // skipped — show with pending symbol and no cost
-      const modelCol = s.model.padEnd(MODEL_WIDTH);
-      stepLines.push(gray(` ${SYMBOLS.pending} ${nameCol}${modelCol}`));
+      // skipped — show with pending symbol, name only (step never ran)
+      stepLines.push(gray(` ${SYMBOLS.pending} ${nameCol}`));
     }
   }
 

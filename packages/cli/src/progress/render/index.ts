@@ -1,4 +1,4 @@
-import type { Flow, LoopStep, ReplayedEventRecord } from '@ganderbite/relay-core';
+import type { Flow, LoopStep, ParallelStep, ReplayedEventRecord } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import logUpdate from 'log-update';
 import { flowHeader, SYMBOLS } from '../../brand.js';
@@ -7,6 +7,7 @@ import type { WatchEvent } from '../watch.js';
 import { renderFooter } from './footer.js';
 import { logStructured } from './helpers.js';
 import { renderLoopRow } from './loop-row.js';
+import { renderParallelRow } from './parallel-row.js';
 import { renderStepRow } from './step-row.js';
 import type { AuthInfo, StepDisplayState, VerboseAccumulator } from './types.js';
 import { makeAccumulator } from './types.js';
@@ -37,6 +38,11 @@ export class ProgressRenderer<TInput = unknown> {
   readonly #bodyStepParent: Map<string, string> = new Map();
   // Maps loop step ID → ordered body step IDs (preserved insertion order from body record).
   readonly #loopBodyOrder: Map<string, readonly string[]> = new Map();
+  // Maps each branch step ID → its parent parallel step ID so #redraw can
+  // skip branch steps from the top-level loop and let renderParallelRow handle them.
+  readonly #branchParent: Map<string, string> = new Map();
+  // Maps parallel step ID → ordered branch step IDs (from ParallelStep.branches).
+  readonly #parallelBranchOrder: Map<string, readonly string[]> = new Map();
   #verboseAccumulators: Map<string, VerboseAccumulator> | null = null;
 
   constructor(flow: Flow<TInput>, _auth: AuthInfo, verbose = false) {
@@ -81,6 +87,16 @@ export class ProgressRenderer<TInput = unknown> {
             finalCostUsd: null,
             finalModel: null,
           });
+        }
+      }
+
+      // Walk parallel branch steps — they ARE in topoOrder but should render
+      // indented under their parent parallel step, not at the top level.
+      if (step !== undefined && step.kind === 'parallel') {
+        const parallelStep = step as ParallelStep;
+        this.#parallelBranchOrder.set(runnerId, parallelStep.branches);
+        for (const branchId of parallelStep.branches) {
+          this.#branchParent.set(branchId, runnerId);
         }
       }
     }
@@ -249,8 +265,10 @@ export class ProgressRenderer<TInput = unknown> {
     lines.push(flowHeader(this.#flow.name, this.#runId));
     lines.push('');
     for (const runnerId of this.#flow.graph.topoOrder) {
-      // Skip body steps — they are rendered indented under their loop parent.
+      // Skip body steps — rendered indented under their loop parent.
       if (this.#bodyStepParent.has(runnerId)) continue;
+      // Skip branch steps — rendered indented under their parallel parent.
+      if (this.#branchParent.has(runnerId)) continue;
 
       const state = this.#steps.get(runnerId);
       if (state === undefined) continue;
@@ -270,6 +288,26 @@ export class ProgressRenderer<TInput = unknown> {
             state,
             bodyStates,
             bodyOrder,
+            this.#spinnerFrame,
+            this.#flow as Flow<unknown>,
+            this.#verbose,
+            this.#verboseAccumulators,
+          ),
+        );
+      } else if (step !== undefined && step.kind === 'parallel') {
+        // Gather branch states and order for this parallel step.
+        const branchOrder = this.#parallelBranchOrder.get(runnerId) ?? [];
+        const branchStates = new Map<string, StepDisplayState>();
+        for (const branchId of branchOrder) {
+          const bs = this.#steps.get(branchId);
+          if (bs !== undefined) branchStates.set(branchId, bs);
+        }
+        lines.push(
+          renderParallelRow(
+            runnerId,
+            state,
+            branchStates,
+            branchOrder,
             this.#spinnerFrame,
             this.#flow as Flow<unknown>,
             this.#verbose,
