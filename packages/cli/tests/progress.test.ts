@@ -262,6 +262,36 @@ describe('watch.ts', () => {
     expect(received.length).toBe(countAfterStop);
   });
 
+  it('propagates iter, maxIter, and branchCount from a live/<step>.json file', async () => {
+    const stepIds = new Set(['step-loop']);
+
+    const eventsPromise = waitForEvents<WatchEvent>((emit) => {
+      startWatcher(runDir, emit, false, stepIds);
+    }, 1);
+
+    const liveState = {
+      status: 'running',
+      attempt: 2,
+      startedAt: new Date().toISOString(),
+      lastUpdateAt: new Date().toISOString(),
+      iter: 3,
+      maxIter: 10,
+      branchCount: 4,
+    };
+    await writeFile(join(runDir, 'live', 'step-loop.json'), JSON.stringify(liveState));
+
+    const events = await eventsPromise;
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.kind).toBe('state');
+    if (ev.kind === 'state') {
+      expect(ev.stepId).toBe('step-loop');
+      expect(ev.state.iter).toBe(3);
+      expect(ev.state.maxIter).toBe(10);
+      expect(ev.state.branchCount).toBe(4);
+    }
+  });
+
   it('ignores malformed JSON in a live/<step>.json file', async () => {
     const stepIds = new Set(['step-e', 'step-f']);
 

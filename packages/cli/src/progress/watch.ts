@@ -183,6 +183,9 @@ async function loadLiveFile(
       ...(d.model !== undefined ? { model: d.model } : {}),
       ...(d.tokensSoFar !== undefined ? { tokensSoFar: d.tokensSoFar } : {}),
       ...(d.toolsSoFar !== undefined ? { toolsSoFar: d.toolsSoFar } : {}),
+      ...(d.iter !== undefined ? { iter: d.iter } : {}),
+      ...(d.maxIter !== undefined ? { maxIter: d.maxIter } : {}),
+      ...(d.branchCount !== undefined ? { branchCount: d.branchCount } : {}),
     };
   } catch {
     // File read race or JSON parse failure — skip; next event will retry.
