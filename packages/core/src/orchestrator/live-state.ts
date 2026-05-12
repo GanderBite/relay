@@ -15,6 +15,9 @@ export interface LiveStatePartial {
   model?: string;
   tokensSoFar?: number;
   toolsSoFar?: number;
+  iter?: number;
+  maxIter?: number;
+  branchCount?: number;
 }
 
 export function writeLiveState(

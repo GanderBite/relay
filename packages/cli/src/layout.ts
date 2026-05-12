@@ -8,10 +8,12 @@
  * from brand.ts — layout concerns are kept separate from brand constants.
  * It must not trigger a settings read at module load time.
  *
- * Column widths for step rows (product spec §6.5, §6.6, §11.3):
+ * Column widths for step rows:
  *   STEP_NAME_WIDTH  = 16  — accommodates "designReview" (12) with margin
  *   MODEL_WIDTH      = 11  — accommodates "sonnet" (6) or "exit 1" (6) with margin
  *   DURATION_WIDTH   = 9   — accommodates "11m 42s" (7) with margin
+ *   TOOLS_WIDTH      = 9   — accommodates "99 tools" (8) with margin
+ *   TOKEN_WIDTH      = 8   — accommodates "12.3K" (5) with margin
  */
 
 // ---------------------------------------------------------------------------
@@ -27,11 +29,18 @@ const KV_KEY_WIDTH = 8;
 /** Runner name column width — padEnd to this value before the model column. */
 export const STEP_NAME_WIDTH = 16;
 
-/** Model column width — padEnd to this value before the duration column. */
+/** Model column width — padEnd to this value before the duration column.
+ *  Used by banner.ts post-run display only; live progress display dropped the model column. */
 export const MODEL_WIDTH = 11;
 
 /** Duration column width — padEnd to this value before the tokens/cost column. */
 export const DURATION_WIDTH = 9;
+
+/** Tools column width — padEnd to this value; accommodates "99 tools" (8 chars) with margin. */
+export const TOOLS_WIDTH = 9;
+
+/** Token column width — padEnd to this value; accommodates "12.3K" (5 chars) with margin. */
+export const TOKEN_WIDTH = 8;
 
 // ---------------------------------------------------------------------------
 // Layout helpers

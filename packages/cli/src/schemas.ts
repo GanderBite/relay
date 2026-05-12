@@ -51,4 +51,7 @@ export const LiveStatePartialSchema = z.object({
   model: z.string().optional(),
   tokensSoFar: z.number().optional(),
   toolsSoFar: z.number().optional(),
+  iter: z.number().optional(),
+  maxIter: z.number().optional(),
+  branchCount: z.number().optional(),
 });
