@@ -1,8 +1,8 @@
 import type { Flow, StepStatus } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../../brand.js';
 import { gray, green, red, yellow } from '../../color.js';
-import { fmtCostApprox, fmtK } from '../../format.js';
-import { DURATION_WIDTH, MODEL_WIDTH, STEP_NAME_WIDTH } from '../../layout.js';
+import { fmtDuration, fmtK } from '../../format.js';
+import { DURATION_WIDTH, STEP_NAME_WIDTH, TOKEN_WIDTH, TOOLS_WIDTH } from '../../layout.js';
 import { renderStreamingLine } from '../../verboseStream.js';
 import { fmtElapsedSec } from './helpers.js';
 import type { StepDisplayState, VerboseAccumulator } from './types.js';
@@ -21,7 +21,6 @@ export function renderStepRow(
   spinnerFrame: number,
   steps: Map<string, StepDisplayState>,
   _flow: Flow<unknown>,
-  cumulativeTokens: number,
   verbose: boolean,
   verboseAccumulators: Map<string, VerboseAccumulator> | null,
 ): string {
@@ -58,14 +57,12 @@ export function renderStepRow(
   }
 
   if (status === 'running') {
-    const model = (live.model ?? '-').padEnd(MODEL_WIDTH);
     const tools = live.toolsSoFar ?? 0;
+    const toolsCol = `${tools} tools`.padEnd(TOOLS_WIDTH);
     const runStart = state.runningStartedAt ?? live.startedAt;
-    const progressCol = (tools > 0 ? `${tools} tools` : fmtElapsedSec(runStart)).padEnd(
-      DURATION_WIDTH,
-    );
-    const tokensCol = fmtK(cumulativeTokens + (live.tokensSoFar ?? 0)).padEnd(13);
-    const stepRowLine = ` ${sym} ${nameCol} ${model} ${progressCol} ${tokensCol}`;
+    const elapsedCol = fmtElapsedSec(runStart).padEnd(DURATION_WIDTH);
+    const tokensCol = fmtK(live.tokensSoFar ?? 0).padEnd(TOKEN_WIDTH);
+    const stepRowLine = ` ${sym} ${nameCol} ${toolsCol} ${elapsedCol} ${tokensCol}`;
     if (verbose) {
       const acc = verboseAccumulators?.get(state.id);
       if (acc !== undefined) {
@@ -77,19 +74,20 @@ export function renderStepRow(
   }
 
   // Succeeded / failed / skipped — show frozen metrics
-  const model = (live.model ?? state.finalModel ?? '-').padEnd(MODEL_WIDTH);
-  const durSec = (state.finalDurationMs ?? 0) / 1000;
-  const durStr = (durSec < 10 ? `${durSec.toFixed(1)}s` : `${Math.round(durSec)}s`).padEnd(
-    DURATION_WIDTH,
-  );
-  const tokensCol = fmtK(
-    state.cumulativeTokens ?? (state.finalTokensIn ?? 0) + (state.finalTokensOut ?? 0),
-  ).padEnd(13);
-  const costStr = fmtCostApprox(state.finalCostUsd ?? 0);
-  const terminalRow =
-    status === 'succeeded'
-      ? ` ${green(SYMBOLS.ok)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${green(costStr)}`
-      : ` ${red(SYMBOLS.fail)} ${nameCol} ${model} ${durStr} ${tokensCol}    ${red(costStr)}`;
+  const tools = live.toolsSoFar ?? 0;
+  const toolsCol = `${tools} tools`.padEnd(TOOLS_WIDTH);
+  const durStr = fmtDuration(state.finalDurationMs ?? 0).padEnd(DURATION_WIDTH);
+  const finalTokens = (state.finalTokensIn ?? 0) + (state.finalTokensOut ?? 0);
+  const tokensCol = fmtK(finalTokens).padEnd(TOKEN_WIDTH);
+
+  let terminalRow: string;
+  if (status === 'succeeded') {
+    terminalRow = ` ${green(SYMBOLS.ok)} ${nameCol} ${toolsCol} ${durStr} ${tokensCol}`;
+  } else if (status === 'failed') {
+    terminalRow = ` ${red(SYMBOLS.fail)} ${nameCol} ${toolsCol} ${durStr} ${tokensCol}`;
+  } else {
+    terminalRow = ` ${gray(SYMBOLS.ok)} ${nameCol} ${toolsCol} ${durStr} ${tokensCol}`;
+  }
 
   if (verbose) {
     const acc = verboseAccumulators?.get(state.id);

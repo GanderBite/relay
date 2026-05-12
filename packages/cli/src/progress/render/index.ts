@@ -20,7 +20,6 @@ export type { AuthInfo } from './types.js';
  */
 export class ProgressRenderer<TInput = unknown> {
   readonly #flow: Flow<TInput>;
-  readonly #auth: AuthInfo;
   readonly #verbose: boolean;
   readonly #isTTY: boolean;
 
@@ -32,12 +31,10 @@ export class ProgressRenderer<TInput = unknown> {
   #eventsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly #steps: Map<string, StepDisplayState> = new Map();
-  #cumulativeTokens = 0;
   #verboseAccumulators: Map<string, VerboseAccumulator> | null = null;
 
-  constructor(flow: Flow<TInput>, auth: AuthInfo, verbose = false) {
+  constructor(flow: Flow<TInput>, _auth: AuthInfo, verbose = false) {
     this.#flow = flow;
-    this.#auth = auth;
     this.#verbose = verbose;
     this.#isTTY = Boolean(process.stdout.isTTY);
   }
@@ -57,7 +54,6 @@ export class ProgressRenderer<TInput = unknown> {
         finalTokensOut: null,
         finalCostUsd: null,
         finalModel: null,
-        cumulativeTokens: null,
       });
     }
     if (this.#verbose) this.#verboseAccumulators = new Map();
@@ -113,8 +109,6 @@ export class ProgressRenderer<TInput = unknown> {
     state.finalCostUsd = metrics.costUsd ?? 0;
     state.finalDurationMs = metrics.durationMs;
     state.finalModel = metrics.model;
-    this.#cumulativeTokens += metrics.tokensIn + metrics.tokensOut;
-    state.cumulativeTokens = this.#cumulativeTokens;
     if (this.#isTTY) this.#redraw();
   }
 
@@ -206,6 +200,22 @@ export class ProgressRenderer<TInput = unknown> {
     if (rendered !== null) acc.lines.push(rendered);
   }
 
+  #computeTotalTokens(): number {
+    let total = 0;
+    for (const [, state] of this.#steps) {
+      if (
+        state.live?.status === 'succeeded' ||
+        state.live?.status === 'failed' ||
+        state.live?.status === 'skipped'
+      ) {
+        total += (state.finalTokensIn ?? 0) + (state.finalTokensOut ?? 0);
+      } else if (state.live?.status === 'running') {
+        total += state.live.tokensSoFar ?? 0;
+      }
+    }
+    return total;
+  }
+
   #redraw(): void {
     const lines: string[] = [];
     lines.push(flowHeader(this.#flow.name, this.#runId));
@@ -217,21 +227,14 @@ export class ProgressRenderer<TInput = unknown> {
           this.#spinnerFrame,
           this.#steps,
           this.#flow as Flow<unknown>,
-          this.#cumulativeTokens,
           this.#verbose,
           this.#verboseAccumulators,
         ),
       );
     }
     lines.push('');
-    lines.push(renderFooter(this.#runStartedAt, this.#auth, this.#computeSpent()));
+    lines.push(renderFooter(this.#runStartedAt, this.#computeTotalTokens()));
     lines.push('');
     logUpdate(lines.join('\n'));
-  }
-
-  #computeSpent(): number {
-    let total = 0;
-    for (const [, state] of this.#steps) total += state.finalCostUsd ?? 0;
-    return total;
   }
 }

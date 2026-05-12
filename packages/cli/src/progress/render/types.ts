@@ -17,7 +17,6 @@ export interface StepDisplayState {
   finalTokensOut: number | null;
   finalCostUsd: number | null;
   finalModel: string | null;
-  cumulativeTokens: number | null;
 }
 
 export interface VerboseAccumulator {

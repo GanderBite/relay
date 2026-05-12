@@ -427,7 +427,7 @@ describe('render.ts', () => {
     renderer.stop();
   });
 
-  it('updateRunnerMetrics accumulates cumulativeTokens monotonically', () => {
+  it('updateRunnerMetrics stores per-step final token counts without throwing', () => {
     const flow = makeFlow(['a', 'b', 'c']);
     const renderer = new ProgressRenderer(flow, fakeAuth, false);
     renderer.start('run-tokens');
@@ -577,8 +577,8 @@ function buildAndRun(
   return display.capturedTotals;
 }
 
-describe('ProgressDisplay cumulative token accumulation', () => {
-  it('step 1 (tokensIn=500, tokensOut=600) produces a cumulative total of 1100', () => {
+describe('ProgressDisplay per-step token accumulation', () => {
+  it('step 1 (tokensIn=500, tokensOut=600) reports a per-step total of 1100', () => {
     const totals = buildAndRun(
       ['step-a', 'step-b'],
       [
@@ -589,7 +589,7 @@ describe('ProgressDisplay cumulative token accumulation', () => {
     expect(totals[0]).toBe(1100);
   });
 
-  it('step 2 (tokensIn=100, tokensOut=50) adds 150 to step 1 giving a cumulative total of 1250', () => {
+  it('step 2 (tokensIn=100, tokensOut=50) reports its own per-step total of 150, running total 1250', () => {
     const totals = buildAndRun(
       ['step-a', 'step-b'],
       [
@@ -600,7 +600,7 @@ describe('ProgressDisplay cumulative token accumulation', () => {
     expect(totals[1]).toBe(1250);
   });
 
-  it('step 2 cumulative tokens exceed step 1 cumulative tokens — monotonically non-decreasing', () => {
+  it('step 2 running total exceeds step 1 running total — monotonically non-decreasing', () => {
     const totals = buildAndRun(
       ['step-a', 'step-b'],
       [
@@ -611,7 +611,7 @@ describe('ProgressDisplay cumulative token accumulation', () => {
     expect(totals[1]!).toBeGreaterThan(totals[0]!);
   });
 
-  it('single step accumulates tokensIn + tokensOut correctly', () => {
+  it('single step reports tokensIn + tokensOut as per-step total', () => {
     const totals = buildAndRun(['only-step'], [{ tokensIn: 200, tokensOut: 300 }]);
     expect(totals[0]).toBe(500);
   });
