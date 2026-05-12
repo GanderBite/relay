@@ -441,7 +441,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       if (process.stdout.isTTY && process.stdin.isTTY) {
         process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
         const { default: answerCommand } = await import('./answer.js');
-        await answerCommand([runId], {});
+        await answerCommand([runId], { verbose: options.verbose });
         return;
       }
       await renderPausedBanner(
