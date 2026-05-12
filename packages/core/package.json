@@ -37,6 +37,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "gray-matter": "4.0.3",
     "handlebars": "4.7.9",
     "neverthrow": "8.2.0",
     "p-retry": "7.1.1",
