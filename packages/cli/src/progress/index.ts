@@ -77,6 +77,17 @@ export class ProgressDisplay<TInput = unknown> {
 
     const stepIds = new Set(this.#flow.graph.topoOrder);
 
+    // Body steps of loop steps are NOT in topoOrder — include them so the
+    // watcher accepts their live-state files.
+    for (const runnerId of this.#flow.graph.topoOrder) {
+      const step = this.#flow.steps[runnerId];
+      if (step !== undefined && step.kind === 'loop') {
+        for (const bodyId of Object.keys(step.body)) {
+          stepIds.add(bodyId);
+        }
+      }
+    }
+
     // Pre-create the live directory so chokidar has a real path to watch from
     // the start. The orchestrator calls mkdir(live/) idempotently later; this
     // avoids the FSEvents race where files written to a newly-created directory

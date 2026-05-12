@@ -1,4 +1,4 @@
-import type { Flow, ReplayedEventRecord } from '@ganderbite/relay-core';
+import type { Flow, LoopStep, ReplayedEventRecord } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import logUpdate from 'log-update';
 import { flowHeader, SYMBOLS } from '../../brand.js';
@@ -6,6 +6,7 @@ import { renderStepSummary, renderVerboseEvent } from '../../verboseStream.js';
 import type { WatchEvent } from '../watch.js';
 import { renderFooter } from './footer.js';
 import { logStructured } from './helpers.js';
+import { renderLoopRow } from './loop-row.js';
 import { renderStepRow } from './step-row.js';
 import type { AuthInfo, StepDisplayState, VerboseAccumulator } from './types.js';
 import { makeAccumulator } from './types.js';
@@ -31,6 +32,11 @@ export class ProgressRenderer<TInput = unknown> {
   #eventsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly #steps: Map<string, StepDisplayState> = new Map();
+  // Maps body step ID → parent loop step ID so #redraw can skip body steps
+  // from the top-level rendering loop and let renderLoopRow handle them instead.
+  readonly #bodyStepParent: Map<string, string> = new Map();
+  // Maps loop step ID → ordered body step IDs (preserved insertion order from body record).
+  readonly #loopBodyOrder: Map<string, readonly string[]> = new Map();
   #verboseAccumulators: Map<string, VerboseAccumulator> | null = null;
 
   constructor(flow: Flow<TInput>, _auth: AuthInfo, verbose = false) {
@@ -55,6 +61,28 @@ export class ProgressRenderer<TInput = unknown> {
         finalCostUsd: null,
         finalModel: null,
       });
+
+      // Walk loop body steps — they are NOT in topoOrder and must be registered here.
+      if (step !== undefined && step.kind === 'loop') {
+        const loopStep = step as LoopStep;
+        const bodyIds = Object.keys(loopStep.body);
+        this.#loopBodyOrder.set(runnerId, bodyIds);
+        for (const bodyId of bodyIds) {
+          const bodyStep = loopStep.body[bodyId];
+          this.#bodyStepParent.set(bodyId, runnerId);
+          this.#steps.set(bodyId, {
+            id: bodyId,
+            dependsOn: bodyStep?.dependsOn ?? [],
+            live: null,
+            runningStartedAt: null,
+            finalDurationMs: null,
+            finalTokensIn: null,
+            finalTokensOut: null,
+            finalCostUsd: null,
+            finalModel: null,
+          });
+        }
+      }
     }
     if (this.#verbose) this.#verboseAccumulators = new Map();
     if (this.#isTTY) {
@@ -220,17 +248,46 @@ export class ProgressRenderer<TInput = unknown> {
     const lines: string[] = [];
     lines.push(flowHeader(this.#flow.name, this.#runId));
     lines.push('');
-    for (const [, state] of this.#steps) {
-      lines.push(
-        renderStepRow(
-          state,
-          this.#spinnerFrame,
-          this.#steps,
-          this.#flow as Flow<unknown>,
-          this.#verbose,
-          this.#verboseAccumulators,
-        ),
-      );
+    for (const runnerId of this.#flow.graph.topoOrder) {
+      // Skip body steps — they are rendered indented under their loop parent.
+      if (this.#bodyStepParent.has(runnerId)) continue;
+
+      const state = this.#steps.get(runnerId);
+      if (state === undefined) continue;
+
+      const step = this.#flow.steps[runnerId];
+      if (step !== undefined && step.kind === 'loop') {
+        // Gather body states and order for this loop step.
+        const bodyOrder = this.#loopBodyOrder.get(runnerId) ?? [];
+        const bodyStates = new Map<string, StepDisplayState>();
+        for (const bodyId of bodyOrder) {
+          const bs = this.#steps.get(bodyId);
+          if (bs !== undefined) bodyStates.set(bodyId, bs);
+        }
+        lines.push(
+          renderLoopRow(
+            runnerId,
+            state,
+            bodyStates,
+            bodyOrder,
+            this.#spinnerFrame,
+            this.#flow as Flow<unknown>,
+            this.#verbose,
+            this.#verboseAccumulators,
+          ),
+        );
+      } else {
+        lines.push(
+          renderStepRow(
+            state,
+            this.#spinnerFrame,
+            this.#steps,
+            this.#flow as Flow<unknown>,
+            this.#verbose,
+            this.#verboseAccumulators,
+          ),
+        );
+      }
     }
     lines.push('');
     lines.push(renderFooter(this.#runStartedAt, this.#computeTotalTokens()));
