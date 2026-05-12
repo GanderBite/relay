@@ -214,7 +214,8 @@ export function buildProgram(): Command {
     .command('answer <runId>')
     .description('provide answers for a paused run and resume it')
     .option('--json <jsonString>', 'answers as a JSON object string (non-interactive)')
-    .action(async (runId: string, cmdOpts: { json?: string }) => {
+    .option('--verbose', 'print debug-level output')
+    .action(async (runId: string, cmdOpts: { json?: string; verbose?: boolean }) => {
       const handler = await loadCommand('answer');
       await handler([runId], { ...program.opts(), ...cmdOpts });
     });
