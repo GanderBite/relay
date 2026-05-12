@@ -166,6 +166,46 @@ describe('resolveAgents — AgentsFromSpec', () => {
         e instanceof AgentsResolutionError && e.details?.reason === 'handoff-shape-invalid',
     );
   });
+
+  it('[AR-014] unrecognised from prefix throws handoff-shape-invalid (malformed spec)', async () => {
+    // A prefix that is neither "input." nor "handoff." is a malformed spec —
+    // the resolver cannot even start to read a shape, so we surface the
+    // failure as handoff-shape-invalid rather than handoff-missing.
+    const spec: AgentsFromSpec = { from: 'garbage' };
+    await expect(resolveAgents(spec, mkCtx())).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof AgentsResolutionError &&
+        e.details?.reason === 'handoff-shape-invalid' &&
+        typeof e.message === 'string' &&
+        e.message.includes('unrecognized prefix'),
+    );
+  });
+
+  it('[AR-015] resolves from input.<path>', async () => {
+    const inputAgents: AgentDefinition[] = [{ name: 'from-input', systemPrompt: 'From input.' }];
+    const spec: AgentsFromSpec = { from: 'input.agents' };
+    const result = await resolveAgents(spec, mkCtx({ inputVars: { agents: inputAgents } }));
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ name: 'from-input', systemPrompt: 'From input.' });
+  });
+
+  it('[AR-016] required: true + missing input path throws handoff-missing', async () => {
+    const spec: AgentsFromSpec = { from: 'input.missing', required: true };
+    await expect(resolveAgents(spec, mkCtx())).rejects.toSatisfy(
+      (e: unknown) => e instanceof AgentsResolutionError && e.details?.reason === 'handoff-missing',
+    );
+  });
+
+  it('[AR-017] path field navigates inside the resolved handoff value', async () => {
+    // The handoff stores an envelope object; spec.path drills into the
+    // "agents" field after the handoff read returns the envelope.
+    const inner: AgentDefinition[] = [{ name: 'inner', systemPrompt: 'Inner agent.' }];
+    await handoffStore.write('plan', { agents: inner, other: 'noise' });
+    const spec: AgentsFromSpec = { from: 'handoff.plan', path: 'agents' };
+    const result = await resolveAgents(spec, mkCtx());
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ name: 'inner', systemPrompt: 'Inner agent.' });
+  });
 });
 
 // ---------------------------------------------------------------------------

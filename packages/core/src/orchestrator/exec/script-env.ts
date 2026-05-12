@@ -4,6 +4,7 @@ import { err, ok, type Result } from 'neverthrow';
 import { FlowDefinitionError } from '../../errors.js';
 import { isScriptEnvFromSpec, type ScriptEnvValueSpec } from '../../flow/types.js';
 import { renderTemplate } from '../../template.js';
+import { dotPath } from '../../util/dot-path.js';
 
 export interface ScriptEnvContext {
   input: Record<string, unknown>;
@@ -11,20 +12,6 @@ export interface ScriptEnvContext {
   runDir: string;
   flowDir: string;
   handoffsDir: string;
-}
-
-/**
- * Walks a dot-separated path into `root`, returning the value at that path or
- * `undefined` if any segment is missing. Never throws.
- */
-function dotPath(root: Record<string, unknown>, path: string): unknown {
-  const segments = path.split('.');
-  let current: unknown = root;
-  for (const segment of segments) {
-    if (current === null || typeof current !== 'object') return undefined;
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
 }
 
 /**

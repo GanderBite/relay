@@ -151,7 +151,7 @@ export {
   QuestionsArraySchema,
 } from './flow/question.js';
 /** Zod schemas for ask step and agent definition specs. */
-export { agentDefinitionSchema, askStepSpecSchema } from './flow/schemas.js';
+export { agentDefinitionSchema, agentsFromSpecSchema, askStepSpecSchema } from './flow/schemas.js';
 /**
  * Namespace of step builder functions. Each builder validates its config
  * against the step schema and throws `FlowDefinitionError` on invalid input.
