@@ -474,6 +474,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
     }
   } catch (caught) {
     process.removeListener('SIGINT', sigintHandler);
+    // await so the events-file watcher fully drains before the banner prints
     await display.stop();
     process.stderr.write(formatError(caught) + '\n');
     exitCode = exitCodeFor(caught);
