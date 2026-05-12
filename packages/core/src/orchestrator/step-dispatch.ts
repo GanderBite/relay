@@ -407,16 +407,24 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         if (completeResult.isErr()) throw completeResult.error;
         stateMachine.recordStepResult(stepId, value);
         const succeededState = stateMachine.getState().steps[stepId];
+        const finalLoopIter = loopIterationsOf(value);
         void writeLiveState(runDir, stepId, {
           status: 'succeeded',
           attempt: succeededState?.attempts ?? 1,
           startedAt: succeededState?.startedAt ?? new Date().toISOString(),
           lastUpdateAt: new Date().toISOString(),
+          ...(step.kind === 'parallel' ? { branchCount: step.branches.length } : {}),
+          ...(step.kind === 'loop'
+            ? {
+                maxIter: step.maxIterations,
+                ...(finalLoopIter !== undefined ? { iter: finalLoopIter } : {}),
+              }
+            : {}),
         });
         return value;
       } catch (caught) {
         if (isAwaitingInputSignal(caught)) {
-          await handlePause(stepId, caught);
+          await handlePause(stepId, step, caught);
           throw caught;
         }
         if (!isAbortLike(caught)) {
@@ -437,6 +445,8 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
             attempt: failedState?.attempts ?? 1,
             startedAt: failedState?.startedAt ?? new Date().toISOString(),
             lastUpdateAt: new Date().toISOString(),
+            ...(step.kind === 'parallel' ? { branchCount: step.branches.length } : {}),
+            ...(step.kind === 'loop' ? { maxIter: step.maxIterations } : {}),
           });
         }
         // Abort leaves the step in running state; markRun('aborted') sweeps
@@ -462,7 +472,11 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
    * resume can re-enter the loop at the same iteration without the CLI
    * needing to inspect the synthesised state-key shape.
    */
-  const handlePause = async (stepId: string, caught: AwaitingInputSignal): Promise<void> => {
+  const handlePause = async (
+    stepId: string,
+    step: Step,
+    caught: AwaitingInputSignal,
+  ): Promise<void> => {
     const promptedAt = new Date().toISOString();
     const pauseResult = stateMachine.pauseStep(
       caught.stepId,
@@ -553,6 +567,15 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
       attempt: pausedState?.attempts ?? 1,
       startedAt: pausedState?.startedAt ?? new Date().toISOString(),
       lastUpdateAt: new Date().toISOString(),
+      ...(step.kind === 'parallel' ? { branchCount: step.branches.length } : {}),
+      ...(step.kind === 'loop'
+        ? {
+            maxIter: step.maxIterations,
+            ...(caught.loopContext?.loopIter !== undefined
+              ? { iter: caught.loopContext.loopIter }
+              : {}),
+          }
+        : {}),
     });
     logger.info(
       {
@@ -625,6 +648,20 @@ export function stepCompletionOutput(result: StepResult): {
     return { handoffs: result.handoffs };
   }
   return {};
+}
+
+/**
+ * Returns the completed iteration count from a loop step's executor result,
+ * or undefined when the result is not a loop result. Used by the dispatcher
+ * to carry the final `iter` value into the live-state snapshot on success so
+ * the completed loop row reads `iter N/N` instead of falling back to `1`.
+ */
+export function loopIterationsOf(result: StepResult): number | undefined {
+  if (typeof result !== 'object' || result === null || !('kind' in result)) {
+    return undefined;
+  }
+  if (result.kind === 'loop') return result.iterations;
+  return undefined;
 }
 
 export function stepOnFail(step: Step): 'abort' | 'continue' | string {
