@@ -71,6 +71,86 @@ on bad input. Prompt steps run in a contained subprocess with an explicit env
 allowlist. Script and branch steps receive the full parent env — see
 `docs/billing-safety.md` for the containment boundary.
 
+#### Dynamic subagents
+
+A prompt step accepts an optional `agents` field that defines ephemeral subagents
+available for that invocation via Claude Code's Task tool. The definitions are
+resolved at step-start time, before any provider cost is incurred.
+
+**Inline array**
+
+```ts
+step.prompt({
+  promptFile: 'prompts/implement.md',
+  agents: [
+    {
+      name: 'code-reviewer',
+      description: 'Reviews code for quality and security.',
+      systemPrompt: 'You are a senior code reviewer.',
+      tools: ['Read', 'Grep', 'Glob'],
+      model: 'haiku',
+    },
+  ],
+  output: { artifact: 'implementation.ts' },
+})
+```
+
+**Dynamic from handoff**
+
+```ts
+step.prompt({
+  promptFile: 'prompts/execute.md',
+  agents: { from: 'handoff.execution_plan', required: true },
+  output: { handoff: 'result' },
+})
+```
+
+The `from` value follows the same prefix semantics as script `env` values:
+`'handoff.<id>.<dot.path>'` reads a nested path from a prior step's handoff;
+`'input.<dot.path>'` reads from the flow's input object.
+
+**`AgentDefinition` fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | `string` | Unique name for this agent within the step. Required. |
+| `extends` | `string` | Name of a file in `.claude/agents/` to inherit from. Optional. |
+| `description` | `string` | Short description visible to the parent Claude invocation. Optional. |
+| `model` | `string` | Model alias for this agent (e.g. `'haiku'`, `'sonnet'`). Optional. |
+| `tools` | `string[]` | Tool names the agent may use. Optional. |
+| `skills` | `string[]` | Skill names to attach. Optional. |
+| `systemPrompt` | `string` | System prompt for this agent. Optional. |
+| `skillsMerge` | `'replace' \| 'append'` | Whether inherited skills are replaced or extended. Optional. |
+
+**`extends` field**
+
+Set `extends` to the name of a file in `.claude/agents/` (without extension) to
+inherit that base agent's system prompt, tools, and skills. Any fields supplied
+inline override the inherited values. `skillsMerge: 'append'` merges the
+inherited skills list with the inline one; the default `'replace'` substitutes it.
+
+**v1 constraint**
+
+v1 supports either an inline array or a handoff reference — not both at the same
+time. Setting `agents` to an array and relying on a handoff for additional
+definitions in the same step is not supported.
+
+**Failure modes**
+
+`AgentsResolutionError` is thrown before any provider invocation when the agents
+resolver cannot build a valid agent set. The `reason` field on the error details
+discriminates the five failure modes:
+
+| `reason` | Trigger |
+|---|---|
+| `handoff-shape-invalid` | A handoff's value exists but does not match the expected agent-definition array shape. |
+| `extends-not-found` | An agent definition's `extends` field names a base agent file that cannot be located in `.claude/agents/`. |
+| `duplicate-name` | Two or more agent definitions in the resolved set share the same `name`. |
+| `handoff-missing` | The handoff referenced by `agents.from` is absent from the store and `required` is `true`. |
+| `frontmatter-parse-error` | The YAML or JSON frontmatter in the referenced agent file could not be parsed. |
+
+---
+
 ### `createOrchestrator(options?)` / `Orchestrator`
 
 Executes a flow given input. Returns a `RunResult` with status, cost, artifacts,
