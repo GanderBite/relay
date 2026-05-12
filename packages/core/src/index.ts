@@ -38,6 +38,7 @@ export { CostTracker } from './cost.js';
 /** Typed details interfaces for `PipelineError` subclasses. Pattern-match on `error.details` with these types. */
 export type {
   AbortReason,
+  AgentsResolutionDetails,
   AtomicWriteDetails,
   ClaudeAuthDetails,
   ErrorCode,
@@ -88,10 +89,12 @@ export type {
  * - `AuthTimeoutError` — thrown when a provider's `authenticate()` does not settle within `authTimeoutMs`.
  * - `AtomicWriteError` — thrown (via `Result.err`) when an atomic write fails irrecoverably.
  * - `LoopMaxIterationsError` — thrown when a loop step exhausts its `maxIterations` budget without the exit condition being satisfied.
+ * - `AgentsResolutionError` — thrown when the agents spec for a prompt step cannot be resolved or loaded.
  * - `ERROR_CODES` — stable string constants for all error codes.
  * - `toFlowDefError` — wraps a Zod parse error into a `FlowDefinitionError`.
  */
 export {
+  AgentsResolutionError,
   AtomicWriteError,
   AuthTimeoutError,
   AwaitingInputSignal,
@@ -147,8 +150,8 @@ export {
   QuestionSchema,
   QuestionsArraySchema,
 } from './flow/question.js';
-/** Zod schema for the ask step spec. */
-export { askStepSpecSchema } from './flow/schemas.js';
+/** Zod schemas for ask step and agent definition specs. */
+export { agentDefinitionSchema, askStepSpecSchema } from './flow/schemas.js';
 /**
  * Namespace of step builder functions. Each builder validates its config
  * against the step schema and throws `FlowDefinitionError` on invalid input.
@@ -219,6 +222,8 @@ export type {
  * - `RunState` — full run checkpoint persisted to `state.json`.
  */
 export type {
+  AgentDefinition,
+  AgentsFromSpec,
   AskStep,
   AskStepSpec,
   AwaitingInput,
@@ -250,7 +255,7 @@ export type {
   TerminalStep,
   TerminalStepSpec,
 } from './flow/types.js';
-export { isScriptEnvFromSpec } from './flow/types.js';
+export { isAgentsFromSpec, isScriptEnvFromSpec } from './flow/types.js';
 /** Union of error types returned by `HandoffStore.write`. */
 export type { WriteError } from './handoffs.js';
 /**

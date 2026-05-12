@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 import { assemblePrompt, loadHandoffValues } from '../../context-inject.js';
 import type { CostTracker, StepMetrics } from '../../cost.js';
 import {
+  AgentsResolutionError,
   HandoffIoError,
   HandoffNotFoundError,
   HandoffOutputError,
@@ -27,6 +28,7 @@ import { z } from '../../zod.js';
 import { EventLogWriter } from '../event-log.js';
 import { writeLiveState } from '../live-state.js';
 import { renderOutputContract } from '../output-contract.js';
+import { resolveAgents } from './agents-resolution.js';
 
 /**
  * Context bag threaded into executePrompt. The Step constructs this from its
@@ -315,6 +317,7 @@ function wrapFailure(
   }
   if (cause instanceof HandoffSchemaError) return cause;
   if (cause instanceof HandoffOutputError) return cause;
+  if (cause instanceof AgentsResolutionError) return cause;
   const message = messageOf(cause);
   return new StepFailureError(`step "${stepId}" failed: ${message}`, stepId, attempt, {
     cause: message,
@@ -405,6 +408,22 @@ export async function executePrompt(
         ? Array.from(new Set([...step.tools, 'Bash', 'Write']))
         : step.tools;
 
+    // Resolve dynamic subagent definitions when declared on the step. Runs
+    // before the 'running' live-state write so a resolution failure never
+    // surfaces a started status in the progress display — no provider cost
+    // is incurred on this path. Throws AgentsResolutionError, which the
+    // wrapFailure guard above lets pass through unwrapped.
+    let resolvedAgents: Array<Record<string, unknown>> | undefined;
+    if (step.agents !== undefined) {
+      resolvedAgents = await resolveAgents(step.agents, {
+        runDir: ctx.runDir,
+        stepId,
+        flowDir: ctx.flowDir,
+        handoffStore: ctx.handoffStore,
+        inputVars: ctx.inputVars ?? {},
+      });
+    }
+
     // Pre-flight finished — only now is the step actually invoking the
     // provider. Writing 'running' before handoff load / prompt assembly would
     // leave a zombie running file in live/ when those pre-flight steps fail
@@ -435,6 +454,9 @@ export async function executePrompt(
       ...(includeJsonSchema ? { jsonSchema } : {}),
       ...(step.maxBudgetUsd !== undefined ? { maxBudgetUsd: step.maxBudgetUsd } : {}),
       ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}),
+      ...(resolvedAgents !== undefined && resolvedAgents.length > 0
+        ? { agents: resolvedAgents }
+        : {}),
     };
 
     const invocationCtx: InvocationContext = {
