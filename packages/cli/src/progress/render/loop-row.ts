@@ -1,4 +1,3 @@
-import type { Flow } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../../brand.js';
 import { gray, green, red, yellow } from '../../color.js';
 import { fmtK } from '../../format.js';
@@ -53,13 +52,14 @@ function loopSymbol(loopState: StepDisplayState, spinnerFrame: number): string {
  *   <sym> <name padded>  iter <N>/<max>  <elapsed padded>  <sumTokens padded>
  *
  * Each body step is rendered with a 4-space indent using renderStepRow.
+ * Multi-line output from renderStepRow (verbose sub-lines) is indented on
+ * every line so continuation lines stay visually grouped under the parent.
  *
  * @param loopId           The loop step's own ID.
  * @param loopDisplayState The StepDisplayState for the loop parent.
  * @param bodyStates       Map of body step ID to StepDisplayState.
  * @param bodyTopoOrder    Ordered body step IDs (from bodyGraph.topoOrder or body key order).
  * @param spinnerFrame     Current spinner frame index for in-flight steps.
- * @param flow             The full flow — passed through to renderStepRow.
  * @param verbose          Whether verbose mode is active.
  * @param verboseAccumulators  Verbose accumulator map or null.
  */
@@ -69,7 +69,6 @@ export function renderLoopRow(
   bodyStates: Map<string, StepDisplayState>,
   bodyTopoOrder: readonly string[],
   spinnerFrame: number,
-  flow: Flow<unknown>,
   verbose: boolean,
   verboseAccumulators: Map<string, import('./types.js').VerboseAccumulator> | null,
 ): string {
@@ -97,7 +96,7 @@ export function renderLoopRow(
 
   const parentRow = ` ${sym} ${nameCol} ${iterCol} ${elapsedCol} ${tokensCol}`;
 
-  // Render each body step with 4-space indent
+  // Render each body step with 4-space indent on every line (including verbose sub-lines).
   const bodyRows: string[] = [];
   for (const bodyId of bodyTopoOrder) {
     const bodyState = bodyStates.get(bodyId);
@@ -106,11 +105,14 @@ export function renderLoopRow(
       bodyState,
       spinnerFrame,
       bodyStates,
-      flow,
       verbose,
       verboseAccumulators,
     );
-    bodyRows.push(`    ${rendered}`);
+    const indented = rendered
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n');
+    bodyRows.push(indented);
   }
 
   if (bodyRows.length === 0) return parentRow;

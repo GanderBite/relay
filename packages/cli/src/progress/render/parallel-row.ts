@@ -1,4 +1,3 @@
-import type { Flow } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../../brand.js';
 import { gray, green, red, yellow } from '../../color.js';
 import { fmtK } from '../../format.js';
@@ -53,13 +52,14 @@ function parallelSymbol(parallelState: StepDisplayState, spinnerFrame: number): 
  *   <sym> <name padded>  <N branches padded>  <elapsed padded>  <sumTokens padded>
  *
  * Each branch step is rendered with a 4-space indent using renderStepRow.
+ * Multi-line output from renderStepRow (verbose sub-lines) is indented on
+ * every line so continuation lines stay visually grouped under the parent.
  *
  * @param parallelId           The parallel step's own ID.
  * @param parallelDisplayState The StepDisplayState for the parallel parent.
  * @param branchStates         Map of branch step ID to StepDisplayState.
  * @param branchIds            Ordered branch step IDs.
  * @param spinnerFrame         Current spinner frame index for in-flight steps.
- * @param flow                 The full flow — passed through to renderStepRow.
  * @param verbose              Whether verbose mode is active.
  * @param verboseAccumulators  Verbose accumulator map or null.
  */
@@ -69,7 +69,6 @@ export function renderParallelRow(
   branchStates: Map<string, StepDisplayState>,
   branchIds: readonly string[],
   spinnerFrame: number,
-  flow: Flow<unknown>,
   verbose: boolean,
   verboseAccumulators: Map<string, VerboseAccumulator> | null,
 ): string {
@@ -106,11 +105,14 @@ export function renderParallelRow(
       branchState,
       spinnerFrame,
       branchStates,
-      flow,
       verbose,
       verboseAccumulators,
     );
-    branchRows.push(`    ${rendered}`);
+    const indented = rendered
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n');
+    branchRows.push(indented);
   }
 
   if (branchRows.length === 0) return parentRow;

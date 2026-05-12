@@ -1,4 +1,4 @@
-import type { Flow, LoopStep, ParallelStep, ReplayedEventRecord } from '@ganderbite/relay-core';
+import type { Flow, ReplayedEventRecord } from '@ganderbite/relay-core';
 import type { LiveStatePartial } from '@ganderbite/relay-core/live-state';
 import logUpdate from 'log-update';
 import { flowHeader, SYMBOLS } from '../../brand.js';
@@ -70,11 +70,16 @@ export class ProgressRenderer<TInput = unknown> {
 
       // Walk loop body steps — they are NOT in topoOrder and must be registered here.
       if (step !== undefined && step.kind === 'loop') {
-        const loopStep = step as LoopStep;
-        const bodyIds = Object.keys(loopStep.body);
+        const bodyIds = step.bodyGraph?.topoOrder ?? Object.keys(step.body);
         this.#loopBodyOrder.set(runnerId, bodyIds);
         for (const bodyId of bodyIds) {
-          const bodyStep = loopStep.body[bodyId];
+          if (this.#steps.has(bodyId)) {
+            throw new Error(
+              `Body step "${bodyId}" of loop "${runnerId}" collides with an existing step ID. ` +
+                `Step IDs must be unique across the entire flow including loop bodies.`,
+            );
+          }
+          const bodyStep = step.body[bodyId];
           this.#bodyStepParent.set(bodyId, runnerId);
           this.#steps.set(bodyId, {
             id: bodyId,
@@ -93,9 +98,8 @@ export class ProgressRenderer<TInput = unknown> {
       // Walk parallel branch steps — they ARE in topoOrder but should render
       // indented under their parent parallel step, not at the top level.
       if (step !== undefined && step.kind === 'parallel') {
-        const parallelStep = step as ParallelStep;
-        this.#parallelBranchOrder.set(runnerId, parallelStep.branches);
-        for (const branchId of parallelStep.branches) {
+        this.#parallelBranchOrder.set(runnerId, step.branches);
+        for (const branchId of step.branches) {
           this.#branchParent.set(branchId, runnerId);
         }
       }
@@ -260,6 +264,15 @@ export class ProgressRenderer<TInput = unknown> {
     return total;
   }
 
+  /**
+   * Exposes the token-sum computation for tests.
+   * Sums completed steps' (finalTokensIn + finalTokensOut) plus running steps'
+   * tokensSoFar — the same value the footer displays.
+   */
+  computeTotalTokensForTest(): number {
+    return this.#computeTotalTokens();
+  }
+
   #redraw(): void {
     const lines: string[] = [];
     lines.push(flowHeader(this.#flow.name, this.#runId));
@@ -289,7 +302,6 @@ export class ProgressRenderer<TInput = unknown> {
             bodyStates,
             bodyOrder,
             this.#spinnerFrame,
-            this.#flow as Flow<unknown>,
             this.#verbose,
             this.#verboseAccumulators,
           ),
@@ -309,7 +321,6 @@ export class ProgressRenderer<TInput = unknown> {
             branchStates,
             branchOrder,
             this.#spinnerFrame,
-            this.#flow as Flow<unknown>,
             this.#verbose,
             this.#verboseAccumulators,
           ),
@@ -320,7 +331,6 @@ export class ProgressRenderer<TInput = unknown> {
             state,
             this.#spinnerFrame,
             this.#steps,
-            this.#flow as Flow<unknown>,
             this.#verbose,
             this.#verboseAccumulators,
           ),

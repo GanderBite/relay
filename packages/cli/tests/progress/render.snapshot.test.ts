@@ -1,5 +1,3 @@
-import type { Flow } from '@ganderbite/relay-core';
-import { z } from '@ganderbite/relay-core';
 import { describe, expect, it } from 'vitest';
 import { renderFooter } from '../../src/progress/render/footer.js';
 import { renderLoopRow } from '../../src/progress/render/loop-row.js';
@@ -10,25 +8,6 @@ import type { StepDisplayState } from '../../src/progress/render/types.js';
 // Fixed past timestamp so elapsed columns are non-empty and deterministic.
 const T0 = new Date(Date.now() - 5000).toISOString();
 const SF = 0; // spinnerFrame
-
-function makeFlow(stepIds: string[]): Flow<unknown> {
-  const steps: Record<string, { dependsOn: readonly string[]; promptFile: string }> = {};
-  for (const id of stepIds) steps[id] = { dependsOn: [], promptFile: 'p.md' };
-  return {
-    name: 'test-flow',
-    version: '1.0.0',
-    input: z.object({}),
-    steps,
-    rootSteps: stepIds.slice(0, 1),
-    graph: {
-      successors: new Map(),
-      predecessors: new Map(),
-      topoOrder: stepIds,
-      rootSteps: stepIds.slice(0, 1),
-      entry: stepIds[0] ?? '',
-    },
-  } as unknown as Flow<unknown>;
-}
 
 function makeState(overrides: Partial<StepDisplayState> = {}): StepDisplayState {
   return {
@@ -69,7 +48,7 @@ describe('renderStepRow', () => {
       ['step-a', state],
       ['dep-step', dep],
     ]);
-    const row = renderStepRow(state, SF, steps, makeFlow(['dep-step', 'step-a']), false, null);
+    const row = renderStepRow(state, SF, steps, false, null);
     expect(row).toContain('waiting on dep-step');
   });
 
@@ -79,14 +58,7 @@ describe('renderStepRow', () => {
       runningStartedAt: T0,
       live: runningLive({ toolsSoFar: 3, tokensSoFar: 226 }),
     });
-    const row = renderStepRow(
-      state,
-      SF,
-      new Map([['step-a', state]]),
-      makeFlow(['step-a']),
-      false,
-      null,
-    );
+    const row = renderStepRow(state, SF, new Map([['step-a', state]]), false, null);
     expect(row).toContain('3 tools');
     expect(row).toContain('226');
   });
@@ -97,14 +69,7 @@ describe('renderStepRow', () => {
       runningStartedAt: T0,
       live: runningLive({ model: 'claude-sonnet-4-5', toolsSoFar: 3, tokensSoFar: 226 }),
     });
-    const row = renderStepRow(
-      state,
-      SF,
-      new Map([['step-a', state]]),
-      makeFlow(['step-a']),
-      false,
-      null,
-    );
+    const row = renderStepRow(state, SF, new Map([['step-a', state]]), false, null);
     expect(row).not.toContain('claude-sonnet-4-5');
     expect(row).not.toContain('sonnet');
   });
@@ -115,14 +80,7 @@ describe('renderStepRow', () => {
       runningStartedAt: T0,
       live: runningLive({ toolsSoFar: 0, tokensSoFar: 0 }),
     });
-    const row = renderStepRow(
-      state,
-      SF,
-      new Map([['step-a', state]]),
-      makeFlow(['step-a']),
-      false,
-      null,
-    );
+    const row = renderStepRow(state, SF, new Map([['step-a', state]]), false, null);
     expect(row).toContain('0 tools');
   });
 
@@ -137,14 +95,7 @@ describe('renderStepRow', () => {
       finalModel: 'mock',
       live: succeededLive({ toolsSoFar: 5, tokensSoFar: 150 }),
     });
-    const row = renderStepRow(
-      state,
-      SF,
-      new Map([['step-a', state]]),
-      makeFlow(['step-a']),
-      false,
-      null,
-    );
+    const row = renderStepRow(state, SF, new Map([['step-a', state]]), false, null);
     expect(row).toContain('5 tools');
     expect(row).toContain('150'); // finalTokensIn + finalTokensOut = 150
     expect(row).toContain('3.2s');
@@ -161,14 +112,7 @@ describe('renderStepRow', () => {
       finalModel: 'mock',
       live: failedLive({ toolsSoFar: 0, tokensSoFar: 0 }),
     });
-    const row = renderStepRow(
-      state,
-      SF,
-      new Map([['step-a', state]]),
-      makeFlow(['step-a']),
-      false,
-      null,
-    );
+    const row = renderStepRow(state, SF, new Map([['step-a', state]]), false, null);
     expect(row).toContain('✕');
   });
 });
@@ -217,52 +161,33 @@ describe('renderLoopRow', () => {
     });
     const bodyState = makeState({ id: 'body-step', live: bodyLive });
     const bodyStates = new Map([['body-step', bodyState]]);
-    const flow = makeFlow(['my-loop', 'body-step']);
-    return { loopState, bodyStates, flow };
+    return { loopState, bodyStates };
   }
 
   it('running loop at iter 3/10: parent row contains "iter 3/10"', () => {
-    const { loopState, bodyStates, flow } = mkLoopFixture(
+    const { loopState, bodyStates } = mkLoopFixture(
       3,
       10,
       runningLive({ toolsSoFar: 1, tokensSoFar: 50 }),
     );
-    const output = renderLoopRow(
-      'my-loop',
-      loopState,
-      bodyStates,
-      ['body-step'],
-      SF,
-      flow,
-      false,
-      null,
-    );
+    const output = renderLoopRow('my-loop', loopState, bodyStates, ['body-step'], SF, false, null);
     expect(output).toContain('iter 3/10');
   });
 
   it('body step row is prefixed with 4 spaces', () => {
-    const { loopState, bodyStates, flow } = mkLoopFixture(
+    const { loopState, bodyStates } = mkLoopFixture(
       1,
       5,
       runningLive({ toolsSoFar: 0, tokensSoFar: 0 }),
     );
-    const output = renderLoopRow(
-      'my-loop',
-      loopState,
-      bodyStates,
-      ['body-step'],
-      SF,
-      flow,
-      false,
-      null,
-    );
+    const output = renderLoopRow('my-loop', loopState, bodyStates, ['body-step'], SF, false, null);
     const lines = output.split('\n');
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[1]).toMatch(/^ {4}/);
   });
 
   it('failed body step row contains the fail symbol', () => {
-    const { loopState, bodyStates, flow } = mkLoopFixture(
+    const { loopState, bodyStates } = mkLoopFixture(
       2,
       5,
       failedLive({ toolsSoFar: 0, tokensSoFar: 0 }),
@@ -279,16 +204,7 @@ describe('renderLoopRow', () => {
       live: failedLive({ toolsSoFar: 0, tokensSoFar: 0 }),
     });
     bodyStates.set('body-step', failedBody);
-    const output = renderLoopRow(
-      'my-loop',
-      loopState,
-      bodyStates,
-      ['body-step'],
-      SF,
-      flow,
-      false,
-      null,
-    );
+    const output = renderLoopRow('my-loop', loopState, bodyStates, ['body-step'], SF, false, null);
     expect(output).toContain('✕');
   });
 });
@@ -319,7 +235,6 @@ describe('renderParallelRow', () => {
       branchStates,
       branchIds,
       SF,
-      makeFlow(['par-step', ...branchIds]),
       false,
       null,
     );
@@ -340,7 +255,6 @@ describe('renderParallelRow', () => {
       branchStates,
       branchIds,
       SF,
-      makeFlow(['par-step', ...branchIds]),
       false,
       null,
     );
@@ -381,7 +295,6 @@ describe('renderParallelRow', () => {
       branchStates,
       branchIds,
       SF,
-      makeFlow(['par-step', ...branchIds]),
       false,
       null,
     );

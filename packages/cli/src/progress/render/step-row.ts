@@ -1,4 +1,4 @@
-import type { Flow, StepStatus } from '@ganderbite/relay-core';
+import type { StepStatus } from '@ganderbite/relay-core';
 import { SYMBOLS } from '../../brand.js';
 import { gray, green, red, yellow } from '../../color.js';
 import { fmtDuration, fmtK } from '../../format.js';
@@ -20,7 +20,6 @@ export function renderStepRow(
   state: StepDisplayState,
   spinnerFrame: number,
   steps: Map<string, StepDisplayState>,
-  _flow: Flow<unknown>,
   verbose: boolean,
   verboseAccumulators: Map<string, VerboseAccumulator> | null,
 ): string {

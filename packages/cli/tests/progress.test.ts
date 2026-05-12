@@ -556,6 +556,46 @@ describe('render.ts', () => {
     // stop() before the debounce fires — should not throw.
     expect(() => renderer.stop()).not.toThrow();
   });
+
+  it('computeTotalTokensForTest sums running tokensSoFar and completed (in+out)', () => {
+    // Two steps: 'step-run' (running, tokensSoFar=100) and 'step-done' (succeeded).
+    const flow = makeFlow(['step-run', 'step-done']);
+    const renderer = new ProgressRenderer(flow, fakeAuth, false);
+    renderer.start('run-token-sum');
+
+    const now = new Date().toISOString();
+
+    // Put step-run into running state with tokensSoFar=100.
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-run',
+      state: { status: 'running', attempt: 1, startedAt: now, lastUpdateAt: now, tokensSoFar: 100 },
+    });
+
+    // Put step-done through running → succeeded and push final metrics (50 in + 25 out = 75).
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-done',
+      state: { status: 'running', attempt: 1, startedAt: now, lastUpdateAt: now },
+    });
+    renderer.onEvent({
+      kind: 'state',
+      stepId: 'step-done',
+      state: { status: 'succeeded', attempt: 1, startedAt: now, lastUpdateAt: now },
+    });
+    renderer.updateRunnerMetrics('step-done', {
+      tokensIn: 50,
+      tokensOut: 25,
+      costUsd: 0,
+      durationMs: 500,
+      model: 'mock',
+    });
+
+    // Expected: running step contributes tokensSoFar (100), completed step contributes in+out (75).
+    expect(renderer.computeTotalTokensForTest()).toBe(175);
+
+    renderer.stop();
+  });
 });
 
 // ---------------------------------------------------------------------------
