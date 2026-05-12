@@ -71,6 +71,8 @@ const CAPABILITIES: ProviderCapabilities = {
     'TodoWrite',
   ],
   multimodal: true,
+  // --max-budget-usd is forwarded to the CLI when set. Enforcement is documented
+  // for API-key billing only; behavior on subscription-billed runs is not specified.
   budgetCap: true,
   supportsAgents: true,
   models: ['haiku', 'sonnet', 'opus', 'claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-7'],

@@ -14,6 +14,7 @@ const FIXED_PREFIX: readonly string[] = [
   'text',
   '--no-session-persistence',
   '--verbose',
+  '--dangerously-skip-permissions',
 ];
 
 /**
@@ -52,7 +53,7 @@ export function buildCliArgs(req: InvocationRequest, _opts: ClaudeCliProviderOpt
   }
 
   if (req.tools !== undefined && req.tools.length > 0) {
-    args.push('--allowedTools', req.tools.join(' '));
+    args.push('--tools', req.tools.join(','));
   }
 
   if (req.jsonSchema !== undefined) {
