@@ -7,6 +7,9 @@
  *  - display.start(runId) is called
  *  - 4th constructor argument (verbose) matches options.verbose === true
  *  - verbose=false when option is absent
+ *  - paused-result recursion path (TTY mode, orchestrator returns paused)
+ *  - interactive readline prompt path (questions array is non-empty)
+ *  - failure-banner path (orchestrator returns failed)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,6 +110,21 @@ vi.mock('../../src/step-data.js', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock answer-prompt.js — allows the interactive-prompt path to be exercised
+// without a real readline TTY. The hoisted fn references are reset per test.
+// ---------------------------------------------------------------------------
+
+const mockMakeReadline = vi.hoisted(() => vi.fn());
+const mockAskQuestion = vi.hoisted(() => vi.fn());
+const mockCollectMissingRequired = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/commands/answer-prompt.js', () => ({
+  makeReadline: (...args: unknown[]) => mockMakeReadline(...args),
+  askQuestion: (...args: unknown[]) => mockAskQuestion(...args),
+  collectMissingRequired: (...args: unknown[]) => mockCollectMissingRequired(...args),
+}));
+
+// ---------------------------------------------------------------------------
 // ProgressDisplay mock — captures constructor args and start() calls.
 // This is the system under observation for these tests.
 // ---------------------------------------------------------------------------
@@ -159,7 +177,7 @@ function makeResolvedProvider(name = 'claude-cli') {
   return { name };
 }
 
-function makePausedState(stepId = 'gather') {
+function makePausedState(stepId = 'gather', questions: unknown[] = []) {
   return {
     runId: 'run-xyz',
     flowName: 'test-flow',
@@ -173,9 +191,33 @@ function makePausedState(stepId = 'gather') {
     },
     awaitingInput: {
       stepId,
-      questions: [],
+      questions,
       promptedAt: '2026-01-01T00:00:01.000Z',
     },
+  };
+}
+
+function makePausedResult(pausedStepId = 'gather') {
+  return {
+    runId: 'run-xyz',
+    runDir: '/tmp/.relay/runs/run-xyz',
+    status: 'paused' as const,
+    cost: { totalUsd: 0, totalTokens: 0 },
+    artifacts: [],
+    durationMs: 50,
+    pausedStepId,
+  };
+}
+
+function makeFailedResult() {
+  return {
+    runId: 'run-xyz',
+    runDir: '/tmp/.relay/runs/run-xyz',
+    status: 'failed' as const,
+    cost: { totalUsd: 0, totalTokens: 0 },
+    artifacts: [],
+    durationMs: 50,
+    firstError: new Error('step failed'),
   };
 }
 
@@ -235,6 +277,12 @@ beforeEach(() => {
 
   // Default stop() resolves immediately.
   mockProgressDisplayStop.mockResolvedValue(undefined);
+
+  // Default answer-prompt mocks: no readline needed, no questions.
+  const fakeRl = { close: vi.fn(), question: vi.fn() };
+  mockMakeReadline.mockReturnValue(fakeRl);
+  mockAskQuestion.mockResolvedValue('test-answer');
+  mockCollectMissingRequired.mockReturnValue([]);
 
   // Silence process I/O.
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -334,5 +382,86 @@ describe('answerCommand — ProgressDisplay wiring (TTY mode)', () => {
     // The fallback branch does not construct ProgressDisplay.
     expect(progressDisplayConstructorCalls).toHaveLength(0);
     expect(mockProgressDisplayStart).not.toHaveBeenCalled();
+  });
+
+  it('[ANS-PD-paused-recursion] recursive answerCommand is invoked when orchestrator returns paused in TTY mode', async () => {
+    // First call: state is paused, loadState returns paused state.
+    // Second call (recursive): loadState returns the same paused state; orchestrator returns succeeded.
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather')));
+
+    // First orchestrator.resume returns paused → triggers the recursion branch.
+    // Second orchestrator.resume (from recursive answerCommand call) returns succeeded.
+    mockOrchestratorResume
+      .mockResolvedValueOnce(makePausedResult('gather'))
+      .mockResolvedValue(makeSucceededResult());
+
+    // Capture stdout writes so we can verify the "answering inline" message.
+    const writtenChunks: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writtenChunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
+      return true;
+    });
+
+    await expect(answerCommand(['run-xyz'], {})).resolves.toBeUndefined();
+
+    // The "answering inline" line must have been written — proof the branch executed.
+    const allOutput = writtenChunks.join('');
+    expect(allOutput).toContain('paused for input — answering inline');
+
+    // The orchestrator must have been called twice: once for the initial run,
+    // once for the recursive answerCommand call.
+    expect(mockOrchestratorResume).toHaveBeenCalledTimes(2);
+  });
+
+  it('[ANS-PD-interactive-prompt] readline prompt is invoked when questions array is non-empty', async () => {
+    const question = { id: 'q1', kind: 'text' as const, label: 'What is your name?' };
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather', [question])));
+    mockOrchestratorResume.mockResolvedValue(makeSucceededResult());
+
+    // The mock askQuestion returns a synthesised answer.
+    mockAskQuestion.mockResolvedValue('relay-user');
+
+    // Fake readline interface — close() is called in the finally block.
+    const fakeRl = { close: vi.fn(), question: vi.fn() };
+    mockMakeReadline.mockReturnValue(fakeRl);
+
+    await expect(answerCommand(['run-xyz'], {})).resolves.toBeUndefined();
+
+    // makeReadline must have been called to open the interface.
+    expect(mockMakeReadline).toHaveBeenCalledOnce();
+
+    // askQuestion must have been called with the rl and the question.
+    expect(mockAskQuestion).toHaveBeenCalledOnce();
+    expect(mockAskQuestion).toHaveBeenCalledWith(fakeRl, question);
+
+    // The rl must have been closed in the finally block.
+    expect(fakeRl.close).toHaveBeenCalledOnce();
+
+    // The answer handoff must have been written with the synthesised answer.
+    expect(mockAtomicWriteJson).toHaveBeenCalledWith(
+      expect.stringContaining('__ask_'),
+      expect.objectContaining({ q1: 'relay-user' }),
+    );
+  });
+
+  it('[ANS-PD-failure] renderFailureBanner is called and process exits 1 when orchestrator returns failed', async () => {
+    mockLoadState.mockResolvedValue(ok(makePausedState('gather')));
+    mockOrchestratorResume.mockResolvedValue(makeFailedResult());
+
+    // process.exit is already mocked to throw in beforeEach; catch that throw.
+    await expect(answerCommand(['run-xyz'], {})).rejects.toThrow('process.exit called');
+
+    // renderFailureBanner from banner.js must have been called once.
+    const { renderFailureBanner } = await import('../../src/banner.js');
+    expect(vi.mocked(renderFailureBanner)).toHaveBeenCalledOnce();
+    expect(vi.mocked(renderFailureBanner)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flowName: 'test-flow',
+        runId: 'run-xyz',
+      }),
+    );
+
+    // process.exit must have been called with exit code 1.
+    expect(vi.mocked(process.exit)).toHaveBeenCalledWith(1);
   });
 });
