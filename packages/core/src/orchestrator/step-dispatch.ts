@@ -390,6 +390,8 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         attempt: stateMachine.getState().steps[stepId]?.attempts ?? 1,
         startedAt: new Date().toISOString(),
         lastUpdateAt: new Date().toISOString(),
+        ...(step.kind === 'parallel' ? { branchCount: step.branches.length } : {}),
+        ...(step.kind === 'loop' ? { maxIter: step.maxIterations } : {}),
       });
 
       try {

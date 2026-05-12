@@ -9,6 +9,7 @@ import { executeParallel } from './exec/parallel.js';
 import { executePrompt } from './exec/prompt.js';
 import { executeScript } from './exec/script.js';
 import { executeTerminal } from './exec/terminal.js';
+import { writeLiveState } from './live-state.js';
 import { defaultStepRegistry, type StepKindRegistry } from './step-kind-registry.js';
 
 /**
@@ -163,6 +164,15 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         getResumedIter: () => ctx.getResumedLoopIter(step.id),
         onIterationStart: async (iter) => {
           await ctx.onLoopIterationStart(step.id, iter);
+          const now = new Date().toISOString();
+          void writeLiveState(ctx.runDir, step.id, {
+            status: 'running',
+            attempt: ctx.attempt,
+            startedAt: now,
+            lastUpdateAt: now,
+            maxIter: step.maxIterations,
+            iter,
+          });
         },
         isBodyStepSucceeded: (loopStepId, bodyStepId, iter) =>
           ctx.isLoopBodyStepSucceeded(loopStepId, bodyStepId, iter),
