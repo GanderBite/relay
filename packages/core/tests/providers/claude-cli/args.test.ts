@@ -12,6 +12,7 @@ const FIXED_PREFIX = [
   'text',
   '--no-session-persistence',
   '--verbose',
+  '--dangerously-skip-permissions',
 ];
 
 const emptyOpts: ClaudeCliProviderOptions = {};
@@ -41,12 +42,12 @@ describe('buildCliArgs', () => {
       expect(args[idx + 1]).toBe('You are helpful.');
     });
 
-    it('appends --allowedTools when req.tools is non-empty', () => {
+    it('appends --tools when req.tools is non-empty', () => {
       const req: InvocationRequest = { prompt: 'p', tools: ['Read', 'Write'] };
       const args = buildCliArgs(req, emptyOpts);
-      expect(args).toContain('--allowedTools');
-      const idx = args.indexOf('--allowedTools');
-      expect(args[idx + 1]).toBe('Read Write');
+      expect(args).toContain('--tools');
+      const idx = args.indexOf('--tools');
+      expect(args[idx + 1]).toBe('Read,Write');
     });
 
     it('appends --json-schema when req.jsonSchema is set', () => {
@@ -82,7 +83,7 @@ describe('buildCliArgs', () => {
 
       expect(args).toContain('--model');
       expect(args).toContain('--system-prompt');
-      expect(args).toContain('--allowedTools');
+      expect(args).toContain('--tools');
       expect(args).toContain('--json-schema');
       expect(args).toContain('--max-budget-usd');
     });
@@ -101,25 +102,25 @@ describe('buildCliArgs', () => {
     });
   });
 
-  describe('allowedTools space-join', () => {
-    it('joins a single tool without trailing space', () => {
+  describe('tools comma-join', () => {
+    it('joins a single tool without trailing separator', () => {
       const req: InvocationRequest = { prompt: 'p', tools: ['Read'] };
       const args = buildCliArgs(req, emptyOpts);
-      const idx = args.indexOf('--allowedTools');
+      const idx = args.indexOf('--tools');
       expect(args[idx + 1]).toBe('Read');
     });
 
-    it('joins multiple tools with a single space between each', () => {
+    it('joins multiple tools with a comma between each', () => {
       const req: InvocationRequest = { prompt: 'p', tools: ['Read', 'Write', 'Edit'] };
       const args = buildCliArgs(req, emptyOpts);
-      const idx = args.indexOf('--allowedTools');
-      expect(args[idx + 1]).toBe('Read Write Edit');
+      const idx = args.indexOf('--tools');
+      expect(args[idx + 1]).toBe('Read,Write,Edit');
     });
 
-    it('omits --allowedTools when tools array is empty', () => {
+    it('omits --tools when tools array is empty', () => {
       const req: InvocationRequest = { prompt: 'p', tools: [] };
       const args = buildCliArgs(req, emptyOpts);
-      expect(args).not.toContain('--allowedTools');
+      expect(args).not.toContain('--tools');
     });
   });
 
@@ -180,6 +181,11 @@ describe('buildCliArgs', () => {
     it('never produces --permission-mode', () => {
       const req: InvocationRequest = { prompt: 'p' };
       expect(buildCliArgs(req, emptyOpts)).not.toContain('--permission-mode');
+    });
+
+    it('never produces --allowedTools', () => {
+      const req: InvocationRequest = { prompt: 'p', tools: ['Read'] };
+      expect(buildCliArgs(req, emptyOpts)).not.toContain('--allowedTools');
     });
   });
 
