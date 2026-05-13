@@ -272,7 +272,7 @@ describe('relay run — SIGINT paused banner', () => {
   });
 });
 
-describe('relay run — inline answer on pause', () => {
+describe('relay run — paused banner on pause', () => {
   let originalStdoutIsTTY: boolean | undefined;
   let originalStdinIsTTY: boolean | undefined;
 

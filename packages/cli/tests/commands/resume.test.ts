@@ -384,7 +384,7 @@ function setupSuccessfulResumePipeline(resumeResult: unknown): void {
   mockOrchestratorResume.mockResolvedValue(resumeResult);
 }
 
-describe('relay resume — inline answer on pause', () => {
+describe('relay resume — paused banner on pause', () => {
   let originalStdoutIsTTY: boolean | undefined;
   let originalStdinIsTTY: boolean | undefined;
 
