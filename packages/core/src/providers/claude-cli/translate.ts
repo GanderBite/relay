@@ -19,6 +19,7 @@
  * empty array; the provider ignores empty arrays in the event stream.
  */
 
+import { mergeUsage } from '../../util/usage.js';
 import type { InvocationEvent, NormalizedUsage } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -436,21 +437,7 @@ export function extractResultSummary(msg: unknown): ResultSummary | null {
 }
 
 // ---------------------------------------------------------------------------
-// mergeUsage
+// mergeUsage — re-exported from util/usage for callers that import from here
 // ---------------------------------------------------------------------------
 
-/**
- * Merge two usage objects by summing each field.
- *
- * Fields missing from `b` contribute 0. The result is always a fully
- * populated NormalizedUsage with no NaN or undefined values. Use this to
- * accumulate usage across multiple partial usage events in a multi-turn run.
- */
-export function mergeUsage(a: NormalizedUsage, b: Partial<NormalizedUsage>): NormalizedUsage {
-  return {
-    inputTokens: toSafeNumber(a.inputTokens) + toSafeNumber(b.inputTokens),
-    outputTokens: toSafeNumber(a.outputTokens) + toSafeNumber(b.outputTokens),
-    cacheReadTokens: toSafeNumber(a.cacheReadTokens) + toSafeNumber(b.cacheReadTokens),
-    cacheCreationTokens: toSafeNumber(a.cacheCreationTokens) + toSafeNumber(b.cacheCreationTokens),
-  };
-}
+export { mergeUsage };

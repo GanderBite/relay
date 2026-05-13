@@ -167,8 +167,11 @@ describe('executePrompt live-state cadence', () => {
     await executePrompt(step, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
     expect(observed.length).toBeGreaterThanOrEqual(2);
+    // First envelope: inputTokens=5 summed onto zero baseline → tokensSoFar=5.
     expect(observed[0]).toBe(5);
-    expect(observed[observed.length - 1]).toBe(10);
+    // Second envelope: inputTokens=5 + outputTokens=5 summed onto {5,0} → {10,5}
+    // tokensSoFar = 10 + 5 = 15 (summing, not replacing).
+    expect(observed[observed.length - 1]).toBe(15);
   });
 
   it('updates tokensSoFar cumulatively across usage events and persists the aggregated text', async () => {
@@ -217,7 +220,10 @@ describe('executePrompt live-state cadence', () => {
     };
     await executePrompt(step, ctx as unknown as Parameters<typeof executePrompt>[1]);
 
-    expect(tokenSeries).toEqual([15, 30]);
+    // First envelope: {inputTokens:10, outputTokens:5} summed onto zero → tokensSoFar=15.
+    // Second envelope: {inputTokens:20, outputTokens:10} summed onto {10,5} → {30,15}
+    // tokensSoFar = 30 + 15 = 45 (summing, not replacing).
+    expect(tokenSeries).toEqual([15, 45]);
 
     // Final on-disk file reflects the last usage snapshot and carries the
     // 'running' status — executePrompt never writes a terminal live-state; the
@@ -228,7 +234,7 @@ describe('executePrompt live-state cadence', () => {
       tokensSoFar: number;
       toolsSoFar: number;
     };
-    expect(final.tokensSoFar).toBe(30);
+    expect(final.tokensSoFar).toBe(45);
     expect(final.status).toBe('running');
     expect(final.toolsSoFar).toBe(0);
 

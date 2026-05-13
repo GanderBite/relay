@@ -247,8 +247,8 @@ export class ProgressRenderer<TInput = unknown> {
     } else if (ev.type === 'tool.call') {
       acc.tools += 1;
     } else if (ev.type === 'usage') {
-      acc.tokensIn = ev.usage.inputTokens ?? 0;
-      acc.tokensOut = ev.usage.outputTokens ?? 0;
+      acc.tokensIn += ev.usage.inputTokens ?? 0;
+      acc.tokensOut += ev.usage.outputTokens ?? 0;
     } else if (ev.type === 'stream.end') {
       if (ev.costUsd !== undefined) acc.costUsd = ev.costUsd;
     } else if (ev.type === 'text.delta') {

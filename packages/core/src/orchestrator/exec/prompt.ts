@@ -24,6 +24,7 @@ import type {
 } from '../../providers/types.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
 import { extractJson } from '../../util/json.js';
+import { mergeUsage } from '../../util/usage.js';
 import { z } from '../../zod.js';
 import { EventLogWriter } from '../event-log.js';
 import { writeLiveState } from '../live-state.js';
@@ -118,15 +119,6 @@ function toJsonSchema(schema: z.ZodType | undefined): Record<string, unknown> | 
   const out = z.toJSONSchema(schema);
   if (typeof out !== 'object' || out === null) return undefined;
   return out as Record<string, unknown>;
-}
-
-function mergeUsage(base: NormalizedUsage, patch: Partial<NormalizedUsage>): NormalizedUsage {
-  return {
-    inputTokens: patch.inputTokens ?? base.inputTokens,
-    outputTokens: patch.outputTokens ?? base.outputTokens,
-    cacheReadTokens: patch.cacheReadTokens ?? base.cacheReadTokens,
-    cacheCreationTokens: patch.cacheCreationTokens ?? base.cacheCreationTokens,
-  };
 }
 
 /**
