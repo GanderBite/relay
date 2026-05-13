@@ -309,22 +309,30 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         throw completeSave.error;
       }
 
-      // Body steps live under live/<bodyStepId>.json. The body's prompt
-      // executor (or executeAsk) wrote `status: 'running'`; without a
-      // matching terminal write the CLI watcher's wasRunning && nowDone
-      // branch never fires and the body row stays "running" forever, even
-      // after the next iteration begins. Mirror the top-level dispatch
-      // success path so the watcher freezes body-row metrics correctly.
-      // Body steps have no parallel/loop shape extensions — they are leaf
-      // prompt/script/ask kinds inside a loop body — so no branch/loop
-      // fields are attached.
+      // Body steps live under live/<bodyStepId>.json. For prompt body steps the
+      // executor wrote `status: 'running'`; ask and script body steps never wrote
+      // running so this call CREATES the file with the terminal status. Either
+      // way, without a terminal write the row stays at its prior status (running
+      // for prompts, absent for ask/script) and the next iteration's running
+      // write would race the stale value. Body steps have no parallel/loop shape
+      // extensions, so no branch/loop fields are attached.
       const succeededBodyState = stateMachine.getState().steps[synthesisedKey];
-      void writeLiveState(runDir, bodyStepId, {
+      const succeededLiveWrite = await writeLiveState(runDir, bodyStepId, {
         status: 'succeeded',
-        attempt: 1,
+        attempt: succeededBodyState?.attempts ?? 1,
         startedAt: succeededBodyState?.startedAt ?? new Date().toISOString(),
         lastUpdateAt: new Date().toISOString(),
       });
+      if (succeededLiveWrite.isErr()) {
+        logger.warn(
+          {
+            event: 'live-state.write_failed',
+            stepId: bodyStepId,
+            error: succeededLiveWrite.error.message,
+          },
+          'live state write failed; continuing',
+        );
+      }
 
       return result;
     } catch (caught) {
@@ -359,15 +367,25 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         }
         // Mirror the success-path live write: without a terminal write
         // the body-row stays "running" in the watcher even though the
-        // run has failed. Fire-and-forget matches the top-level dispatch
-        // failure write.
+        // run has failed. Await the write so iter N+1's `running` cannot
+        // race iter N's terminal status on the shared live file.
         const failedBodyState = stateMachine.getState().steps[synthesisedKey];
-        void writeLiveState(runDir, bodyStepId, {
+        const failedLiveWrite = await writeLiveState(runDir, bodyStepId, {
           status: 'failed',
-          attempt: 1,
+          attempt: failedBodyState?.attempts ?? 1,
           startedAt: failedBodyState?.startedAt ?? new Date().toISOString(),
           lastUpdateAt: new Date().toISOString(),
         });
+        if (failedLiveWrite.isErr()) {
+          logger.warn(
+            {
+              event: 'live-state.write_failed',
+              stepId: bodyStepId,
+              error: failedLiveWrite.error.message,
+            },
+            'live state write failed; continuing',
+          );
+        }
       }
       throw caught;
     }
