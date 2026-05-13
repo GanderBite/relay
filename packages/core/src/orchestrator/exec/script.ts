@@ -47,20 +47,26 @@ export async function executeScript(
 
   // Collect handoff ids referenced by from: 'handoff.*' entries in step.env
   // and pre-load them from the live store so resolveScriptEnv can resolve them.
-  const handoffIdsFromEnv = new Set<string>();
+  // Note: this path resolves only plain (non-loop) handoffs; a loop-namespaced
+  // id like 'handoff.fix_loop.review.field' will route to store.read and fail.
+  const handoffSpec = new Map<string, { required: boolean }>();
   if (step.env !== undefined) {
     for (const spec of Object.values(step.env)) {
       if (isScriptEnvFromSpec(spec) && spec.from.startsWith('handoff.')) {
         const suffix = spec.from.slice('handoff.'.length);
         const dotIndex = suffix.indexOf('.');
-        handoffIdsFromEnv.add(dotIndex !== -1 ? suffix.slice(0, dotIndex) : suffix);
+        const id = dotIndex !== -1 ? suffix.slice(0, dotIndex) : suffix;
+        const required = spec.required === true;
+        const prev = handoffSpec.get(id);
+        handoffSpec.set(id, { required: (prev?.required ?? false) || required });
       }
     }
   }
+  const idsForLoad = [...handoffSpec].map(([id, { required }]) => (required ? id : `${id}?`));
 
   let loadedHandoffs: Record<string, unknown> = {};
-  if (handoffIdsFromEnv.size > 0) {
-    const loadResult = await loadHandoffValues(ctx.handoffStore, [...handoffIdsFromEnv]);
+  if (idsForLoad.length > 0) {
+    const loadResult = await loadHandoffValues(ctx.handoffStore, idsForLoad);
     if (loadResult.isErr()) {
       throw new StepFailureError(loadResult.error.message, stepId, attempt, {
         runId,

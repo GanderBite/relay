@@ -147,6 +147,45 @@ describe('resolveScriptEnv', () => {
     expect(result._unsafeUnwrapErr().message).toContain('handoff.pr_body');
   });
 
+  it('[ENV-015] { from: "handoff.<absent_id>.<path>", required: true } returns missing-id wording', () => {
+    const result = resolveScriptEnv(
+      { FOO: { from: 'handoff.absent.x', required: true } },
+      mkCtx({ handoffs: { other: { x: 1 } } }),
+    );
+    expect(result.isErr()).toBe(true);
+    const e = result._unsafeUnwrapErr();
+    expect(e).toBeInstanceOf(FlowDefinitionError);
+    expect(e.message).toContain('handoff "absent" not found');
+  });
+
+  it('[ENV-016] { from: "handoff.<id>.<path>", required: true } where id exists but path is missing returns exists-but-path wording', () => {
+    const result = resolveScriptEnv(
+      { FOO: { from: 'handoff.step_b.nonexistent', required: true } },
+      mkCtx({ handoffs: { step_b: { x: 1 } } }),
+    );
+    expect(result.isErr()).toBe(true);
+    const e = result._unsafeUnwrapErr();
+    expect(e).toBeInstanceOf(FlowDefinitionError);
+    expect(e.message).toContain(
+      'handoff "step_b" exists but path "nonexistent" resolved to undefined',
+    );
+  });
+
+  it('[ENV-017] loop-style id (fix_loop.review.field) in ctx.handoffs is not found via plain dotPath — behavior lock', () => {
+    // This documents current behavior: loop-namespaced ids are not pre-keyed in
+    // ctx.handoffs using dot notation, so dotPath sees undefined for the nested path.
+    // The step executor pre-loads using store.read (not store.readLatest), so loop
+    // handoffs cannot be consumed via env: from: 'handoff.*' at this time.
+    const result = resolveScriptEnv(
+      { FIELD: { from: 'handoff.fix_loop.review.field', required: false } },
+      mkCtx({ handoffs: { 'fix_loop.review': { field: 'value' } } }),
+    );
+    // The handoffs key contains a literal dot — dotPath('fix_loop') returns undefined,
+    // resolves to empty string (required: false).
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap()).toEqual({ FIELD: '' });
+  });
+
   it('[ENV-012] resolve: "absolute" with an already-absolute path passes through unchanged', () => {
     const result = resolveScriptEnv(
       { DIR: { from: 'input.dir', resolve: 'absolute' } },

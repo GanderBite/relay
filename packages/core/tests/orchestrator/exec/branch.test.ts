@@ -2,7 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FlowDefinitionError, StepFailureError } from '../../../src/errors.js';
+import {
+  FlowDefinitionError,
+  HandoffNotFoundError,
+  StepFailureError,
+} from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
@@ -144,7 +148,7 @@ describe('executeBranch -- handoff env resolution', () => {
     };
   }
 
-  it('[EXEC-BRANCH-ENV-001] from: handoff.<id>.<path>, required: true with written handoff passes nested value to subprocess', async () => {
+  it('[EXEC-BRANCH-HENV-001] from: handoff.<id>.<path>, required: true with written handoff passes nested value to subprocess', async () => {
     const writeResult = await store.write('my_step', { result: { wave_id: 'w1' } });
     expect(writeResult.isOk()).toBe(true);
 
@@ -157,7 +161,7 @@ describe('executeBranch -- handoff env resolution', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('[EXEC-BRANCH-ENV-002] from: handoff.<id>.<path>, required: true with no handoff written throws StepFailureError containing handoff id', async () => {
+  it('[EXEC-BRANCH-HENV-002] from: handoff.<id>.<path>, required: true with no handoff written throws StepFailureError with not-found wording', async () => {
     const s = step.branch({
       run: ['node', '-e', 'process.exit(0)'],
       env: { KEY: { from: 'handoff.missing_step.foo', required: true } },
@@ -167,11 +171,11 @@ describe('executeBranch -- handoff env resolution', () => {
       executeBranch(s, { ...ctxBase(), stepId: s.id || 's', step: s }),
     ).rejects.toSatisfy((e: unknown) => {
       if (!(e instanceof StepFailureError)) return false;
-      return e.message.includes('missing_step');
+      return e.message.includes('handoff "missing_step" not found');
     });
   });
 
-  it('[EXEC-BRANCH-ENV-003] from: handoff.<id> (bare, no nested path), required: false resolves to non-empty string', async () => {
+  it('[EXEC-BRANCH-HENV-003] from: handoff.<id> (bare, no nested path), required: false resolves to non-empty string', async () => {
     const writeResult = await store.write('step_a', { status: 'done' });
     expect(writeResult.isOk()).toBe(true);
 
@@ -191,7 +195,7 @@ describe('executeBranch -- handoff env resolution', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('[EXEC-BRANCH-ENV-004] from: handoff.<id>.<path> with nonexistent nested key: required:false gives empty string, required:true throws StepFailureError', async () => {
+  it('[EXEC-BRANCH-HENV-004] from: handoff.<id>.<path> with nonexistent nested key: required:false gives empty string, required:true throws StepFailureError', async () => {
     const writeResult = await store.write('step_b', { x: 1 });
     expect(writeResult.isOk()).toBe(true);
 
@@ -208,7 +212,7 @@ describe('executeBranch -- handoff env resolution', () => {
     });
     expect(resultOptional.exitCode).toBe(0);
 
-    // required: true — throws StepFailureError with step_b in message
+    // required: true — throws StepFailureError with the exact wording
     const sRequired = step.branch({
       run: ['node', '-e', 'process.exit(0)'],
       env: { MISSING_KEY: { from: 'handoff.step_b.nonexistent', required: true } },
@@ -218,7 +222,36 @@ describe('executeBranch -- handoff env resolution', () => {
       executeBranch(sRequired, { ...ctxBase(), stepId: sRequired.id || 's2', step: sRequired }),
     ).rejects.toSatisfy((e: unknown) => {
       if (!(e instanceof StepFailureError)) return false;
-      return e.message.includes('step_b');
+      return e.message.includes(
+        'handoff "step_b" exists but path "nonexistent" resolved to undefined',
+      );
     });
+  });
+
+  it('[EXEC-BRANCH-HENV-005] from: handoff.<id>.<path>, required: false with no handoff written succeeds with empty string', async () => {
+    const s = step.branch({
+      run: ['node', '-e', 'process.exit(process.env.X === "" ? 0 : 1)'],
+      env: { X: { from: 'handoff.nope.path', required: false } },
+      onExit: { '0': 'continue', '1': 'abort' },
+    });
+    const result = await executeBranch(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('[EXEC-BRANCH-HENV-CAUSE] StepFailureError from handoff pre-load preserves the HandoffNotFoundError cause', async () => {
+    const s = step.branch({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { KEY: { from: 'handoff.missing_step.foo', required: true } },
+      onExit: { '0': 'continue' },
+    });
+    let caught: unknown;
+    try {
+      await executeBranch(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StepFailureError);
+    const sfe = caught as StepFailureError;
+    expect(sfe.details?.cause).toBeInstanceOf(HandoffNotFoundError);
   });
 });

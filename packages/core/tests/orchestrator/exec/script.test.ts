@@ -7,7 +7,12 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FlowDefinitionError, StepFailureError, TimeoutError } from '../../../src/errors.js';
+import {
+  FlowDefinitionError,
+  HandoffNotFoundError,
+  StepFailureError,
+  TimeoutError,
+} from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
 import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
@@ -224,7 +229,7 @@ describe('executeScript -- handoff env resolution', () => {
     };
   }
 
-  it('[EXEC-SCRIPT-ENV-001] from: handoff.<id>.<path>, required: true with written handoff resolves nested value', async () => {
+  it('[EXEC-SCRIPT-HENV-001] from: handoff.<id>.<path>, required: true with written handoff resolves nested value', async () => {
     const writeResult = await store.write('my_step', { result: { wave_id: 'w1' } });
     expect(writeResult.isOk()).toBe(true);
 
@@ -237,7 +242,7 @@ describe('executeScript -- handoff env resolution', () => {
     expect(String(result.stdout ?? '')).toContain('w1');
   });
 
-  it('[EXEC-SCRIPT-ENV-002] from: handoff.<id>.<path>, required: true with no handoff written throws StepFailureError containing handoff id', async () => {
+  it('[EXEC-SCRIPT-HENV-002] from: handoff.<id>.<path>, required: true with no handoff written throws StepFailureError with not-found wording', async () => {
     const s = step.script({
       run: ['node', '-e', 'process.exit(0)'],
       env: { KEY: { from: 'handoff.missing_step.foo', required: true } },
@@ -246,11 +251,11 @@ describe('executeScript -- handoff env resolution', () => {
       executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s }),
     ).rejects.toSatisfy((e: unknown) => {
       if (!(e instanceof StepFailureError)) return false;
-      return e.message.includes('missing_step');
+      return e.message.includes('handoff "missing_step" not found');
     });
   });
 
-  it('[EXEC-SCRIPT-ENV-003] from: handoff.<id> (bare, no nested path), required: false resolves to non-empty JSON string', async () => {
+  it('[EXEC-SCRIPT-HENV-003] from: handoff.<id> (bare, no nested path), required: false resolves to non-empty JSON string', async () => {
     const writeResult = await store.write('step_a', { status: 'done' });
     expect(writeResult.isOk()).toBe(true);
 
@@ -264,7 +269,7 @@ describe('executeScript -- handoff env resolution', () => {
     expect(val.length).toBeGreaterThan(0);
   });
 
-  it('[EXEC-SCRIPT-ENV-004] from: handoff.<id>.<path> with nonexistent nested key: required:false gives empty string, required:true throws StepFailureError', async () => {
+  it('[EXEC-SCRIPT-HENV-004] from: handoff.<id>.<path> with nonexistent nested key: required:false gives empty string, required:true throws StepFailureError', async () => {
     const writeResult = await store.write('step_b', { x: 1 });
     expect(writeResult.isOk()).toBe(true);
 
@@ -281,7 +286,7 @@ describe('executeScript -- handoff env resolution', () => {
     expect(resultOptional.exitCode).toBe(0);
     expect(String(resultOptional.stdout ?? '')).toContain('true');
 
-    // required: true — throws StepFailureError with step_b in message
+    // required: true — throws StepFailureError with the exact wording
     const sRequired = step.script({
       run: ['node', '-e', 'process.exit(0)'],
       env: { MISSING_KEY: { from: 'handoff.step_b.nonexistent', required: true } },
@@ -290,7 +295,35 @@ describe('executeScript -- handoff env resolution', () => {
       executeScript(sRequired, { ...ctxBase(), stepId: sRequired.id || 's2', step: sRequired }),
     ).rejects.toSatisfy((e: unknown) => {
       if (!(e instanceof StepFailureError)) return false;
-      return e.message.includes('step_b');
+      return e.message.includes(
+        'handoff "step_b" exists but path "nonexistent" resolved to undefined',
+      );
     });
+  });
+
+  it('[EXEC-SCRIPT-HENV-005] from: handoff.<id>.<path>, required: false with no handoff written succeeds with empty string', async () => {
+    const s = step.script({
+      run: ['node', '-e', 'process.stdout.write(JSON.stringify(process.env.X === ""))'],
+      env: { X: { from: 'handoff.nope.path', required: false } },
+    });
+    const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '')).toContain('true');
+  });
+
+  it('[EXEC-SCRIPT-HENV-CAUSE] StepFailureError from handoff pre-load preserves the HandoffNotFoundError cause', async () => {
+    const s = step.script({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { KEY: { from: 'handoff.missing_step.foo', required: true } },
+    });
+    let caught: unknown;
+    try {
+      await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StepFailureError);
+    const sfe = caught as StepFailureError;
+    expect(sfe.details?.cause).toBeInstanceOf(HandoffNotFoundError);
   });
 });
