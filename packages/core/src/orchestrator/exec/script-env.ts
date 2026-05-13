@@ -48,6 +48,26 @@ function resolveOne(
   } else if (from.startsWith('handoff.')) {
     const suffix = from.slice('handoff.'.length);
     resolved = dotPath(ctx.handoffs, suffix);
+
+    if (resolved === undefined || resolved === null) {
+      if (required === true) {
+        const dotIndex = suffix.indexOf('.');
+        if (dotIndex !== -1) {
+          const id = suffix.slice(0, dotIndex);
+          const rest = suffix.slice(dotIndex + 1);
+          const idExists = Object.hasOwn(ctx.handoffs, id);
+          if (!idExists) {
+            return err(new FlowDefinitionError(`env key "${key}": handoff "${id}" not found`));
+          }
+          return err(
+            new FlowDefinitionError(
+              `env key "${key}": handoff "${id}" exists but path "${rest}" resolved to undefined`,
+            ),
+          );
+        }
+        // Bare handoff.<id> reference — fall through to the generic message below.
+      }
+    }
   } else {
     return err(
       new FlowDefinitionError(

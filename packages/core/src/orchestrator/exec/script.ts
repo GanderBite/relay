@@ -1,7 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { loadHandoffValues } from '../../context-inject.js';
 import { StepFailureError } from '../../errors.js';
-import type { ScriptStepSpec } from '../../flow/types.js';
+import { isScriptEnvFromSpec, type ScriptStepSpec } from '../../flow/types.js';
+import type { HandoffStore } from '../../handoffs.js';
 import type { Logger } from '../../logger.js';
 import { renderTemplate } from '../../template.js';
 import { atomicWriteText } from '../../util/atomic-write.js';
@@ -19,9 +21,9 @@ export interface ScriptExecContext {
   // Flow input record templated into `run` argv via {{input.x}}. Plain object
   // when the flow declared no input schema or the input was non-object.
   input: Record<string, unknown>;
-  // Loaded handoff values keyed by handoff id. Spread into the template root
-  // so authors can reference {{my_handoff.field}} in run argv.
-  handoffs: Record<string, unknown>;
+  // Live handoff store for this run — used to pre-load handoff values
+  // referenced by from: 'handoff.*' entries in step.env.
+  handoffStore: HandoffStore;
   // Flow package directory — exposed as {{flowDir}} so scripts can address
   // bundled helper paths under the flow's own tree.
   flowDir: string;
@@ -43,12 +45,37 @@ export async function executeScript(
 ): Promise<ScriptStepResult> {
   const { runDir, runId, stepId, attempt, abortSignal, logger } = ctx;
 
+  // Collect handoff ids referenced by from: 'handoff.*' entries in step.env
+  // and pre-load them from the live store so resolveScriptEnv can resolve them.
+  const handoffIdsFromEnv = new Set<string>();
+  if (step.env !== undefined) {
+    for (const spec of Object.values(step.env)) {
+      if (isScriptEnvFromSpec(spec) && spec.from.startsWith('handoff.')) {
+        const suffix = spec.from.slice('handoff.'.length);
+        const dotIndex = suffix.indexOf('.');
+        handoffIdsFromEnv.add(dotIndex !== -1 ? suffix.slice(0, dotIndex) : suffix);
+      }
+    }
+  }
+
+  let loadedHandoffs: Record<string, unknown> = {};
+  if (handoffIdsFromEnv.size > 0) {
+    const loadResult = await loadHandoffValues(ctx.handoffStore, [...handoffIdsFromEnv]);
+    if (loadResult.isErr()) {
+      throw new StepFailureError(loadResult.error.message, stepId, attempt, {
+        runId,
+        cause: loadResult.error,
+      });
+    }
+    loadedHandoffs = { ...loadResult.value };
+  }
+
   // Template context for run argv. `input` is namespaced (`{{input.repo}}`)
   // while handoff values are spread at the root so authors can reference
   // `{{my_handoff_id}}` directly — matching the prompt-step convention.
   const templateCtx: Record<string, unknown> = {
     input: ctx.input,
-    ...ctx.handoffs,
+    ...loadedHandoffs,
     runDir: ctx.runDir,
     flowDir: ctx.flowDir,
     handoffsDir: ctx.handoffsDir,
@@ -88,7 +115,7 @@ export async function executeScript(
 
   const resolved = resolveScriptEnv(step.env, {
     input: ctx.input,
-    handoffs: ctx.handoffs,
+    handoffs: loadedHandoffs,
     runDir: ctx.runDir,
     flowDir: ctx.flowDir,
     handoffsDir: ctx.handoffsDir,

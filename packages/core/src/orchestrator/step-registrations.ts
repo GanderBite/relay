@@ -67,11 +67,7 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         abortSignal: ctx.abortSignal,
         logger: ctx.logger,
         input: ctx.inputVars,
-        // Handoffs are not auto-injected into script template context yet;
-        // a future change will load `contextFrom` for script steps the way
-        // prompt steps do. Pass an empty record so {{handoff_id}} references
-        // render to empty rather than throwing.
-        handoffs: {},
+        handoffStore: ctx.handoffStore,
         flowDir: ctx.flowDir,
         handoffsDir: join(ctx.runDir, 'handoffs'),
       }),
@@ -89,9 +85,7 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         abortSignal: ctx.abortSignal,
         logger: ctx.logger,
         input: ctx.inputVars,
-        // See script registration above — branches share the same future
-        // contextFrom roadmap and currently render with no handoff context.
-        handoffs: {},
+        handoffStore: ctx.handoffStore,
         flowDir: ctx.flowDir,
         handoffsDir: join(ctx.runDir, 'handoffs'),
       }),
