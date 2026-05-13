@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FlowDefinitionError, StepFailureError, TimeoutError } from '../../../src/errors.js';
 import { step } from '../../../src/flow/step.js';
+import { HandoffStore } from '../../../src/handoffs.js';
 import { createLogger } from '../../../src/logger.js';
 import { executeBranch } from '../../../src/orchestrator/exec/branch.js';
 import { executeScript } from '../../../src/orchestrator/exec/script.js';
@@ -30,7 +31,7 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
       abortSignal: new AbortController().signal,
       attempt: 1,
       input: {},
-      handoffs: {},
+      handoffStore: new HandoffStore(tmp),
       flowDir: tmp,
       handoffsDir: join(tmp, 'handoffs'),
     };
@@ -193,5 +194,103 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
     // The executor swallows the sidecar write failure (unwrapOr) and must
     // still throw StepFailureError for the non-zero exit.
     await expect(executeScript(s, ctx)).rejects.toBeInstanceOf(StepFailureError);
+  });
+});
+
+describe('executeScript -- handoff env resolution', () => {
+  let tmp: string;
+  let store: HandoffStore;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-execs-henv-'));
+    store = new HandoffStore(tmp);
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  function ctxBase() {
+    return {
+      runDir: tmp,
+      runId: 'r',
+      logger: createLogger({ flowName: 'f', runId: 'r' }),
+      abortSignal: new AbortController().signal,
+      attempt: 1,
+      input: {} as Record<string, unknown>,
+      handoffStore: store,
+      flowDir: tmp,
+      handoffsDir: join(tmp, 'handoffs'),
+    };
+  }
+
+  it('[EXEC-SCRIPT-ENV-001] from: handoff.<id>.<path>, required: true with written handoff resolves nested value', async () => {
+    const writeResult = await store.write('my_step', { result: { wave_id: 'w1' } });
+    expect(writeResult.isOk()).toBe(true);
+
+    const s = step.script({
+      run: ['node', '-e', 'process.stdout.write(process.env.WAVE_ID)'],
+      env: { WAVE_ID: { from: 'handoff.my_step.result.wave_id', required: true } },
+    });
+    const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '')).toContain('w1');
+  });
+
+  it('[EXEC-SCRIPT-ENV-002] from: handoff.<id>.<path>, required: true with no handoff written throws StepFailureError containing handoff id', async () => {
+    const s = step.script({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { KEY: { from: 'handoff.missing_step.foo', required: true } },
+    });
+    await expect(
+      executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s }),
+    ).rejects.toSatisfy((e: unknown) => {
+      if (!(e instanceof StepFailureError)) return false;
+      return e.message.includes('missing_step');
+    });
+  });
+
+  it('[EXEC-SCRIPT-ENV-003] from: handoff.<id> (bare, no nested path), required: false resolves to non-empty JSON string', async () => {
+    const writeResult = await store.write('step_a', { status: 'done' });
+    expect(writeResult.isOk()).toBe(true);
+
+    const s = step.script({
+      run: ['node', '-e', 'process.stdout.write(process.env.STEP_A_VAL)'],
+      env: { STEP_A_VAL: { from: 'handoff.step_a', required: false } },
+    });
+    const result = await executeScript(s, { ...ctxBase(), stepId: s.id || 's', step: s });
+    expect(result.exitCode).toBe(0);
+    const val = String(result.stdout ?? '');
+    expect(val.length).toBeGreaterThan(0);
+  });
+
+  it('[EXEC-SCRIPT-ENV-004] from: handoff.<id>.<path> with nonexistent nested key: required:false gives empty string, required:true throws StepFailureError', async () => {
+    const writeResult = await store.write('step_b', { x: 1 });
+    expect(writeResult.isOk()).toBe(true);
+
+    // required: false — empty string passed as env var
+    const sOptional = step.script({
+      run: ['node', '-e', 'process.stdout.write(JSON.stringify(process.env.MISSING_KEY === ""))'],
+      env: { MISSING_KEY: { from: 'handoff.step_b.nonexistent', required: false } },
+    });
+    const resultOptional = await executeScript(sOptional, {
+      ...ctxBase(),
+      stepId: sOptional.id || 's1',
+      step: sOptional,
+    });
+    expect(resultOptional.exitCode).toBe(0);
+    expect(String(resultOptional.stdout ?? '')).toContain('true');
+
+    // required: true — throws StepFailureError with step_b in message
+    const sRequired = step.script({
+      run: ['node', '-e', 'process.exit(0)'],
+      env: { MISSING_KEY: { from: 'handoff.step_b.nonexistent', required: true } },
+    });
+    await expect(
+      executeScript(sRequired, { ...ctxBase(), stepId: sRequired.id || 's2', step: sRequired }),
+    ).rejects.toSatisfy((e: unknown) => {
+      if (!(e instanceof StepFailureError)) return false;
+      return e.message.includes('step_b');
+    });
   });
 });
