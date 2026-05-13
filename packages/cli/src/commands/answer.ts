@@ -351,12 +351,6 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
         }),
       );
     } else if (result.status === 'paused') {
-      if (process.stdout.isTTY && process.stdin.isTTY) {
-        process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
-        const { default: answerCommand } = await import('./answer.js');
-        await answerCommand([runId], { verbose: options.verbose });
-        return;
-      }
       await renderPausedBanner(
         flowRef.flowName,
         runId,

@@ -165,8 +165,20 @@ export class ProgressRenderer<TInput = unknown> {
     if (state === undefined) return;
 
     const wasRunning = state.live?.status === 'running';
+    const wasDone =
+      state.live?.status === 'succeeded' ||
+      state.live?.status === 'failed' ||
+      state.live?.status === 'skipped';
     const nowDone =
       parsed.status === 'succeeded' || parsed.status === 'failed' || parsed.status === 'skipped';
+
+    // Loop body steps reach this handler once per iteration. When a fresh
+    // `running` arrives after the prior iteration's terminal write, drop
+    // the stale runningStartedAt so the next branch below captures iter
+    // N+1's startedAt instead of pinning the elapsed timer to iter 1.
+    if (parsed.status === 'running' && wasDone) {
+      state.runningStartedAt = null;
+    }
 
     if (parsed.status === 'running' && state.runningStartedAt === null) {
       state.runningStartedAt = parsed.startedAt;

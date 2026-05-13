@@ -407,7 +407,7 @@ describe('relay resume — inline answer on pause', () => {
     });
   });
 
-  it('[C3] calls answerCommand inline when both stdout and stdin are TTY and result is paused', async () => {
+  it('[C3] exits 75 and renderPausedBanner is called when result is paused (TTY mode)', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
       value: true,
       configurable: true,
@@ -417,6 +417,13 @@ describe('relay resume — inline answer on pause', () => {
       value: true,
       configurable: true,
       writable: true,
+    });
+
+    // Override process.exit to record the call without throwing so that the
+    // process.exit(75) inside the try block does not get caught by the catch
+    // handler and re-mapped to exit(1).
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
+      return undefined as never;
     });
 
     setupSuccessfulResumePipeline({
@@ -429,14 +436,13 @@ describe('relay resume — inline answer on pause', () => {
       durationMs: 0,
     });
 
-    // answerCommand resolves without calling process.exit — command returns normally.
     await resumeCommand(['abc123'], {});
 
-    expect(mockAnswerCommand).toHaveBeenCalledOnce();
-    expect(mockAnswerCommand).toHaveBeenCalledWith(['abc123'], {});
-    const exitCalls = vi.mocked(process.exit).mock.calls;
-    const called75 = exitCalls.some((c) => c[0] === 75);
-    expect(called75).toBe(false);
+    // process.exit must have been called with 75.
+    expect(exitSpy).toHaveBeenCalledWith(75);
+
+    // answerCommand must NOT have been called.
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
   });
 
   it('[C4] exits 75 when stdout is not TTY and result is paused', async () => {

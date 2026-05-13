@@ -309,6 +309,23 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
         throw completeSave.error;
       }
 
+      // Body steps live under live/<bodyStepId>.json. The body's prompt
+      // executor (or executeAsk) wrote `status: 'running'`; without a
+      // matching terminal write the CLI watcher's wasRunning && nowDone
+      // branch never fires and the body row stays "running" forever, even
+      // after the next iteration begins. Mirror the top-level dispatch
+      // success path so the watcher freezes body-row metrics correctly.
+      // Body steps have no parallel/loop shape extensions — they are leaf
+      // prompt/script/ask kinds inside a loop body — so no branch/loop
+      // fields are attached.
+      const succeededBodyState = stateMachine.getState().steps[synthesisedKey];
+      void writeLiveState(runDir, bodyStepId, {
+        status: 'succeeded',
+        attempt: 1,
+        startedAt: succeededBodyState?.startedAt ?? new Date().toISOString(),
+        lastUpdateAt: new Date().toISOString(),
+      });
+
       return result;
     } catch (caught) {
       if (isAwaitingInputSignal(caught)) {
@@ -340,6 +357,17 @@ export function createStepDispatcher(deps: StepDispatcherDeps): StepDispatcher {
             'state transition failed after loop body step failure',
           );
         }
+        // Mirror the success-path live write: without a terminal write
+        // the body-row stays "running" in the watcher even though the
+        // run has failed. Fire-and-forget matches the top-level dispatch
+        // failure write.
+        const failedBodyState = stateMachine.getState().steps[synthesisedKey];
+        void writeLiveState(runDir, bodyStepId, {
+          status: 'failed',
+          attempt: 1,
+          startedAt: failedBodyState?.startedAt ?? new Date().toISOString(),
+          lastUpdateAt: new Date().toISOString(),
+        });
       }
       throw caught;
     }

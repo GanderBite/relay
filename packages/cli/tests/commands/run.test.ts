@@ -297,7 +297,7 @@ describe('relay run — inline answer on pause', () => {
     });
   });
 
-  it('[C1] calls answerCommand inline when both stdout and stdin are TTY and result is paused', async () => {
+  it('[C1] exits 75 and renderPausedBanner is called when result is paused (TTY mode)', async () => {
     Object.defineProperty(process.stdout, 'isTTY', {
       value: true,
       configurable: true,
@@ -311,15 +311,17 @@ describe('relay run — inline answer on pause', () => {
 
     mockRunnerRun.mockResolvedValue(makePausedResult('r1'));
 
-    // answerCommand resolves without calling process.exit — the command returns normally.
-    await runCommand(['test-flow', '.'], {});
+    await expect(runCommand(['test-flow', '.'], {})).rejects.toThrow('process.exit called');
 
-    expect(mockAnswerCommand).toHaveBeenCalledOnce();
-    expect(mockAnswerCommand).toHaveBeenCalledWith(['r1'], {});
-    // process.exit must NOT have been called with 75.
-    const exitCalls = vi.mocked(process.exit).mock.calls;
-    const called75 = exitCalls.some((c) => c[0] === 75);
-    expect(called75).toBe(false);
+    // renderPausedBanner must have been called.
+    const { renderPausedBanner } = await import('../../src/paused-banner.js');
+    expect(vi.mocked(renderPausedBanner)).toHaveBeenCalledOnce();
+
+    // process.exit must have been called with 75.
+    expect(vi.mocked(process.exit)).toHaveBeenCalledWith(75);
+
+    // answerCommand must NOT have been called.
+    expect(mockAnswerCommand).not.toHaveBeenCalled();
   });
 
   it('[C2] exits 75 when stdout is not TTY and result is paused', async () => {

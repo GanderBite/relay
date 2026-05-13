@@ -384,33 +384,26 @@ describe('answerCommand — ProgressDisplay wiring (TTY mode)', () => {
     expect(mockProgressDisplayStart).not.toHaveBeenCalled();
   });
 
-  it('[ANS-PD-paused-recursion] recursive answerCommand is invoked when orchestrator returns paused in TTY mode', async () => {
-    // First call: state is paused, loadState returns paused state.
-    // Second call (recursive): loadState returns the same paused state; orchestrator returns succeeded.
+  it('[ANS-PD-paused-banner] renderPausedBanner is called and process exits 75 when orchestrator returns paused', async () => {
     mockLoadState.mockResolvedValue(ok(makePausedState('gather')));
+    mockOrchestratorResume.mockResolvedValue(makePausedResult('gather'));
 
-    // First orchestrator.resume returns paused → triggers the recursion branch.
-    // Second orchestrator.resume (from recursive answerCommand call) returns succeeded.
-    mockOrchestratorResume
-      .mockResolvedValueOnce(makePausedResult('gather'))
-      .mockResolvedValue(makeSucceededResult());
+    // process.exit is already mocked to throw in beforeEach; catch that throw.
+    await expect(answerCommand(['run-xyz'], {})).rejects.toThrow('process.exit called');
 
-    // Capture stdout writes so we can verify the "answering inline" message.
-    const writtenChunks: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      writtenChunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
-      return true;
-    });
+    // renderPausedBanner must have been called.
+    const { renderPausedBanner } = await import('../../src/paused-banner.js');
+    expect(vi.mocked(renderPausedBanner)).toHaveBeenCalledOnce();
 
-    await expect(answerCommand(['run-xyz'], {})).resolves.toBeUndefined();
+    // process.exit must have been called with exit code 75 (EXIT_CODES.paused).
+    expect(vi.mocked(process.exit)).toHaveBeenCalledWith(75);
 
-    // The "answering inline" line must have been written — proof the branch executed.
-    const allOutput = writtenChunks.join('');
-    expect(allOutput).toContain('paused for input — answering inline');
-
-    // The orchestrator must have been called twice: once for the initial run,
-    // once for the recursive answerCommand call.
-    expect(mockOrchestratorResume).toHaveBeenCalledTimes(2);
+    // The string "answering inline" must never appear.
+    const stdoutWrite = vi.mocked(process.stdout.write);
+    const allOutput = stdoutWrite.mock.calls
+      .map((c) => (typeof c[0] === 'string' ? c[0] : ''))
+      .join('');
+    expect(allOutput).not.toContain('answering inline');
   });
 
   it('[ANS-PD-interactive-prompt] readline prompt is invoked when questions array is non-empty', async () => {

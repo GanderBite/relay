@@ -436,15 +436,8 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
         }),
       );
     } else if (result.status === 'paused') {
-      // A step.ask was encountered mid-resume. In an interactive TTY, prompt
-      // for answers inline. In non-TTY callers, exit 75 so the caller detects
-      // the pause.
-      if (process.stdout.isTTY && process.stdin.isTTY) {
-        process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
-        const { default: answerCommand } = await import('./answer.js');
-        await answerCommand([runId], { verbose: options.verbose });
-        return;
-      }
+      // A step.ask was encountered mid-resume — render the paused banner and
+      // exit 75. Use `relay answer <runId>` to provide answers and resume.
       await renderPausedBanner(
         flowRef.flowName,
         runId,
