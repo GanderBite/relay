@@ -10,6 +10,8 @@ Copy-pasteable prompt templates for running Relay sprints in Claude Code. Every 
 | Continue a sprint that stopped mid-way | `sprint-resume.md` | `SPRINT_NUMBER`, `START_WAVE` |
 | Re-run one specific task (e.g., after a spec tweak) | `sprint-single-task.md` | `SPRINT_NUMBER`, `TASK_ID` |
 | Audit a finished sprint (typechecks + reviewer pass only) | `sprint-verify.md` | `SPRINT_NUMBER` |
+| Apply user decisions on code-review findings (`fix now`/`fix later`/`wont fix`) | `sprint-code-review-fix.md` | `SPRINT_NUMBER` |
+| Triage a list of bug reports into a sprint (Explore → sprint-planner) | `bug-triage.md` | `BUGS`, optional `SLUG` |
 
 ## How to use a template
 
@@ -33,6 +35,7 @@ Every template dispatches via the `Agent` tool and references agents in prose as
 | `@doc-writer (agent)` | touch `docs/`, root `README.md`, or per-race READMEs |
 | `@catalog-builder (agent)` | touch `catalog/`, `lint.ts`, `registry.ts`, or the deploy workflow |
 | `@code-reviewer (agent)` | do a post-wave review pass (returns findings, does not edit code) |
+| `@bug-detective (agent)` | localize the root cause of a single bug (read-only; returns structured finding block) |
 
 ## Skill vocabulary
 
