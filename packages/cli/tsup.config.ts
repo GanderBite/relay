@@ -8,9 +8,9 @@ import { defineConfig } from 'tsup';
 // individually to preserve template-literal dynamic imports).
 //
 // relay-core is inlined (noExternal) to eliminate the external npm dependency.
-// Its CJS dependencies — pino, pino-pretty, handlebars — are kept external so
-// Node.js loads them natively, avoiding the ESM-in-CJS dynamic-require issue
-// (esbuild cannot inject a createRequire shim into a shared split-chunk).
+// Its CJS dependencies — pino, pino-pretty, handlebars, gray-matter — are kept
+// external so Node.js loads them natively, avoiding the ESM-in-CJS dynamic-require
+// issue (esbuild cannot inject a createRequire shim into a shared split-chunk).
 // Those packages are declared directly in CLI's dependencies.
 
 const corePkgPath = fileURLToPath(new URL('../core/package.json', import.meta.url));
@@ -26,7 +26,7 @@ export default defineConfig({
   splitting: true,
   bundle: true,
   noExternal: ['@ganderbite/relay-core'],
-  external: ['pino', 'pino-pretty', 'handlebars'],
+  external: ['pino', 'pino-pretty', 'handlebars', 'gray-matter'],
   outDir: 'dist',
   // The bundled relay-core version, embedded at build time so `relay --version`
   // can report what's actually inlined rather than reusing the CLI version.
