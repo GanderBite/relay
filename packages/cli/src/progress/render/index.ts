@@ -285,6 +285,15 @@ export class ProgressRenderer<TInput = unknown> {
     return this.#computeTotalTokens();
   }
 
+  /**
+   * Exposes the verbose accumulator for a step for tests.
+   * Returns undefined when verbose mode is off or the step has not received
+   * any events yet.
+   */
+  getVerboseAccumulatorForTest(stepId: string): VerboseAccumulator | undefined {
+    return this.#verboseAccumulators?.get(stepId);
+  }
+
   #redraw(): void {
     const lines: string[] = [];
     lines.push(flowHeader(this.#flow.name, this.#runId));
