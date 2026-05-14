@@ -170,7 +170,9 @@ export async function executeRun(inputs: ExecuteRunInputs): Promise<RunResult> {
     process.removeListener('SIGINT', onSigint);
     process.removeListener('SIGTERM', onSigterm);
     await closeProviders(uniqueProviders, logger);
-    await teardownWorktree(worktreePath, gitRoot, logger);
+    if (runStatus !== 'paused') {
+      await teardownWorktree(worktreePath, gitRoot, logger);
+    }
   }
 
   // Paused runs already had their run-level status flipped to 'paused' by

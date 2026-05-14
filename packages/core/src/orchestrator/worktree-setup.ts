@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 
 import type { Logger } from '../logger.js';
-import { createWorktree, isGitRepo, removeWorktree } from '../util/worktree.js';
+import { createWorktree, isGitRepo, probeWorktree, removeWorktree } from '../util/worktree.js';
 
 export interface WorktreeSetupResult {
   worktreePath: string | undefined;
@@ -60,6 +60,31 @@ export async function setupWorktree(args: {
   // avoid a stray worktree the caller would immediately have to tear down.
   if (args.signal.aborted) {
     return { worktreePath: undefined, gitRoot: undefined, worktreeCwd: undefined };
+  }
+
+  const candidateExisting = probeWorktree(args.runId);
+  try {
+    await access(candidateExisting);
+    // Worktree already present — this is a resume; adopt it without re-creating.
+    args.logger.debug(
+      { event: 'worktree.adopt', worktreePath: candidateExisting, runId: args.runId },
+      'adopting existing worktree for resumed run',
+    );
+    const rel = relative(gitRoot, probeDir);
+    const candidate =
+      rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+        ? join(candidateExisting, rel)
+        : candidateExisting;
+    let worktreeCwd: string;
+    try {
+      await access(candidate);
+      worktreeCwd = candidate;
+    } catch {
+      worktreeCwd = candidateExisting;
+    }
+    return { worktreePath: candidateExisting, gitRoot, worktreeCwd };
+  } catch {
+    // Worktree does not exist yet — fall through to createWorktree.
   }
 
   const createResult = await createWorktree({

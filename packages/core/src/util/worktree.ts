@@ -38,6 +38,11 @@ const GIT_WORKTREE_REMOVE_TIMEOUT_MS = 30_000;
 /** Root directory under the OS temp dir where per-run worktrees live. */
 const WORKTREES_SUBDIR = 'relay-worktrees';
 
+/** Return the path where a per-run worktree would be stored, without touching the filesystem. */
+export function probeWorktree(runId: string): string {
+  return join(tmpdir(), WORKTREES_SUBDIR, runId);
+}
+
 function errorMessageOf(value: unknown): string {
   if (value instanceof Error) return value.message;
   return String(value);
