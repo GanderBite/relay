@@ -70,6 +70,7 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         handoffStore: ctx.handoffStore,
         flowDir: ctx.flowDir,
         handoffsDir: join(ctx.runDir, 'handoffs'),
+        ...(ctx.cwd !== undefined ? { cwd: ctx.cwd } : {}),
       }),
   });
 
@@ -88,6 +89,7 @@ export function registerBuiltInStepKinds(registry: StepKindRegistry): void {
         handoffStore: ctx.handoffStore,
         flowDir: ctx.flowDir,
         handoffsDir: join(ctx.runDir, 'handoffs'),
+        ...(ctx.cwd !== undefined ? { cwd: ctx.cwd } : {}),
       }),
   });
 

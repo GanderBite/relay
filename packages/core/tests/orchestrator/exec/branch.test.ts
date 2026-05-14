@@ -121,6 +121,83 @@ describe('executeBranch structured env', () => {
   });
 });
 
+describe('executeBranch -- cwd resolution', () => {
+  let tmp: string;
+  let worktreeDir: string;
+  let overrideDir: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-branch-cwd-'));
+    worktreeDir = join(tmp, 'worktree');
+    overrideDir = join(tmp, 'override');
+    const { mkdir: fsMkdir } = await import('node:fs/promises');
+    await fsMkdir(worktreeDir, { recursive: true });
+    await fsMkdir(overrideDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  function ctxBase() {
+    return {
+      runDir: tmp,
+      runId: 'r',
+      logger: createLogger({ flowName: 'f', runId: 'r' }),
+      abortSignal: new AbortController().signal,
+      attempt: 1,
+      input: {} as Record<string, unknown>,
+      handoffStore: new HandoffStore(tmp),
+      flowDir: tmp,
+      handoffsDir: join(tmp, 'handoffs'),
+    };
+  }
+
+  it('[EXEC-BRANCH-CWD-001] ctx.cwd is used as the effective cwd when step.cwd is absent', async () => {
+    const { realpathSync } = await import('node:fs');
+    const realWorktree = realpathSync(worktreeDir);
+
+    // Exit 0 when process.cwd() matches the expected worktree path, else exit 1.
+    const s = step.branch({
+      run: [
+        'node',
+        '-e',
+        `process.exit(process.cwd() === ${JSON.stringify(realWorktree)} ? 0 : 1)`,
+      ],
+      onExit: { '0': 'continue', '1': 'abort' },
+    });
+    const result = await executeBranch(s, {
+      ...ctxBase(),
+      stepId: s.id || 's',
+      step: s,
+      cwd: worktreeDir,
+    });
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('[EXEC-BRANCH-CWD-002] step.cwd wins over ctx.cwd when both are set', async () => {
+    const { realpathSync } = await import('node:fs');
+    const realOverride = realpathSync(overrideDir);
+
+    const s = step.branch({
+      run: [
+        'node',
+        '-e',
+        `process.exit(process.cwd() === ${JSON.stringify(realOverride)} ? 0 : 1)`,
+      ],
+      onExit: { '0': 'continue', '1': 'abort' },
+      cwd: overrideDir,
+    });
+    const result = await executeBranch(s, {
+      ...ctxBase(),
+      stepId: s.id || 's',
+      step: s,
+      cwd: worktreeDir,
+    });
+    expect(result.exitCode).toBe(0);
+  });
+});
+
 describe('executeBranch -- handoff env resolution', () => {
   let tmp: string;
   let store: HandoffStore;

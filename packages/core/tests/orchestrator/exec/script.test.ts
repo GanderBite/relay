@@ -202,6 +202,74 @@ describe('executeScript / executeBranch (sprint 5 task_34 + task_35)', () => {
   });
 });
 
+describe('executeScript -- cwd resolution', () => {
+  let tmp: string;
+  let worktreeDir: string;
+  let overrideDir: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-script-cwd-'));
+    worktreeDir = join(tmp, 'worktree');
+    overrideDir = join(tmp, 'override');
+    const { mkdir: fsMkdir } = await import('node:fs/promises');
+    await fsMkdir(worktreeDir, { recursive: true });
+    await fsMkdir(overrideDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  function ctxBase() {
+    return {
+      runDir: tmp,
+      runId: 'r',
+      logger: createLogger({ flowName: 'f', runId: 'r' }),
+      abortSignal: new AbortController().signal,
+      attempt: 1,
+      input: {},
+      handoffStore: new HandoffStore(tmp),
+      flowDir: tmp,
+      handoffsDir: join(tmp, 'handoffs'),
+    };
+  }
+
+  it('[EXEC-SCRIPT-CWD-001] ctx.cwd is used as the effective cwd when step.cwd is absent', async () => {
+    const { realpathSync } = await import('node:fs');
+    const realWorktree = realpathSync(worktreeDir);
+
+    const s = step.script({
+      run: ['node', '-e', 'process.stdout.write(process.cwd())'],
+    });
+    const result = await executeScript(s, {
+      ...ctxBase(),
+      stepId: s.id || 's',
+      step: s,
+      cwd: worktreeDir,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe(realWorktree);
+  });
+
+  it('[EXEC-SCRIPT-CWD-002] step.cwd wins over ctx.cwd when both are set', async () => {
+    const { realpathSync } = await import('node:fs');
+    const realOverride = realpathSync(overrideDir);
+
+    const s = step.script({
+      run: ['node', '-e', 'process.stdout.write(process.cwd())'],
+      cwd: overrideDir,
+    });
+    const result = await executeScript(s, {
+      ...ctxBase(),
+      stepId: s.id || 's',
+      step: s,
+      cwd: worktreeDir,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe(realOverride);
+  });
+});
+
 describe('executeScript -- handoff env resolution', () => {
   let tmp: string;
   let store: HandoffStore;

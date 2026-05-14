@@ -29,6 +29,9 @@ export interface BranchExecContext {
   // Per-run handoffs directory (typically <runDir>/handoffs) — exposed as
   // {{handoffsDir}} so scripts can read raw handoff files when needed.
   handoffsDir: string;
+  // Per-run git worktree path when isolation is active; undefined means the
+  // subprocess inherits the parent process cwd. Step-level cwd overrides this.
+  cwd?: string | undefined;
 }
 
 export interface BranchStepResult {
@@ -107,7 +110,7 @@ export async function executeBranch(
     });
   }
 
-  const cwd = step.cwd ?? runDir;
+  const cwd = step.cwd ?? ctx.cwd ?? runDir;
 
   // user-controlled shell; claude env allowlist does not apply.
   const baseEnv = Object.fromEntries(
