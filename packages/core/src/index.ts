@@ -305,21 +305,6 @@ export { EventRecordSchema } from './orchestrator/event-log.js';
 export type { ScriptEnvContext } from './orchestrator/exec/script-env.js';
 export { resolveScriptEnv } from './orchestrator/exec/script-env.js';
 /** Type exports for the `Orchestrator` and its run options. */
-export type {
-  AskStepResult,
-  BranchStepResult,
-  LoopStepResult,
-  OrchestratorOptions,
-  ParallelStepResult,
-  PromptStepResult,
-  ResolveAndAuthenticateOptions,
-  RunOptions,
-  RunResult,
-  ScriptStepResult,
-  StepExecutionContext,
-  StepResult,
-  TerminalStepResult,
-} from './orchestrator/index.js';
 /**
  * `Orchestrator` drives the execution of a compiled `Flow`.
  *
@@ -342,12 +327,29 @@ export type {
  *   resolves the iteration-scoped path for an ask step that lives inside a
  *   loop body: `<runDir>/handoffs/<loopStepId>/iter_<iter>/__ask_<bodyStepId>__.json`.
  */
+export type {
+  AskStepResult,
+  BranchStepResult,
+  FlowRef,
+  LoopStepResult,
+  OrchestratorOptions,
+  ParallelStepResult,
+  PromptStepResult,
+  ResolveAndAuthenticateOptions,
+  RunOptions,
+  RunResult,
+  ScriptStepResult,
+  StepExecutionContext,
+  StepResult,
+  TerminalStepResult,
+} from './orchestrator/index.js';
 export {
   askAnswerHandoffKey,
   askAnswerHandoffPath,
   askIterationAnswerHandoffPath,
   backCompatFlowDir,
   createOrchestrator,
+  loadFlowRef,
   Orchestrator,
   resolveAndAuthenticate,
 } from './orchestrator/index.js';

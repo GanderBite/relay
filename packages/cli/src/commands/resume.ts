@@ -18,12 +18,12 @@
  *   spent so far: $0.049 · resume cost est: $0.33
  */
 
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AuthState, RunState, StepState } from '@ganderbite/relay-core';
+import type { AuthState, FlowRef, RunState, StepState } from '@ganderbite/relay-core';
 import {
   backCompatFlowDir,
   CostTracker,
+  loadFlowRef,
   loadState,
   Orchestrator,
   StateNotFoundError,
@@ -38,17 +38,6 @@ import { authenticateProvider } from '../load-flow-and-auth.js';
 import { renderPausedBanner } from '../paused-banner.js';
 import { type AuthInfo, ProgressDisplay } from '../progress.js';
 import { buildFailureStepRows, buildSuccessStepRows } from '../step-data.js';
-
-// ---------------------------------------------------------------------------
-// FlowRef shape — mirrors core/orchestrator/resume.ts FlowRef
-// ---------------------------------------------------------------------------
-
-interface FlowRef {
-  flowName: string;
-  flowVersion: string;
-  flowPath: string | null;
-  flowDir: string | null;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -281,35 +270,18 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   }
 
   // ---- (3) Load flow-ref.json ----
-  let flowRef: FlowRef;
-  try {
-    const raw = await readFile(join(runDir, 'flow-ref.json'), 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed === null ||
-      typeof parsed !== 'object' ||
-      Array.isArray(parsed) ||
-      typeof (parsed as Record<string, unknown>)['flowName'] !== 'string' ||
-      typeof (parsed as Record<string, unknown>)['flowVersion'] !== 'string'
-    ) {
-      throw new Error('flow-ref.json is malformed');
-    }
-    const p = parsed as Record<string, unknown>;
-    flowRef = {
-      flowName: p['flowName'] as string,
-      flowVersion: p['flowVersion'] as string,
-      flowPath: typeof p['flowPath'] === 'string' ? p['flowPath'] : null,
-      flowDir: typeof p['flowDir'] === 'string' ? p['flowDir'] : null,
-    };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+  const flowRefResult = await loadFlowRef(runDir);
+  if (flowRefResult.isErr()) {
     // usage-error: formatError does not apply — malformed or missing flow-ref.json, not a PipelineError type
     process.stderr.write(
-      red(`  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${msg}`) + '\n',
+      red(
+        `  ${SYMBOLS.fail} could not load flow-ref.json for run ${runId}: ${flowRefResult.error.message}`,
+      ) + '\n',
     );
     process.stderr.write(gray('  did you mean: relay runs') + '\n');
     process.exit(1);
   }
+  const flowRef: FlowRef = flowRefResult.value;
 
   if (flowRef.flowPath === null) {
     // usage-error: formatError does not apply — missing flowPath in persisted ref, not a PipelineError type

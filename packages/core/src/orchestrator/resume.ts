@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { err, ok, type Result } from 'neverthrow';
@@ -61,11 +61,7 @@ const FlowRefRawSchema: z.ZodType<FlowRefRaw> = z.object({
  */
 export function backCompatFlowDir(flowPath: string): string {
   const parent = dirname(flowPath);
-  const grand = dirname(parent);
-  // basename without importing — split on either path separator.
-  const lastSep = Math.max(parent.lastIndexOf('/'), parent.lastIndexOf('\\'));
-  const parentName = lastSep === -1 ? parent : parent.slice(lastSep + 1);
-  if (parentName === 'dist') return grand;
+  if (basename(parent) === 'dist') return dirname(parent);
   return parent;
 }
 
