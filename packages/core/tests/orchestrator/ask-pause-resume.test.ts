@@ -6,10 +6,26 @@
  * and the downstream prompt step consumes it via contextFrom.
  */
 
+// ---------------------------------------------------------------------------
+// Mock the worktree module. vi.mock is hoisted before any import, so the
+// Orchestrator will load our fakes instead of the real execFile-backed funcs.
+// The existing tests in this file pass worktree: false in RUN_OPTS, which
+// causes setupWorktree to return early before any mock function is called.
+// Only the new 'worktree preserved across pause/resume' describe block sets
+// worktree: 'auto', so these mocks only matter there.
+// ---------------------------------------------------------------------------
+vi.mock('../../src/util/worktree.js', () => ({
+  isGitRepo: vi.fn(),
+  createWorktree: vi.fn(),
+  removeWorktree: vi.fn(),
+  probeWorktree: vi.fn(),
+}));
+
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ok } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineFlow } from '../../src/flow/define.js';
 import { step } from '../../src/flow/step.js';
@@ -23,7 +39,19 @@ import type {
 } from '../../src/providers/types.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { atomicWriteJson } from '../../src/util/atomic-write.js';
+import {
+  createWorktree,
+  isGitRepo,
+  probeWorktree,
+  removeWorktree,
+} from '../../src/util/worktree.js';
 import { z } from '../../src/zod.js';
+
+// Typed helpers for the worktree mocks used in the new describe block.
+const mockedIsGitRepo = vi.mocked(isGitRepo);
+const mockedCreateWorktree = vi.mocked(createWorktree);
+const mockedRemoveWorktree = vi.mocked(removeWorktree);
+const mockedProbeWorktree = vi.mocked(probeWorktree);
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -266,5 +294,149 @@ describe('orchestrator — ask step pause/resume round-trip', () => {
     const resumeResult = await orchestrator.resume(tmp, { ...RUN_OPTS, flowDir: tmp });
     expect(resumeResult.status).toBe('failed');
     expect(executeSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Worktree preservation across ask pause/resume
+// ---------------------------------------------------------------------------
+
+describe('worktree preserved across pause/resume', () => {
+  let tmp: string;
+  let fakeWorktreePath: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'relay-ask-wt-'));
+    await writeFile(join(tmp, 'p.md'), '# test prompt {{gather.name}}', 'utf8');
+
+    fakeWorktreePath = await mkdtemp(join(tmpdir(), 'relay-ask-wt-fake-'));
+
+    // Default: probeWorktree returns a non-existent path so setupWorktree
+    // falls through to createWorktree on every call.
+    mockedIsGitRepo.mockReset();
+    mockedCreateWorktree.mockReset();
+    mockedRemoveWorktree.mockReset();
+    mockedProbeWorktree.mockReset();
+    mockedProbeWorktree.mockReturnValue('/nonexistent-probe-path-ask-wt-test');
+    mockedIsGitRepo.mockResolvedValue(ok(tmp));
+    mockedCreateWorktree.mockResolvedValue(ok(fakeWorktreePath));
+    mockedRemoveWorktree.mockResolvedValue(ok(undefined));
+  });
+
+  afterEach(async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(tmp, { recursive: true, force: true });
+        await rm(fakeWorktreePath, { recursive: true, force: true });
+        return;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    await rm(tmp, { recursive: true, force: true });
+    await rm(fakeWorktreePath, { recursive: true, force: true });
+  });
+
+  it('file written before ask pause is readable after resume when worktree is preserved', async () => {
+    const WORKTREE_OPTS = {
+      authTimeoutMs: 1_000,
+      flagProvider: 'mock',
+      worktree: 'auto' as const,
+      flowDir: tmp,
+    };
+
+    // Write a sentinel file into the fake worktree before the run so we can
+    // confirm it survives the paused exit (i.e. removeWorktree not called).
+    const sentinelPath = join(fakeWorktreePath, 'relay-sentinel.txt');
+    await writeFile(sentinelPath, 'pre-pause-content', 'utf8');
+
+    const orchestrator = createOrchestrator({
+      providers: makeRegistry({ execute: canned }),
+      runDir: tmp,
+    });
+
+    const firstResult = await orchestrator.run(
+      makeAskThenPromptFlow(),
+      {},
+      { ...WORKTREE_OPTS, flowPath: ASK_FLOW_FIXTURE },
+    );
+
+    expect(firstResult.status).toBe('paused');
+
+    // removeWorktree must NOT have been called — the worktree is preserved.
+    expect(mockedRemoveWorktree).toHaveBeenCalledTimes(0);
+
+    // The sentinel file must still exist in the fake worktree path.
+    const content = await readFile(sentinelPath, 'utf8');
+    expect(content).toBe('pre-pause-content');
+
+    // Write the answer file so resume can proceed.
+    const answerPath = askAnswerHandoffPath(tmp, 'gather');
+    const writeResult = await atomicWriteJson(answerPath, { name: 'Bob' });
+    expect(writeResult.isOk()).toBe(true);
+
+    // On resume, re-use the same mock configuration (createWorktree returns
+    // the same fakeWorktreePath — in production the real worktree would be
+    // adopted via the access() probe, but since fakeWorktreePath is a real
+    // dir in this test, probeWorktree returning a real path causes adoption).
+    // Configure probeWorktree to return the real fakeWorktreePath so that
+    // access(fakeWorktreePath) succeeds and setupWorktree adopts it without
+    // calling createWorktree again.
+    mockedProbeWorktree.mockReturnValue(fakeWorktreePath);
+    mockedCreateWorktree.mockReset();
+
+    const resumeResult = await orchestrator.resume(tmp, WORKTREE_OPTS);
+    expect(resumeResult.status).toBe('succeeded');
+
+    // removeWorktree must have been called exactly once after resume.
+    expect(mockedRemoveWorktree).toHaveBeenCalledTimes(1);
+    // createWorktree must NOT have been called on resume (adopted existing).
+    expect(mockedCreateWorktree).not.toHaveBeenCalled();
+  });
+
+  it('abort and failure runs still call removeWorktree (teardown not regressed)', async () => {
+    // Use a flow that fails — the provider throws during step execution.
+    const throwingRegistry = (() => {
+      const throwingProvider = new MockProvider({
+        responses: {
+          step: () => {
+            throw new Error('provider exploded');
+          },
+        },
+      });
+      const r = new ProviderRegistry();
+      r.register(throwingProvider);
+      return r;
+    })();
+
+    const failingFlow = defineFlow({
+      name: 'failing-flow',
+      version: '0.0.1',
+      input: z.object({}),
+      steps: {
+        step: step.prompt({ promptFile: 'p.md', output: { handoff: 'out' } }),
+      },
+    });
+
+    const orchestrator = createOrchestrator({
+      providers: throwingRegistry,
+      runDir: tmp,
+    });
+
+    const result = await orchestrator.run(
+      failingFlow,
+      {},
+      {
+        authTimeoutMs: 1_000,
+        flagProvider: 'mock',
+        worktree: 'auto' as const,
+        flowDir: tmp,
+      },
+    );
+
+    expect(result.status).toBe('failed');
+    expect(mockedRemoveWorktree).toHaveBeenCalledTimes(1);
+    const removeArgs = mockedRemoveWorktree.mock.calls[0]?.[0];
+    expect(removeArgs?.worktreePath).toBe(fakeWorktreePath);
   });
 });
