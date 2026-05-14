@@ -27,5 +27,5 @@ export type {
 } from './orchestrator.js';
 export { createOrchestrator, Orchestrator } from './orchestrator.js';
 export type { FlowRef } from './resume.js';
-export { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
+export { backCompatFlowDir, importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 export type { AbortReason, StepResult } from './types.js';

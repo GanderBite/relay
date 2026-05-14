@@ -13,7 +13,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type {
   AnswerMap,
   AuthState,
@@ -25,6 +25,7 @@ import {
   askAnswerHandoffPath,
   askIterationAnswerHandoffPath,
   atomicWriteJson,
+  backCompatFlowDir,
   loadState,
   Orchestrator,
   registerDefaultProviders,
@@ -46,6 +47,7 @@ interface FlowRef {
   flowName: string;
   flowVersion: string;
   flowPath: string | null;
+  flowDir: string | null;
 }
 
 export interface AnswerCommandOptions {
@@ -119,6 +121,7 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
       flowName: p['flowName'] as string,
       flowVersion: p['flowVersion'] as string,
       flowPath: typeof p['flowPath'] === 'string' ? p['flowPath'] : null,
+      flowDir: typeof p['flowDir'] === 'string' ? p['flowDir'] : null,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -139,7 +142,9 @@ export default async function answerCommand(args: unknown[], opts: unknown): Pro
   // ---- (5) Register providers and authenticate ----
   registerDefaultProviders();
 
-  const authResult = await authenticateProvider({ flowDir: dirname(flowRef.flowPath) });
+  const authResult = await authenticateProvider({
+    flowDir: flowRef.flowDir ?? backCompatFlowDir(flowRef.flowPath),
+  });
   if (authResult.isErr()) {
     process.stderr.write(formatError(authResult.error) + '\n');
     process.exit(exitCodeFor(authResult.error));

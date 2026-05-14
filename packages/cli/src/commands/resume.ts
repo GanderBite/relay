@@ -19,9 +19,15 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { AuthState, RunState, StepState } from '@ganderbite/relay-core';
-import { CostTracker, loadState, Orchestrator, StateNotFoundError } from '@ganderbite/relay-core';
+import {
+  backCompatFlowDir,
+  CostTracker,
+  loadState,
+  Orchestrator,
+  StateNotFoundError,
+} from '@ganderbite/relay-core';
 import { renderFailureBanner, renderSuccessBanner } from '../banner.js';
 import { MARK, SYMBOLS } from '../brand.js';
 import { gray, green, red, yellow } from '../color.js';
@@ -41,6 +47,7 @@ interface FlowRef {
   flowName: string;
   flowVersion: string;
   flowPath: string | null;
+  flowDir: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +299,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
       flowName: p['flowName'] as string,
       flowVersion: p['flowVersion'] as string,
       flowPath: typeof p['flowPath'] === 'string' ? p['flowPath'] : null,
+      flowDir: typeof p['flowDir'] === 'string' ? p['flowDir'] : null,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -337,7 +345,7 @@ export default async function resumeCommand(args: unknown[], opts: unknown): Pro
   // Resolve the provider via the same chain Orchestrator.resume() uses below
   // (--provider flag > flow settings > global settings) so any auth failure
   // surfaces here with a clean exit code rather than mid-resume.
-  const flowDirForSettings = dirname(flowRef.flowPath);
+  const flowDirForSettings = flowRef.flowDir ?? backCompatFlowDir(flowRef.flowPath);
   const authCheckResult = await authenticateProvider({
     ...(options.provider !== undefined ? { provider: options.provider } : {}),
     flowDir: flowDirForSettings,

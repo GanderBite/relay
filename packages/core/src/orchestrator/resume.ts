@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { err, ok, type Result } from 'neverthrow';
@@ -21,23 +21,53 @@ export interface FlowRef {
    * since a fresh process needs a file to re-import.
    */
   flowPath: string | null;
+  /**
+   * Absolute path to the flow package root that the original `run()` call
+   * received via `opts.flowDir`. Persisted so resume can restore working-
+   * directory scope without re-deriving it from `flowPath` (which points at
+   * a dist/ entry and is one segment too deep). Null when the field is
+   * absent from a legacy `flow-ref.json`; callers should fall back to
+   * `backCompatFlowDir(flowPath)` in that case.
+   */
+  flowDir: string | null;
 }
 
-// Schema is permissive on `flowPath`: the field may be missing entirely,
-// present-but-null (legitimate null from a write with no path supplied), or a
-// string. The version-mismatch check runs before any import attempt, so a
-// missing path only becomes fatal when the Orchestrator actually needs to re-import.
+// Schema is permissive on `flowPath` and `flowDir`: each field may be missing
+// entirely, present-but-null (legitimate null from a write with no value
+// supplied), or a string. The version-mismatch check runs before any import
+// attempt, so a missing path only becomes fatal when the Orchestrator actually
+// needs to re-import. `flowDir` was added after the initial release, so legacy
+// files written without it must still parse cleanly.
 interface FlowRefRaw {
   flowName: string;
   flowVersion: string;
   flowPath?: string | null | undefined;
+  flowDir?: string | null | undefined;
 }
 
 const FlowRefRawSchema: z.ZodType<FlowRefRaw> = z.object({
   flowName: z.string(),
   flowVersion: z.string(),
   flowPath: z.string().nullable().optional(),
+  flowDir: z.string().nullable().optional(),
 });
+
+/**
+ * Resolve a flow-package root from a `flowPath` value persisted before the
+ * `flowDir` field was introduced. When the file's parent directory is named
+ * `dist` (the bundler's output directory under the package root), step up one
+ * more level so the result names the package root itself; otherwise return
+ * the parent directory unchanged. Pure function — never throws.
+ */
+export function backCompatFlowDir(flowPath: string): string {
+  const parent = dirname(flowPath);
+  const grand = dirname(parent);
+  // basename without importing — split on either path separator.
+  const lastSep = Math.max(parent.lastIndexOf('/'), parent.lastIndexOf('\\'));
+  const parentName = lastSep === -1 ? parent : parent.slice(lastSep + 1);
+  if (parentName === 'dist') return grand;
+  return parent;
+}
 
 /**
  * Read `<runDir>/flow-ref.json`. Returns a typed FlowRef on success, a
@@ -79,6 +109,7 @@ export async function loadFlowRef(
     flowName: rawRef.flowName,
     flowVersion: rawRef.flowVersion,
     flowPath: rawRef.flowPath ?? null,
+    flowDir: rawRef.flowDir ?? null,
   });
 }
 

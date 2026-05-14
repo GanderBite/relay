@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { CostTracker } from '../cost.js';
 import { ERROR_CODES, PipelineError, toFlowDefError } from '../errors.js';
@@ -11,7 +11,7 @@ import { defaultRegistry, type ProviderRegistry } from '../providers/registry.js
 import { loadState, StateMachine, verifyCompatibility } from '../state.js';
 
 import { executeRun } from './execute-run.js';
-import { importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
+import { backCompatFlowDir, importFlow, loadFlowRef, seedReadyQueueForResume } from './resume.js';
 import { writeFlowRef, writeHandoffHelper } from './run-bootstrap.js';
 import type { OrchestratorOptions, RunOptions, RunResult } from './run-options.js';
 // Side-effect import — populates `defaultStepRegistry` so the dispatcher
@@ -77,7 +77,7 @@ export class Orchestrator {
     await mkdir(join(runDir, '.tmp'), { recursive: true });
     await mkdir(join(runDir, '.bin'), { recursive: true });
 
-    await writeFlowRef(runDir, flow, opts.flowPath);
+    await writeFlowRef(runDir, flow, opts.flowPath, opts.flowDir);
 
     const logger = this.#buildLogger(flow.name, runId, runDir, opts);
 
@@ -177,7 +177,11 @@ export class Orchestrator {
     if (verify.isErr()) throw verify.error;
 
     const runId = persistedState.runId;
-    const flowDir = opts.flowDir ?? dirname(flowRef.flowPath);
+    // Resolution order: explicit opts.flowDir wins; then the flowDir the
+    // original run() persisted into flow-ref.json; then a back-compat fallback
+    // for legacy refs that recorded only flowPath. Never use dirname(flowPath)
+    // directly — that returns the dist/ directory and breaks worktree probing.
+    const flowDir = opts.flowDir ?? flowRef.flowDir ?? backCompatFlowDir(flowRef.flowPath);
 
     const logger = this.#buildLogger(flow.name, runId, runDir, opts);
 

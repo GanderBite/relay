@@ -346,6 +346,7 @@ export {
   askAnswerHandoffKey,
   askAnswerHandoffPath,
   askIterationAnswerHandoffPath,
+  backCompatFlowDir,
   createOrchestrator,
   Orchestrator,
   resolveAndAuthenticate,

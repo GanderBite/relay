@@ -58,16 +58,22 @@ export async function writeHandoffHelper<TInput>(
  * Persist the flow-ref.json sidecar so a later resume in a fresh process can
  * locate the flow module. Throws on atomic-write failure — the caller treats
  * this as a fatal pre-walk error.
+ *
+ * `flowDir` is the absolute path to the flow package root, recorded so resume
+ * can restore the original working-directory scope without re-deriving it from
+ * `flowPath` (which points at the dist/ entry and is one segment too deep).
  */
 export async function writeFlowRef<TInput>(
   runDir: string,
   flow: Flow<TInput>,
   flowPath: string | undefined,
+  flowDir: string | undefined,
 ): Promise<void> {
   const payload = {
     flowName: flow.name,
     flowVersion: flow.version,
     flowPath: flowPath ?? null,
+    flowDir: flowDir ?? null,
   };
   const result = await atomicWriteJson(join(runDir, FLOW_REF_FILENAME), payload);
   if (result.isErr()) throw result.error;
