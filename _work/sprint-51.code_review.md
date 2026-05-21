@@ -65,6 +65,7 @@ For each finding below, fill in the `Decision` field with one of:
   ```
 
   Line 281 carries an inline `§8.1` reference. This is the only new spec-ref hit across all six sprint-51-touched files (verified via `grep -nE '§[0-9]'`); the rest of the codebase is clean.
+
 - **Suggested fix:** Drop the section number, keep the human-readable phrase:
   ```ts
   // registerDefaultProviders() populates the defaultRegistry that executeRun
@@ -74,7 +75,7 @@ For each finding below, fill in the `Decision` field with one of:
   // re-authenticate (and so the user is not prompted twice for a passphrase
   // on subscription auth).
   ```
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -105,7 +106,7 @@ For each finding below, fill in the `Decision` field with one of:
     runDir: string,
     stepOrder: readonly string[],
     awaitingInput?: { stepId: string },
-  ): Promise<void>
+  ): Promise<void>;
   ```
 - The banner uses the presence of `awaitingInput` to switch the footer hint from `resume: relay resume <runId>` to `answer: relay answer <runId>` (paused-banner.ts:208-211). The re-pause case is the intended trigger.
 - **Decision:**
@@ -157,14 +158,16 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Tighten the guard to require both streams to be TTYs before going inline. Concrete change at run.ts:353:
   ```ts
   if (process.stdout.isTTY && process.stdin.isTTY) {
-    process.stdout.write(`  ${SYMBOLS.dot} paused for input — answering inline\n`);
-    const { default: answerCommand } = await import('./answer.js');
+    process.stdout.write(
+      `  ${SYMBOLS.dot} paused for input — answering inline\n`,
+    );
+    const { default: answerCommand } = await import("./answer.js");
     await answerCommand([result.runId], {});
     return;
   }
   ```
   And the matching change at resume.ts:441. Add a third test case to each file asserting the exit-75 path fires when `stdin.isTTY === false` even if `stdout.isTTY === true`.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -199,23 +202,23 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Add `--verbose` as a local option on both the run and resume sub-commands so commander lists it in subcommand help, and so the user can discover it via `relay resume --help`. Concrete change at dispatcher.ts:194-203:
   ```ts
   program
-    .command('resume <runId>')
-    .description('continue a failed or stopped run')
-    .option('--provider <name>', 'provider to use (overrides settings)')
-    .option('--no-worktree', 'disable per-run git worktree isolation')
-    .option('--verbose', 'render the per-step event sub-stream')
+    .command("resume <runId>")
+    .description("continue a failed or stopped run")
+    .option("--provider <name>", "provider to use (overrides settings)")
+    .option("--no-worktree", "disable per-run git worktree isolation")
+    .option("--verbose", "render the per-step event sub-stream")
     .action(
       async (
         runId: string,
         cmdOpts: { provider?: string; worktree?: boolean; verbose?: boolean },
       ) => {
-        const handler = await loadCommand('resume');
+        const handler = await loadCommand("resume");
         await handler([runId], { ...program.opts(), ...cmdOpts });
       },
     );
   ```
   Make the same change to the run sub-command at dispatcher.ts:175-192. The flag still works without this change — it is purely a discoverability fix.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -264,7 +267,7 @@ For each finding below, fill in the `Decision` field with one of:
   - `[B2]` — `mockLoadFlow.mockResolvedValue(err(...))` while resume returns paused → assert `renderPausedBanner` is called with `topoOrder = []` (4th argument).
   - `[ANS-resume-failed]` — `mockOrchestratorResume.mockResolvedValue(makeRunResult('failed'))` → exit 1, stderr contains `failed after resume`.
   - Extend `[B1]` to assert `mockRenderPausedBanner.mock.calls[0][0] === 'test-flow'` (flowName arg).
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 

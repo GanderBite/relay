@@ -44,7 +44,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Task brief `task_118` listed only `dag-walk.ts` and `auth.ts` as new files; the line-budget rule says "Each new file must stay ≤ 400 lines."
 - **Finding:** The systems-engineer split the monolith into six new files in addition to the declared two. The decomposition is well-shaped — `step-dispatch.ts` owns per-step state transitions, retry, and the dispatch-step closure; `execute-run.ts` is the single boundary that wires auth + worktree + walker for both `run()` and `resume()`; `run-bootstrap.ts` carries `writeFlowRef`/`writeHandoffHelper`/`closeProviders`; `worktree-setup.ts` carries the worktree probe/teardown. Each is focused and well-documented. The public Orchestrator class API is unchanged. **However**, `step-dispatch.ts` lands at 624 lines — over the task's ≤ 400 budget. The file mostly holds the `createStepDispatcher` factory closure (`step-dispatch.ts:72-564`) plus three helpers. The single-closure shape makes it hard to split further without leaking shared mutable state through parameter lists, so the over-budget figure is defensible but not free. The other five extracted files are well under their natural budget.
 - **Suggested fix:** Either (a) accept the over-budget `step-dispatch.ts` as a deliberate trade-off and update the line-budget rule to exempt single-closure dispatch factories, or (b) extract `runBodyStep` (`step-dispatch.ts:253-346`) and `handlePause` (`step-dispatch.ts:456-558`) into their own files with the dispatcher passed as an argument — this would land `step-dispatch.ts` near 400 lines at the cost of two more module boundaries. Either way, the scope expansion deserves a follow-up commit message note so the next reviewer sees the deviation as intentional.
-- **Decision:**
+- **Decision:** Option (a)
 
 ### A.4 — `executeRun` re-applies the SIGINT/SIGTERM handler on every run() and resume() call — **FLAG-2**
 
@@ -52,7 +52,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Process-handler hygiene. The pre-split orchestrator installed handlers the same way; the split preserved the behaviour verbatim. Concern is that resume-on-pause cycles now route through `executeRun` twice (run → pause → resume), and each invocation installs/removes its own handler pair.
 - **Finding:** `executeRun` does `process.on('SIGINT', onSigint); process.on('SIGTERM', onSigterm);` on entry (lines 68-69) and `process.removeListener(...)` in the finally (lines 158-159). A single Orchestrator instance reused across multiple `run()`/`resume()` calls — say, an embedded host — would install and tear down handlers per call. There is no listener leak (the finally is unconditional), but if a caller invokes `executeRun` while a previous invocation is still in flight, both invocations will receive SIGINT and abort their respective controllers. Not a correctness issue today since the Orchestrator does not support concurrent runs (`orchestrator.ts:48-49` documents this), but it is worth a note for future embedding.
 - **Suggested fix:** Add a JSDoc line on `executeRun` documenting the handler-installation policy ("Installs process-level SIGINT/SIGTERM listeners for the duration of one run. Concurrent calls are not supported — both invocations would share the same signal."). No code change required.
-- **Decision:**
+- **Decision:** fix now.
 
 ### A.5 — `loadFlowAndAuth` reproduces auth-bootstrap logic that already lives in `core/orchestrator/auth.ts` — **FLAG-3**
 
@@ -65,7 +65,9 @@ For each finding below, fill in the `Decision` field with one of:
     provider?: string;
     cwd: string;
     flowDir: string;
-  }): Promise<Result<{ resolvedProvider: Provider; authState: AuthState }, PipelineError>> {
+  }): Promise<
+    Result<{ resolvedProvider: Provider; authState: AuthState }, PipelineError>
+  > {
     registerDefaultProviders();
     const controller = new AbortController();
     try {
@@ -85,7 +87,7 @@ For each finding below, fill in the `Decision` field with one of:
     }
   }
   ```
-- **Decision:**
+- **Decision:** fix now. Option (a)
 
 ### A.6 — Settings IO failures are silently swallowed by the CLI helper but throw in the core helper — **FLAG-4**
 
@@ -93,7 +95,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Behavioural consistency between the CLI pre-auth banner and the orchestrator's auth bootstrap.
 - **Finding:** The CLI's `authenticateProvider` calls `Promise.all([loadGlobalSettings(), loadFlowSettings(flowDir)])` and then `globalSettings = globalResult.isOk() ? globalResult.value : null` — any settings IO error (corrupt JSON, EACCES on ~/.relay/settings.json) is silently dropped and resolution proceeds with `null`. The core helper at `auth.ts:57-60` throws on the same errors. The CLI's silent swallow means an operator whose global settings.json is corrupted will get a `NoProviderConfiguredError` from `resolveProvider` instead of the actionable "settings.json is malformed: ..." error. The two paths should surface the same diagnostic.
 - **Suggested fix:** Propagate settings errors from the CLI helper too. Either (a) return `err(globalResult.error)` / `err(flowResult.error)` from `authenticateProvider` so the operator sees the corruption directly, or (b) preserve the silent-fallback semantics but log a warn-level breadcrumb so the CI artifact carries the cause. Option (a) is more honest; the CLI's exit-code map already handles settings errors via `PipelineError`.
-- **Decision:**
+- **Decision:** fix now. Option (a)
 
 ---
 
@@ -113,7 +115,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Task brief `task_119`: "render.ts: ≤ 350 lines."
 - **Finding:** The renderer is 34 lines over budget. The bulk lives in `#stepRow` (lines 300-377) and `#onLiveState`/`#onEventsRecords` (lines 189-275) — both are reasonably tight given they own the symbol → status mapping, the spinner advance, the verbose accumulator, and the final-row format. The over-budget figure is small and the structure is clean; splitting would require either (a) extracting the verbose accumulator into its own file or (b) extracting the row-renderer pure function into a separate module.
 - **Suggested fix:** Either (a) extract `VerboseAccumulator` plus `makeAccumulator` / `#applyEventToAccumulator` / `#buildAccumulatorLines` into `progress/verbose-accumulator.ts` (~80 lines), landing render.ts at ~300 lines, or (b) accept the modest over-budget as a single-renderer trade-off and revise the task budget for future split work.
-- **Decision:**
+- **Decision:** option (b)
 
 ### B.3 — Progress test file mocks the renderer through the real chokidar watcher — **PASS**
 
@@ -144,7 +146,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** `task_120`-introduced redundancy. The first `loadFlowAndAuth` call resolves the provider AND authenticates; `preAuthedState` then forwards the AuthState into `orchestrator.run()` to skip the second probe.
 - **Finding:** `runCommand` calls `loadFlowAndAuth({ provider: options.provider, ... })` at line 102-106 — this resolves the provider via the three-tier chain. Then at line 246-248 it sets `runOpts.flagProvider = options.provider` so the orchestrator re-runs the same resolution. The `preAuthedState` map (line 261-263) suppresses the actual `authenticate()` probe on the orchestrator side, but the resolution work (loadGlobalSettings + loadFlowSettings + resolveProvider) still runs twice. The redundancy is invisible to the user but it doubles the settings-read I/O on every `relay run` invocation and risks the two resolutions diverging if (somehow) the on-disk settings file changes between the banner and the orchestrator's auth call.
 - **Suggested fix:** Either (a) thread the resolved provider name into a new `RunOptions.resolvedProviderName?: string` (or a richer `preResolved` map) so the orchestrator skips re-resolution entirely when the CLI has already locked it in, or (b) accept the double-read as a deliberate consistency choice and document the rationale in `run.ts:246-248`. Option (b) is the cheaper fix.
-- **Decision:**
+- **Decision:** fix now. option (a)
 
 ### C.4 — `firstPendingStepId`, `UpgradeOutcome`, and `renderOutcome` newly exported for testing — **PASS**
 
@@ -174,11 +176,12 @@ For each finding below, fill in the `Decision` field with one of:
   // usage-error: formatError does not apply — missing target flow is not a PipelineError type
   process.stdout.write(
     red(`  ${SYMBOLS.fail} ${targetFlow} is not installed`) +
-      gray(`. run: relay install ${targetFlow}`) + '\n',
+      gray(`. run: relay install ${targetFlow}`) +
+      "\n",
   );
   ```
   Optionally update the regression test to also flag bare `${SYMBOLS.fail}` patterns inside a `process.stdout.write` call so future drifts are caught.
-- **Decision:**
+- **Decision:** fix now.
 
 ### D.3 — Pre-existing spec refs (`§6.7`, `§6.8`, `§11.5`) in `resume.ts`, `upgrade.ts`, `run.ts` were not removed during the sprint-48 audit — **FLAG-8**
 
@@ -186,7 +189,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Memory rule "Code comments must be self-contained — no spec refs (§4.2, etc.)". The pre-existing comments were carried over from earlier sprints; sprint 48 modified these files (load-flow-and-auth wiring, helper exports) but did not strip the §-references.
 - **Finding:** Six §-references remain across three files. These pre-date sprint 48 — the sprint-47 review (`Other follow-ups`) already noted the pre-existing refs in `resume.ts` and `paused-banner.ts` carrying over. Sprint 48 touched these files for unrelated reasons and left the refs intact. The rule is unambiguous: code comments do not carry spec citations. The sprint-48 scope is the right time to clear them since the files are already in the diff.
 - **Suggested fix:** Strip the §-citations from the affected comments; rewrite them as self-contained prose. For example, `resume.ts:5` ("Pre-resume banner verbatim per product spec §6.7") becomes "Pre-resume banner — verbatim string contract; the file is the canonical reference." Same treatment for the other five sites.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -246,11 +249,11 @@ For each finding below, fill in the `Decision` field with one of:
 - **Finding:** The mock object at line 120-121 declares both `maybySendRunEvent: vi.fn()` (typo) and `maybeSendRunEvent: vi.fn()` (correct name). The typo is harmless — vi.mock accepts extra properties — but the duplicate exists because the agent copied the mock from a stale file or transcribed it manually. The recent fix-up commit explicitly removed this typo from `run.test.ts`; reintroducing it here is a regression in code hygiene, not behaviour. The fact that both keys are present suggests the agent was uncertain which export name was correct, which is itself a small signal that should be addressed.
 - **Suggested fix:** Drop line 120 entirely:
   ```ts
-  vi.mock('../../src/telemetry.js', () => ({
+  vi.mock("../../src/telemetry.js", () => ({
     maybeSendRunEvent: vi.fn(),
   }));
   ```
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 

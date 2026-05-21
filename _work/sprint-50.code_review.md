@@ -25,18 +25,18 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** task_143 — "Adding a new step kind" section must accurately list the surfaces an author updates. The doc says step-registrations.ts registers "seven built-in step kinds" (line 75) but only lists five executors in the table.
 - **Finding:** `packages/core/src/orchestrator/exec/` contains seven step-kind executors — `ask.ts`, `branch.ts`, `loop.ts`, `parallel.ts`, `prompt.ts`, `script.ts`, `terminal.ts` — but the Orchestrator table in ARCHITECTURE.md only lists prompt / script / branch / parallel / loop. A new contributor reading the table would not realise that `ask` and `terminal` are also live step kinds with their own executors, even though their builders are correctly listed under "Flow DSL". The internal inconsistency between "seven built-in step kinds" (line 75) and the five-row executor table (lines 81–85) is the symptom.
 - **Suggested fix:** Add two rows to the Orchestrator/Executor block:
-  - `` | `orchestrator/exec/ask.ts` | Executor for `ask` steps — pauses the run and writes the pending Question set. | ``
-  - `` | `orchestrator/exec/terminal.ts` | Executor for `terminal` steps — spawns an interactive shell session. | ``
-  Total file size goes from 119 → 121 lines, which crosses the stated ≤120 cap; drop the empty trailing line or move one of the prose paragraphs onto a shorter line to stay at 120.
-- **Decision:**
+  - ``| `orchestrator/exec/ask.ts` | Executor for `ask` steps — pauses the run and writes the pending Question set. |``
+  - ``| `orchestrator/exec/terminal.ts` | Executor for `terminal` steps — spawns an interactive shell session. |``
+    Total file size goes from 119 → 121 lines, which crosses the stated ≤120 cap; drop the empty trailing line or move one of the prose paragraphs onto a shorter line to stay at 120.
+- **Decision:** fix now.
 
 ### FLAG-2 · CLAUDE.md Hard rule 8 cites a CLI file that is part of a layered `progress/` module
 
 - **File:** `CLAUDE.md:78`
 - **Spec:** task_144 — the rule must list every CLI surface an author touches when adding a step kind.
-- **Finding:** Rule 8 names `packages/cli/src/progress/render.ts` as the place to update. That file exists, but the actual progress system has a wider surface — `progress/index.ts`, `progress/step-row.ts`, and the dispatcher live in the same directory and may also need per-kind hooks depending on the kind. The current single-file pointer underspecifies. Either tighten the rule to "`packages/cli/src/progress/`" so readers know to scan the directory, or list all the per-step rendering files. Note this is forward-looking — the rule fires only when *adding* a step kind, which is rare, so the risk of a misled author is low.
+- **Finding:** Rule 8 names `packages/cli/src/progress/render.ts` as the place to update. That file exists, but the actual progress system has a wider surface — `progress/index.ts`, `progress/step-row.ts`, and the dispatcher live in the same directory and may also need per-kind hooks depending on the kind. The current single-file pointer underspecifies. Either tighten the rule to "`packages/cli/src/progress/`" so readers know to scan the directory, or list all the per-step rendering files. Note this is forward-looking — the rule fires only when _adding_ a step kind, which is rare, so the risk of a misled author is low.
 - **Suggested fix:** Change the path from `packages/cli/src/progress/render.ts` to `packages/cli/src/progress/` (directory, not file), e.g. "check the `progress/` rendering tree (per-step row, status formatter) and `banner.ts` (distinct success/failure row shape)".
-- **Decision:**
+- **Decision:** fix now.
 
 ### FLAG-3 · Both wave commit messages include sprint-internal `task_N` identifiers in the body
 
@@ -44,7 +44,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** `CLAUDE.md:87-92` — "Commit subjects and bodies MUST NOT contain sprint-internal identifiers: `task_N` — use only in sprint JSON and code review artifacts."
 - **Finding:** Both commit bodies enumerate `task_143`, `task_144`, `task_145`, `task_146`, `task_147`, `task_148`, `task_149`, `task_150` and end with `Closes task_X from _work/sprint-50.json`. The convention forbids this. The rule was added to CLAUDE.md before sprint 50 began (see prior sprint commits) and was reinforced in sprint 49 reviews. Because the rule is already documented and these are the first sprint commits authored after the rule landed, the violation is fresh — worth flagging so the orchestrator can decide whether to amend or simply learn for sprint 51.
 - **Suggested fix:** Drop the `task_X` prefixes and the `Closes task_X` trailers from future commits. Rewrite the body as a flat bullet list of what changed, e.g. "add packages/core/src/ARCHITECTURE.md with module map …", "document throw-vs-Result discipline in CLAUDE.md", and so on. History rewrite for the two existing commits is destructive and probably not worth it for two messages — note for future sprints instead.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -54,9 +54,9 @@ For each finding below, fill in the `Decision` field with one of:
 
 - **File:** `packages/cli/scripts/check-file-lengths.ts:11-13`
 - **Spec:** task_146 — "thin re-export shim exemption mechanism". The script currently hardcodes a single entry (`src/progress.ts`) and provides no programmatic detection.
-- **Finding:** The exemption is a hand-maintained Set. Any future re-export shim (e.g. `exit-codes.ts` itself is a 10-line shim today and is *not* exempted but stays under the 400-line cap so the issue is latent) will need a manual edit to this file. A simple heuristic — "file is exempt if every non-empty, non-comment line is `export ... from '...';`" — would auto-detect shims and prevent future drift. Not a blocker because the current cap is generous enough to make this a non-issue for genuine shims (which are tiny). Worth tracking for the day someone adds a 401-line shim.
+- **Finding:** The exemption is a hand-maintained Set. Any future re-export shim (e.g. `exit-codes.ts` itself is a 10-line shim today and is _not_ exempted but stays under the 400-line cap so the issue is latent) will need a manual edit to this file. A simple heuristic — "file is exempt if every non-empty, non-comment line is `export ... from '...';`" — would auto-detect shims and prevent future drift. Not a blocker because the current cap is generous enough to make this a non-issue for genuine shims (which are tiny). Worth tracking for the day someone adds a 401-line shim.
 - **Suggested fix:** Either (a) leave the Set in place and rely on the cap being roomy, or (b) replace `isShimExempt` with a content-scanning predicate: read the file, strip comments and blank lines, and exempt when every remaining line matches `/^\s*export\s+(\{[^}]*\}|\*)\s+from\s+['"][^'"]+['"];?\s*$/`. Option (b) is preferred because it eliminates the hardcoded list entirely.
-- **Decision:**
+- **Decision:** fix now. option (b)
 
 ### FLAG-5 · `check-file-lengths.ts` counts lines by splitting on `'\n'`, which over-counts files ending with a newline
 
@@ -66,15 +66,15 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Replace lines 29–32 with:
   ```ts
   function countLines(filePath: string): number {
-    const content = readFileSync(filePath, 'utf8');
-    if (content === '') return 0;
-    const lines = content.split('\n');
-    if (lines[lines.length - 1] === '') lines.pop();
+    const content = readFileSync(filePath, "utf8");
+    if (content === "") return 0;
+    const lines = content.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
     return lines.length;
   }
   ```
   Or use `content.match(/\n/g)?.length ?? 0` plus a +1 if the file is non-empty and does not end with `\n`. The first form is clearer.
-- **Decision:**
+- **Decision:** fix now.
 
 ### FLAG-6 · `program.showSuggestionAfterError(true)` is wired but no smoke test asserts the message shape
 
@@ -82,7 +82,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** task_145 — "show did-you-mean suggestions for mistyped commands".
 - **Finding:** The call sits at the right place (after `exitOverride()`, before any commands are registered) so suggestions will fire on unknown subcommands. There is no test that asserts what the user sees — `relay rsume` (typo for `resume`) should print Commander's default `error: unknown command 'rsume'. Did you mean 'resume'?` to stderr. Without a smoke test, a future Commander upgrade or a wholesale dispatcher refactor could silently drop the suggestion. The risk is low because it is one line, but a snapshot test in `packages/cli/tests/` would lock the behaviour in.
 - **Suggested fix:** Add a test in `packages/cli/tests/dispatcher.test.ts` (or wherever the CLI smoke tests live) that runs `buildProgram().parseAsync(['node', 'relay', 'rsume'], { from: 'user' })` inside a try/catch, captures stderr via vi.spyOn, and asserts the stderr text contains `Did you mean 'resume'?`. Defer if the CLI test harness does not already capture commander stderr.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -94,7 +94,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** task_148 acceptance criteria — "child resolution strategy". The agent self-flagged this risk in the task brief.
 - **Finding:** The cross-process test hardcodes `DIST_INDEX = resolve(__dirname, '../../dist/index.js')` and writes a shim that imports from that absolute path. The corrupt-flow-ref fixture imports from `@ganderbite/relay-core` which resolves to the same dist bundle (via the workspace package's `exports.import`). Running `pnpm -F @ganderbite/relay-core test` cold (no prior build) will fail both suites with `Cannot find module …/dist/index.js`. CI is safe because `.github/workflows/ci.yml` runs `pnpm -r build` (line 64) before `pnpm test` (line 68), so this is a local-dev-only paper cut. Documenting the prerequisite in the test file or in a README is enough.
 - **Suggested fix:** Either (a) add a top-of-file comment in both tests stating "Run `pnpm -F @ganderbite/relay-core build` before this suite — it imports from the built dist for cross-process and fixture isolation reasons", or (b) add a `pretest` script in `packages/core/package.json` that runs `tsup` so the build is implicit. Option (b) trades developer-loop speed (rebuild every test run) for ergonomics, so prefer (a) unless someone hits this often.
-- **Decision:**
+- **Decision:** fix now. option (a)
 
 ### FLAG-8 · Load test 4 ("10-step DAG produces correct handoffs") relies on the vitest default 10s timeout
 
@@ -102,15 +102,15 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** task_147 — "wall-clock thresholds conservative".
 - **Finding:** The first three load tests set explicit timeouts (120 000 ms, 60 000 ms, 20 000 ms). The fourth case ("10-step DAG produces correct handoffs") does not — it falls back to the vitest config default of 10 000 ms (from `packages/core/vitest.config.ts:8`). Ten serial prompt steps with atomic state.json writes complete well under 10 s on a fast machine, but a cold Vitest worker on a constrained CI runner might brush the edge. The test is also the only one that asserts correctness rather than time, so flaking it would be a regression in observability.
 - **Suggested fix:** Add `{ timeout: 30_000 }` to the third `it(...)` argument: `it('10-step DAG produces correct handoffs', { timeout: 30_000 }, async () => {`. Keeps the load suite consistent and gives 30s headroom for cold CI.
-- **Decision:**
+- **Decision:** fix now.
 
 ### FLAG-9 · `GuardProvider` in corrupt-flow-ref test throws from `invoke` and `stream` — violates the Provider Result-discipline contract
 
 - **File:** `packages/core/tests/integration/corrupt-flow-ref.test.ts:61-73`
 - **Spec:** Project convention (Memory: "Return Result via neverthrow, do not throw"). The `Provider.invoke` signature is `Promise<Result<InvocationResponse, PipelineError>>` — throws cross the public API surface.
 - **Finding:** The test asserts that neither `invoke` nor `stream` is reached (because resume fails before any step dispatch). The current GuardProvider raises a bare `Error` from both. If the test ever regresses and the orchestrator does invoke a step, the thrown error will surface as an unhandled rejection rather than as a typed test failure — and more importantly, it sets a bad pattern for future tests that imitate this. The Provider interface promise is that fallible operations return `err(...)`, and a "loud" guard provider can still honour that by returning `err(new PipelineError('invoke must not be called', ERROR_CODES.INTERNAL, { stepId }))`.
-- **Suggested fix:** Change line 64-66 to `return err(new PipelineError(\`invoke must not be called — got stepId "\${ctx.stepId}"\`, ERROR_CODES.INTERNAL, { stepId: ctx.stepId }));` and import `err` from neverthrow plus `PipelineError`. For `stream` (which returns AsyncIterable, not Result), throw is the only option since there is no error channel; leave it. Minor — purely about future-proofing test patterns.
-- **Decision:**
+- **Suggested fix:** Change line 64-66 to `return err(new PipelineError(\`invoke must not be called — got stepId "\${ctx.stepId}"\`, ERROR_CODES.INTERNAL, { stepId: ctx.stepId }));`and import`err`from neverthrow plus`PipelineError`. For `stream` (which returns AsyncIterable, not Result), throw is the only option since there is no error channel; leave it. Minor — purely about future-proofing test patterns.
+- **Decision:** fix now.
 
 ---
 

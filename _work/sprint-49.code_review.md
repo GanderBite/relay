@@ -44,7 +44,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** Sprint brief task_136 listed each sub-module's line cap. `ask-questions.ts` is 67% over its 100-line cap.
 - **Finding:** `cycle.ts` (122) and `compose.ts` (157) are within reasonable rounding (~2 and ~5 lines); the JSDoc on `traceCycle` and `kahnTopoSort` could not be meaningfully shortened without losing information. `roots.ts` (54) carries a fallback branch (the `entry === undefined` defensive path at lines 28-37) that pushes it above 40 lines — defensible because that branch is a real (if rare) invariant guard. `ask-questions.ts` is the outlier at 167 lines: it merges two validators (`validateAskQuestionSources`, `validateParallelAskQuota`) plus the recursive `collectLoopBodyAsks` helper. Splitting into `ask-questions.ts` (sources) and `ask-quota.ts` (quota) would put each at ~85 lines and align with the cap. `context-from.ts` at 95 (cap 80) is within ~20% — defensible.
 - **Suggested fix:** Split `ask-questions.ts` into two files — `ask-question-sources.ts` (validateAskQuestionSources + the dotted-handoff loop-body helper, ~85 lines) and `parallel-ask-quota.ts` (validateParallelAskQuota + collectLoopBodyAsks, ~80 lines) — and update `compose.ts:6` to import from both. Leave `cycle.ts`, `roots.ts`, `context-from.ts`, and `compose.ts` as-is; their overruns are in the noise.
-- **Decision:**
+- **Decision:**. fix later. this is already an improvement good enough for me.
 
 ### A.4 — All sub-modules use `lookupOrThrow` consistently — **PASS**
 
@@ -79,16 +79,22 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Either (a) rename the reasons to match the actual semantics — `'absent'`, `'unparseable'`, `'missing-default-export'` — or (b) keep the names but flip the labels: ENOENT → `'missing-file'`, non-ENOENT import failure → some new `'unparseable'`/`'load-failed'` reason. Option (b) requires updating the registry's per-reason format blocks and the resume.ts emission. Concrete sketch for (b):
   ```ts
   if (isModuleNotFound(detail)) {
-    return err(new FlowImportError(`flow file not found at ${entryPath}`, {
-      path: entryPath, reason: 'missing-file',
-    }));
+    return err(
+      new FlowImportError(`flow file not found at ${entryPath}`, {
+        path: entryPath,
+        reason: "missing-file",
+      }),
+    );
   }
-  return err(new FlowImportError(`failed to import flow at ${entryPath}: ${detail}`, {
-    path: entryPath, reason: 'load-failed',
-  }));
+  return err(
+    new FlowImportError(`failed to import flow at ${entryPath}: ${detail}`, {
+      path: entryPath,
+      reason: "load-failed",
+    }),
+  );
   ```
   And update the `FlowImportDetails.reason` union plus the registry's `if/else if` branches accordingly.
-- **Decision:**
+- **Decision:** fix now. option (a)
 
 ### B.3 — `ERROR_CODES.FLOW_IMPORT` uses lowercase suffix while every other code uses uppercase — **FLAG-3**
 
@@ -96,7 +102,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** No formal convention, but `errors.ts:6-29` shows every prior code follows `relay_UPPERCASE` (`relay_ATOMIC_WRITE`, `relay_FLOW_DEFINITION`, `relay_HANDOFF_SCHEMA`, etc.).
 - **Finding:** The new code is `FLOW_IMPORT: 'relay_flow_import_error'` — lowercase suffix with `_error` suffix. The brief task_130 wrote it that way verbatim, so the implementer matched the brief. The deviation from the existing 22 codes' convention is a minor inconsistency but propagates: `errors/registry.ts:125` aliases the code in its mapping comment as `relay_flow_import_error — mapped → exit 2 (definition_error) [alias for FLOW_IMPORT]`, hinting the implementer noticed.
 - **Suggested fix:** Rename the literal to `'relay_FLOW_IMPORT'` to match the family, then update the registry comment line. The registry uses `ERROR_CODES.FLOW_IMPORT` so no other site needs editing.
-- **Decision:**
+- **Decision:** fix now.
 
 ### B.4 — `AbortReason` discriminated union exported from errors.ts and re-exported via index — **PASS**
 
@@ -111,7 +117,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** Brief task_131 said "the three abort sites in orchestrator.ts produce typed AbortReason values."
 - **Finding:** A grep for `kind: 'sibling-failure'` and `kind: 'timeout'` across `packages/core/src` returns zero producer sites. Only `kind: 'signal'` (at the SIGINT/SIGTERM listeners, lines 343, 347 in `run()` and 642, 646 in `resume()`) and the `?? { kind: 'unknown' }` fallback on the log/result path are populated. The `runFailed = true` step-failure path at orchestrator.ts:1837 sets the run to `failed` without aborting, so `sibling-failure` is never reachable. A timeout path that aborts the run does not exist in this orchestrator. The two unused variants are still useful as a forward-compatible vocabulary, but the brief implied they would be wired.
 - **Suggested fix:** Either (a) document on the union type that `'sibling-failure'` and `'timeout'` are reserved for future expansion (no consumer site exists today), or (b) add the producer sites: a `sibling-failure` reason at the parent abort caused by a fan-out branch failure (parallel.ts hosts the abort path that already runs Promise.all with abort-on-failure semantics), and a `timeout` reason if/when the orchestrator wires a top-level run timeout. (a) is the lower-cost option and accurately reflects current semantics.
-- **Decision:**
+- **Decision:** fix now. option (b)
 
 ### B.6 — `branchFailures.cause` accepts the documented `PipelineError | { code; message }` shape — **PASS**
 
@@ -131,7 +137,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** task_134 asked for a comment block "listing which ERROR_CODES entries from @ganderbite/relay-core are mapped." The block is present but is a bare comment.
 - **Finding:** The 30-line comment block is a pre-rendered table of every relay-core error code and its target exit code. When the relay-core team adds a new code (e.g. `'relay_NEW_THING'`) the comment will silently go out of date — there is no test or build hook that fails when the table omits a code. The runtime fallback at format.ts:30 (`console.error('relay: unmapped error code ...')`) covers the surface so the user sees the gap, but the documentation drifts.
 - **Suggested fix:** Add a unit test in `packages/cli/tests/errors/registry.test.ts` that imports `ERROR_CODES` from relay-core and asserts every code appears either in the registry Map (mapped) or in a hardcoded `KNOWN_UNMAPPED` set. The test fails when the relay-core team adds a code without classifying it. ~15 lines of test code, no production change required.
-- **Decision:**
+- **Decision:** fix now.
 
 ### B.9 — All exit codes carry the `'relay_'` prefix as required — **PASS**
 
@@ -170,7 +176,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Finding:** The implementation defines `type LoopState` with 7 variants — `idle`, `iterating`, `body-dispatching`, `until-checking`, `exhausted`, `aborted`, `done`. The `paused` state from the brief is missing. The actual pause path bypasses the state machine entirely: `executeAsk` throws `AwaitingInputSignal`, which propagates up through `dispatch` (`runBodyStep` in orchestrator.ts) → `withRetry` → the for-loop's iteration → out of `executeLoop` to the orchestrator's `dispatchStep` catch, which calls `pauseStep` on the state machine layer (a different layer of state, the `StateMachine` in `state.ts`). The `LoopIterationStateMachine` never observes the pause; it simply unwinds because the `dispatch(...)` call rejected.
 - The choice is defensible — collapsing pause into the propagation path keeps the loop state machine free of an exception-shaped transition — but it deviates from the brief's prescribed shape, and the `paused` state would be needed if a future feature lets the loop resume mid-iteration without unwinding (e.g. a non-blocking ask). The state-machine diagram comment at lines 161-172 also omits the pause edge for the same reason.
 - **Suggested fix:** Either (a) add a sentence to the JSDoc at `loop.ts:186-196` noting that pause is observed at the `StateMachine` (state.ts) layer, not the iteration state machine, and that the brief's enumerated `paused` state is intentionally omitted because the iteration unwinds via exception propagation; or (b) add the `paused` variant for forward-compat and call `machine.pause()` from the catch in `runBodyStep` so the diagram closes. (a) preserves the smaller surface area.
-- **Decision:**
+- **Decision:**: fix now. option (b)
 
 ### C.5 — All 11 edge cases from the brief are preserved — **PASS**
 
@@ -223,7 +229,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** Brief task_133 said `registry.ts: ≤ 350 lines`.
 - **Finding:** The file is 477 lines — 127 over the cap, ~36% over budget. The bulk is a single Map literal at lines 132-477 with one `[ERROR_CODES.X, makeHandler(...)]` entry per error class. The per-entry format closures average 25 lines apiece (one for the headline, one for the indented body, one or two for remediation lines). Without the cap the file is readable — each entry is self-contained — but the cap exists so the registry can't grow unboundedly. The 30-line ERROR_CODES mapping comment at lines 93-126 contributes to the line count but is not the main driver.
 - **Suggested fix:** Extract the per-entry formatter functions (e.g. `formatStepFailure`, `formatFlowDefinition`, `formatTimeoutError`) into a sibling `errors/formatters.ts`, leaving `registry.ts` as just the Map literal that wires `ERROR_CODES.X` to `makeHandler(EXIT_CODES.X, guard, format-imported-from-formatters)`. After extraction, `registry.ts` should land around 200-250 lines and `formatters.ts` around 250-300 lines — both under 350.
-- **Decision:**
+- **Decision:** fix now.
 
 ### D.4 — `step-data.ts` extracted with shared `readStateSteps`, `readMetrics`, `buildSuccessStepRows`, `buildFailureStepRows` — **PASS**
 
@@ -242,7 +248,7 @@ For each finding below, fill in the `Decision` field with one of:
   map.set(entry.stepId, entry);
   ```
   TypeScript will type-check `entry` as `RawMetrics` directly (verified mentally — `RawMetricsArraySchema.safeParse(...)` returns `data: RawMetrics[]`).
-- **Decision:**
+- **Decision:** fix now.
 
 ### D.6 — `normalizeArgvInput` extracted into `input-parser.ts` — **PASS**
 
@@ -275,7 +281,7 @@ For each finding below, fill in the `Decision` field with one of:
   export async function isTelemetryEnabled(): Promise<boolean> { ... }
   ```
   Update the local caller at `maybeSendRunEvent` line 67. ~3 lines of change.
-- **Decision:**
+- **Decision:** fix now.
 
 ### D.10 — All file writes go through atomic helpers; no fresh `fs.writeFile` paths added — **PASS**
 
@@ -309,7 +315,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec:** Code hygiene.
 - **Finding:** Both test files define a sibling mock entry `maybySendRunEvent: vi.fn()` (typo of `maybeSendRunEvent`). The misspelled mock is never called by any production code — `telemetry.ts` exports `maybeSendRunEvent`, no `maybySendRunEvent`. Defensive over-mocking; no consumer means no test failure, but the typo lives on as cargo-cult code that future readers may copy without realising it does nothing.
 - **Suggested fix:** Delete the `maybySendRunEvent: vi.fn()` line in both files. ~2 lines of change.
-- **Decision:**
+- **Decision:** fix now.
 
 ### E.4 — `process.exit` spied to capture the exit code without halting the test — **PASS**
 
@@ -356,7 +362,7 @@ For each finding below, fill in the `Decision` field with one of:
 
 ### Atomic writes for any file other processes might read — **PASS**
 
-- No new file-write paths added in sprint 49. All file writes (state.json, metrics.json, batons/*, live/*) continue to route through `atomicWriteJson`. The new `step-data.ts` and `schemas.ts` are read-only; the new `errors/*.ts` and registry/dispatch files are runtime-only.
+- No new file-write paths added in sprint 49. All file writes (state.json, metrics.json, batons/_, live/_) continue to route through `atomicWriteJson`. The new `step-data.ts` and `schemas.ts` are read-only; the new `errors/*.ts` and registry/dispatch files are runtime-only.
 - **Decision:**
 
 ### Self-contained code comments — no spec refs, no sprint/task IDs — **PASS** (with carry-over)

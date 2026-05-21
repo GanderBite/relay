@@ -2,6 +2,7 @@
 
 **Reviewer:** `@code-reviewer (agent)`
 **Reviewed:** commits
+
 - `6945348` (feat(core): foundation for ask-step paused-run state)
 - `995c988` (feat(core): step.ask builder, executeAsk executor, and DAG validation for dynamic question sources)
 - `6742fdc` (feat: orchestrator pause protocol, paused banner, and public ask exports)
@@ -144,7 +145,7 @@ For each finding below, fill in the `Decision` field with one of:
 
 - **File:** `packages/cli/src/commands/run.ts:392-481`
 - **Spec / decision:** Decision D ("`relay answer` command exists and auto-resumes; `relay resume` refuses paused runs"). The complementary first-run case is not stated explicitly in decisions A-G but is required for the design to function end-to-end: `RunResult.status: 'paused'` is a first-class orchestrator outcome (`packages/core/src/orchestrator/orchestrator.ts:159`), and `EXIT_CODES.paused = 75` is reserved for it (`packages/cli/src/exit-codes.ts:15,59`).
-- **Finding:** `run.ts`'s post-run dispatch has three branches: `result.status === 'succeeded'` (line 392), `result.status === 'aborted' && wasInterrupted` (line 429, the Ctrl-C path), and `else` (line 447, "failed or aborted"). When a flow contains an `step.ask` and the user invokes `relay run`, the orchestrator returns `{ status: 'paused', pausedStepId: ... }`. The current code falls into the `else` branch, renders the **failure** banner via `renderFailureBanner(...)`, fires telemetry with `status: 'aborted' ? 'aborted' : 'failure'` (treating paused as failure), and exits with code 1 instead of 75. The end-to-end pause/resume UX promised by sprint 46 only works on `relay answer` (which wraps a *resume*); the *first* time a flow hits an ask step, the user sees a failure banner rather than the paused banner with `answer: relay answer <runId>` hint. The `answer` command's resume path is correct (`commands/answer.ts:342-349`), and so is `resume.ts`'s pre-walk paused guard (line 277-281), but the run command never gets the chance to render the right banner.
+- **Finding:** `run.ts`'s post-run dispatch has three branches: `result.status === 'succeeded'` (line 392), `result.status === 'aborted' && wasInterrupted` (line 429, the Ctrl-C path), and `else` (line 447, "failed or aborted"). When a flow contains an `step.ask` and the user invokes `relay run`, the orchestrator returns `{ status: 'paused', pausedStepId: ... }`. The current code falls into the `else` branch, renders the **failure** banner via `renderFailureBanner(...)`, fires telemetry with `status: 'aborted' ? 'aborted' : 'failure'` (treating paused as failure), and exits with code 1 instead of 75. The end-to-end pause/resume UX promised by sprint 46 only works on `relay answer` (which wraps a _resume_); the _first_ time a flow hits an ask step, the user sees a failure banner rather than the paused banner with `answer: relay answer <runId>` hint. The `answer` command's resume path is correct (`commands/answer.ts:342-349`), and so is `resume.ts`'s pre-walk paused guard (line 277-281), but the run command never gets the chance to render the right banner.
 - **Suggested fix:** Add a `paused` arm before the failure `else` in `run.ts`. Concrete sketch (replace the structure at line 429-481):
 
   ```ts
@@ -168,7 +169,8 @@ For each finding below, fill in the `Decision` field with one of:
   ```
 
   The `renderPausedBanner` already takes an optional `awaitingInput` parameter that flips the footer hint to `answer: relay answer <runId>` (`packages/cli/src/paused-banner.ts:192,209-211,235-237`), so the only wiring needed is the new branch and an additional `'paused'` value in the telemetry `status` enum (or omit telemetry for paused runs).
-- **Decision:**
+
+- **Decision:** fix now.
 
 ---
 
@@ -190,11 +192,12 @@ For each finding below, fill in the `Decision` field with one of:
     Orchestrator,
     StateMachine,
     StateNotFoundError,
-  } from '@ganderbite/relay-core';
+  } from "@ganderbite/relay-core";
   ```
 
   Then replace `answerHandoffPath(runDir, pausedStepId)` at line 302 with `askAnswerHandoffPath(runDir, pausedStepId)`. The existing CLI test at `packages/cli/tests/commands/answer.test.ts:196` only asserts `writtenPath.includes('__ask_gather__')` and `writtenPath.includes('handoffs')`, so the change requires no test edits.
-- **Decision:**
+
+- **Decision:** fix now.
 
 ### FLAG-2 · Ask step inside a `loop` body would crash the run rather than pause it cleanly
 
@@ -205,18 +208,20 @@ For each finding below, fill in the `Decision` field with one of:
   1. Reject ask inside a loop body at compile time, similar to how `loop.ts:103-107` rejects `parallel`. Add at `loop.ts:108`:
 
      ```ts
-     if (s.kind === 'ask') {
+     if (s.kind === "ask") {
        throw new FlowDefinitionError(
-         'loop step body must not contain ask steps (step.ask inside a body is not supported in this version — pause/resume requires top-level state entries)',
+         "loop step body must not contain ask steps (step.ask inside a body is not supported in this version — pause/resume requires top-level state entries)",
        );
      }
      ```
 
      and remove the `case 'ask': return { ...raw, id };` at `loop.ts:50-52` so the union narrowing fails as well.
+
   2. Properly support it by surfacing the loop step id (not the body step id) on the `AwaitingInputSignal` carry, or by seeding body-step state entries on demand. Substantially more work and likely deferred.
 
   Option 1 is the safe sprint-46 choice; option 2 is a follow-up sprint task.
-- **Decision:**
+
+- **Decision:** fix later. option 2.
 
 ### FLAG-3 · `validateAskQuestionSources` shadows the loop-scoped check from `validateContextFrom` instead of sharing it — duplicated maintenance surface
 
@@ -229,13 +234,17 @@ For each finding below, fill in the `Decision` field with one of:
   function buildProducerMaps(
     keys: readonly string[],
     stepMap: Map<string, Step>,
-  ): { producers: Map<string, Set<string>>; loopBodyHandoffs: Map<string, string> } {
+  ): {
+    producers: Map<string, Set<string>>;
+    loopBodyHandoffs: Map<string, string>;
+  } {
     // ... shared body
   }
   ```
 
   Then `validateContextFrom` and `validateAskQuestionSources` both call `buildProducerMaps(keys, stepMap)` and operate on the result. Reduces ~30 lines of duplication and keeps producer semantics in one place.
-- **Decision:**
+
+- **Decision:** fix now.
 
 ### FLAG-4 · `state.json` paused-step state never migrates `attempts` correctly when the ask step pauses on a retry attempt
 
@@ -246,19 +255,20 @@ For each finding below, fill in the `Decision` field with one of:
 
   ```ts
   const next: StepState = {
-    status: 'pending',
-    attempts: 0,  // pause/resume is not a retry — startStep on next dispatch will set attempts=1
+    status: "pending",
+    attempts: 0, // pause/resume is not a retry — startStep on next dispatch will set attempts=1
   };
   ```
 
   Or alternatively decrement by 1 to preserve the invariant that `attempts` counts dispatches that actually ran an executor. Either choice should land with a unit test in `state.test.ts` that asserts the field after a pause-resume round-trip.
-- **Decision:**
+
+- **Decision:** fix now. decrement by 1.
 
 ### FLAG-5 · `relay answer` interactive prompt rendering inlines symbols and color helpers but does not use the brand vocabulary consistently
 
 - **File:** `packages/cli/src/commands/answer.ts:55-150` (interactive prompts), `94, 106, 121, 126`
 - **Spec / decision:** Brand grammar — "Symbol vocabulary must come from `visual.ts`" / `brand.ts`. Specifically the bullet (`·`), pending dot (`○`), and similar should be sourced from `SYMBOLS`.
-- **Finding:** The interactive question rendering (`promptText`, `askQuestion`) writes plain `  ${q.label}: ` for text/multiline (line 57), `  ${q.label}\n` followed by `    ${i + 1}. ${opt}\n` for select/multiselect (lines 103, 105). These match nothing in `SYMBOLS` from `brand.ts` — they're plain ASCII and Arabic numerals. That is fine in itself (the brand vocabulary doesn't mandate a particular rendering for question labels), but the inconsistent indentation (`  ` vs `    `) and the lack of any visual marker that shows "this is a question to answer" (vs the rest of the CLI's output) makes the prompt feel disconnected from Relay's voice. The error/help lines correctly use `red()`, `gray()`, `SYMBOLS.fail`, `SYMBOLS.warn`. The question prompts themselves are silent.
+- **Finding:** The interactive question rendering (`promptText`, `askQuestion`) writes plain ` ${q.label}:` for text/multiline (line 57), `  ${q.label}\n` followed by `    ${i + 1}. ${opt}\n` for select/multiselect (lines 103, 105). These match nothing in `SYMBOLS` from `brand.ts` — they're plain ASCII and Arabic numerals. That is fine in itself (the brand vocabulary doesn't mandate a particular rendering for question labels), but the inconsistent indentation (`  ` vs `    `) and the lack of any visual marker that shows "this is a question to answer" (vs the rest of the CLI's output) makes the prompt feel disconnected from Relay's voice. The error/help lines correctly use `red()`, `gray()`, `SYMBOLS.fail`, `SYMBOLS.warn`. The question prompts themselves are silent.
 - **Suggested fix:** Either (a) accept the current minimal styling as the deliberate prompt aesthetic and move on, or (b) prefix each question with `SYMBOLS.dot` (`·`) or similar:
 
   ```ts
@@ -266,7 +276,8 @@ For each finding below, fill in the `Decision` field with one of:
   ```
 
   No spec mandate forces option (b); call this a polish item only if the brand owner has an opinion.
-- **Decision:**
+
+- **Decision:** fix now. option (b).
 
 ### FLAG-6 · Unused `terminalStep` import in `tests/flow/ask.test.ts`
 
@@ -274,7 +285,7 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Concern #3 from the briefing; lint hygiene.
 - **Finding:** `import { terminalStep } from '../../src/flow/steps/terminal.js';` is the only `terminalStep` reference in the file. Tests at line 303 and line 333 build terminal steps inline as object literals (`{ id: 'root', kind: 'terminal' } satisfies Step`) so the imported builder is never invoked. The lint hook flagged this during the wave-5 commit; it remains in the codebase.
 - **Suggested fix:** Delete line 11 (`import { terminalStep } from '../../src/flow/steps/terminal.js';`). One-line change, no test behaviour impact.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 

@@ -54,15 +54,19 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** In the sibling sweep at `orchestrator.ts:1634-1668`, after the `resetStep` call, decrement `attempts` by one to compensate for the `startStep` re-increment on the next dispatch. Either expose a `resetStep` variant that takes a `decrementAttempts: boolean` option, or sweep with the existing `resumePausedStep`-style decrement after the failStep→resetStep chain. Concrete sketch:
   ```ts
   const resetSibling = stateMachine.resetStep(siblingId);
-  if (resetSibling.isErr()) { /* log + continue */ }
+  if (resetSibling.isErr()) {
+    /* log + continue */
+  }
   // Compensate for the incremented startStep on the next dispatch.
   // The sibling's prior dispatch was aborted before completion — it does
   // not count as a real retry attempt.
-  const decrementAttempts = (id: string): void => { /* StateMachine helper */ };
+  const decrementAttempts = (id: string): void => {
+    /* StateMachine helper */
+  };
   decrementAttempts(siblingId);
   ```
   Pair with a new state.test.ts case asserting that after N pause-resume cycles, `state.steps[loopId]?.attempts === 1` (matching the single real dispatch), not N+1.
-- **Decision:**
+- **Decision:** fix now.
 
 ### A.5 — `stepId.includes('::')` discriminator is sound only because step ids cannot legitimately contain `::` — **FLAG-2**
 
@@ -75,10 +79,10 @@ For each finding below, fill in the `Decision` field with one of:
   // (StateMachine.bodyStepStateKey). Top-level step ids cannot legitimately
   // contain '::' because the stepId schema rejects ':' characters; see
   // packages/core/src/flow/schemas.ts.
-  const isBodyStepKey = stepId.includes('::');
+  const isBodyStepKey = stepId.includes("::");
   ```
   Alternatively, expose `StateMachine.isBodyStepStateKey(id)` so the discriminator lives in one place rather than as a string-includes scattered across the codebase.
-- **Decision:**
+- **Decision:** fix now.
 
 ### A.6 — Non-ask body steps re-run on every resume because they are never seeded — **FLAG-3**
 
@@ -88,13 +92,20 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Either (a) document the re-run semantics explicitly in the loop builder JSDoc and template README, advising authors that body prompt steps should be idempotent and that the answer file is the only persistent state across pause cycles; or (b) extend `runBodyStep` to seed/track every body step kind, not just ask, so `isBodyStepSucceeded` correctly short-circuits already-completed prompt steps. Option (b) is the deterministic fix but requires extending startStep/completeStep/failStep flow into the non-ask runBodyStep path. Concrete sketch for (b):
   ```ts
   const synthesisedKey = StateMachine.bodyStepStateKey(loopStepId, bodyStepId);
-  const seedResult = stateMachine.seedBodyStep(loopStepId, bodyStepId, loopIter);
+  const seedResult = stateMachine.seedBodyStep(
+    loopStepId,
+    bodyStepId,
+    loopIter,
+  );
   if (seedResult.isErr()) throw seedResult.error;
   const startResult = stateMachine.startStep(synthesisedKey);
   if (startResult.isErr()) throw startResult.error;
   try {
     const result = await runExecutor(bodyStep, 1);
-    const completeResult = stateMachine.completeStep(synthesisedKey, stepCompletionOutput(result));
+    const completeResult = stateMachine.completeStep(
+      synthesisedKey,
+      stepCompletionOutput(result),
+    );
     if (completeResult.isErr()) throw completeResult.error;
     await stateMachine.save();
     return result;
@@ -103,7 +114,7 @@ For each finding below, fill in the `Decision` field with one of:
     throw caught;
   }
   ```
-- **Decision:**
+- **Decision:** fix now. Option (b).
 
 ### A.7 — `sweepBodySteps` deviates from "call resetStep for each entry" by chaining failStep→resetStep and writing fresh entries for terminal statuses — **FLAG-4**
 
@@ -114,9 +125,9 @@ For each finding below, fill in the `Decision` field with one of:
   - `running`: chain `failStep('iteration boundary sweep') → resetStep`.
   - `failed`: call `resetStep` directly.
   - `succeeded` / `paused` / `skipped`: write a fresh `{ status: 'pending', attempts: 0, iter? }` directly via `#updateStep`, bypassing the transition graph.
-  The hybrid is sound: the intermediate `failed` state never hits disk because `sweepBodySteps` mutates in-memory only and the caller (`onIterationStart` in `orchestrator.ts:1316-1349`) calls `save()` after the sweep returns. The `#stepResults.delete(key)` at line 580 invalidates cached executor results for the rewritten entry. The deviation from the task spec is justified — the behaviour is "total reset" semantics, not transition-graph fidelity, and the JSDoc at `state.ts:541-555` calls this out explicitly. The risk is a future maintainer adding a transition (e.g. a 'cancelled' status) and forgetting to update the sweep's switch. A small unit test in `state.test.ts` asserting the post-sweep status for each starting status would close the gap.
+    The hybrid is sound: the intermediate `failed` state never hits disk because `sweepBodySteps` mutates in-memory only and the caller (`onIterationStart` in `orchestrator.ts:1316-1349`) calls `save()` after the sweep returns. The `#stepResults.delete(key)` at line 580 invalidates cached executor results for the rewritten entry. The deviation from the task spec is justified — the behaviour is "total reset" semantics, not transition-graph fidelity, and the JSDoc at `state.ts:541-555` calls this out explicitly. The risk is a future maintainer adding a transition (e.g. a 'cancelled' status) and forgetting to update the sweep's switch. A small unit test in `state.test.ts` asserting the post-sweep status for each starting status would close the gap.
 - **Suggested fix:** Add a unit test in `packages/core/tests/state.test.ts` asserting `sweepBodySteps` post-state for each of the seven status starting points (`pending`, `running`, `succeeded`, `failed`, `paused`, `skipped`, missing). The test would lock in the hybrid behaviour and catch any future status addition that breaks the contract. No source change required — the implementation is correct as designed.
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
@@ -173,7 +184,11 @@ For each finding below, fill in the `Decision` field with one of:
 - **Suggested fix:** Discriminate on the read-error variant. ENOENT remains a silent drop (the body step legitimately produced no handoff); other variants log a warn-level breadcrumb and either surface the error or continue with a recorded note. Concrete sketch:
   ```ts
   for (const name of skippedHandoffNames) {
-    const readResult = await ctx.handoffStore.readIteration(step.id, iter, name);
+    const readResult = await ctx.handoffStore.readIteration(
+      step.id,
+      iter,
+      name,
+    );
     if (readResult.isOk()) {
       iterHandoffs.push(name);
     } else {
@@ -181,16 +196,23 @@ For each finding below, fill in the `Decision` field with one of:
       // produces no iteration file. Other errors signal corruption that
       // the operator should see, not silent loop-cycle drift.
       const errno = (readResult.error as HandoffIoError).details?.errno;
-      if (errno !== 'ENOENT') {
+      if (errno !== "ENOENT") {
         ctx.logger.warn(
-          { event: 'loop.iteration.replay_failed', stepId: step.id, bodyStepId, iter, name, error: readResult.error.message },
-          'iteration handoff replay failed; the until condition may diverge',
+          {
+            event: "loop.iteration.replay_failed",
+            stepId: step.id,
+            bodyStepId,
+            iter,
+            name,
+            error: readResult.error.message,
+          },
+          "iteration handoff replay failed; the until condition may diverge",
         );
       }
     }
   }
   ```
-- **Decision:**
+- **Decision:** fix now.
 
 ### B.7 — `AwaitingInputSignal` `stepId` made mutable + new `loopContext` — **PASS**
 
@@ -238,12 +260,14 @@ For each finding below, fill in the `Decision` field with one of:
 - **Spec / decision:** Brand-grammar / docs accuracy. The product spec is canonical for visible CLI invocation lines. `relay answer` only accepts `--json <jsonString>` per `packages/cli/src/dispatcher.ts:174-181`.
 - **Finding:** The README's `Pause and answer each iteration` section instructs the operator to run `relay answer <run-id> --comments "looks good, tighten the error handling"`. This flag does not exist. The actual CLI signature at `dispatcher.ts:177` is `.option('--json <jsonString>', 'answers as a JSON object string (non-interactive)')` — there is no per-question-id flag, only `--json '{"comments":"..."}'`. An operator who copies the README example will see commander reject the unknown option and the run will not advance. Lines 38-40 would also need to be revised so the README explains that `feedback` answers are submitted as a JSON map.
 - **Suggested fix:** Replace lines 36-42 with the same two-block invocation pattern used by the linear and fan-out templates:
-  ```markdown
+
+  ````markdown
   Each iteration of the loop pauses after `implement` and waits for you to answer one question — `comments`, a free-form note on the implementation. The CLI prints the run id and the prompt; in another terminal, answer interactively with:
 
   ```bash
   relay answer <runId>
   ```
+  ````
 
   Or pass the answer non-interactively:
 
@@ -252,8 +276,12 @@ For each finding below, fill in the `Decision` field with one of:
   ```
 
   Leave the `comments` field empty (`--json '{"comments":""}'` or hit Enter at the interactive prompt) to approve the iteration without notes — `review` will still run and decide `continue` or `done`.
+
   ```
-- **Decision:**
+
+  ```
+
+- **Decision:** fix now.
 
 ### C.5 — Loop template's body re-runs `implement` on every resume; the README does not warn about this — **FLAG-6**
 
@@ -264,7 +292,7 @@ For each finding below, fill in the `Decision` field with one of:
   ```markdown
   - **Cost:** $0.20–$2.00 per run on the default sonnet model (billed to your subscription on Pro/Max). Each pause-resume cycle re-runs the `implement` prompt for that iteration before the loop advances, so cost scales with `iterations × (1 + pauses per iteration)` rather than iterations alone. Keep `feedback` short or set `maxIterations` to a tight bound to keep the multiplier small.
   ```
-- **Decision:**
+- **Decision:** fix now.
 
 ---
 
