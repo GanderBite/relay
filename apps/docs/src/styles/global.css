@@ -16,6 +16,7 @@
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --max-w: 760px;
   --side-w: 260px;
+  --topbar-h: 52px;
 }
 
 * {
@@ -33,10 +34,12 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 a {
@@ -51,18 +54,34 @@ a:hover {
   border-bottom-color: var(--accent);
 }
 
-/* ------ Shell layout ------ */
+/* ------ Mobile nav controls (hidden on desktop) ------ */
+
+.nav-toggle-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.topbar {
+  display: none;
+}
+
+.hamburger {
+  display: none;
+}
+
+.nav-backdrop {
+  display: none;
+}
+
+/* ------ Shell layout (desktop) ------ */
 
 .shell {
   display: grid;
   grid-template-columns: var(--side-w) 1fr;
   min-height: 100vh;
-}
-
-@media (max-width: 820px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
 }
 
 .sidebar {
@@ -73,15 +92,6 @@ a:hover {
   top: 0;
   height: 100vh;
   overflow-y: auto;
-}
-
-@media (max-width: 820px) {
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--rule);
-  }
 }
 
 .brand {
@@ -120,12 +130,13 @@ a:hover {
 
 .nav-link {
   display: block;
-  padding: 4px 0 4px 12px;
+  padding: 6px 0 6px 12px;
   color: var(--fg-dim);
   border-bottom: 0;
   border-left: 2px solid transparent;
   margin-left: -12px;
   font-size: 13px;
+  min-height: 32px;
 }
 
 .nav-link:hover {
@@ -140,10 +151,11 @@ a:hover {
 
 .nav-sublink {
   display: block;
-  padding: 2px 0 2px 24px;
+  padding: 4px 0 4px 24px;
   color: var(--fg-mute);
   font-size: 12px;
   border-bottom: 0;
+  min-height: 28px;
 }
 
 .nav-sublink:hover {
@@ -155,12 +167,7 @@ a:hover {
 .main {
   padding: 48px 56px 80px;
   max-width: calc(var(--max-w) + 112px);
-}
-
-@media (max-width: 820px) {
-  .main {
-    padding: 32px 24px 64px;
-  }
+  min-width: 0;
 }
 
 .main h1,
@@ -237,6 +244,7 @@ code {
   border-radius: 3px;
   color: var(--accent);
   border: 1px solid var(--rule-soft);
+  word-break: break-word;
 }
 
 pre {
@@ -245,6 +253,7 @@ pre {
   border-radius: 4px;
   padding: 16px 18px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   font-size: 12.5px;
   line-height: 1.55;
   margin: 16px 0 20px;
@@ -257,37 +266,25 @@ pre code {
   padding: 0;
   color: var(--fg);
   font-size: inherit;
+  word-break: normal;
+  white-space: pre;
 }
 
-/* Terminal-style block — used for CLI output samples */
 pre.term {
   background: var(--bg-code);
   border: 1px solid var(--rule);
   color: var(--fg-dim);
 }
 
-pre.term .mark {
-  color: var(--accent);
-}
-
-pre.term .ok {
-  color: var(--ok);
-}
-
-pre.term .err {
-  color: var(--err);
-}
-
-pre.term .warn {
-  color: var(--warn);
-}
-
-pre.term .dim {
-  color: var(--fg-mute);
-}
+pre.term .mark { color: var(--accent); }
+pre.term .ok { color: var(--ok); }
+pre.term .err { color: var(--err); }
+pre.term .warn { color: var(--warn); }
+pre.term .dim { color: var(--fg-mute); }
 
 /* ------ Tables ------ */
 
+.main table,
 table {
   width: 100%;
   max-width: var(--max-w);
@@ -354,6 +351,7 @@ td code {
   color: var(--accent);
   margin-bottom: 16px;
   display: block;
+  word-break: break-all;
 }
 
 .hero h1 {
@@ -368,7 +366,7 @@ td code {
   max-width: 580px;
 }
 
-/* ------ Step type cards ------ */
+/* ------ Step cards ------ */
 
 .step-card {
   border: 1px solid var(--rule);
@@ -383,6 +381,7 @@ td code {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .step-card h3 .kind-tag {
@@ -395,23 +394,6 @@ td code {
 .step-card .one-liner {
   color: var(--fg);
   margin-bottom: 12px;
-}
-
-/* ------ Command rows ------ */
-
-.cmd-row {
-  display: block;
-  border-bottom: 1px solid var(--rule-soft);
-  padding: 12px 0;
-}
-
-.cmd-row:last-child {
-  border-bottom: 0;
-}
-
-.cmd-name {
-  color: var(--accent);
-  font-weight: 500;
 }
 
 /* ------ Footer ------ */
@@ -429,7 +411,7 @@ td code {
   border-bottom-color: var(--rule);
 }
 
-/* ------ TOC inline ------ */
+/* ------ TOC ------ */
 
 .toc {
   margin: 24px 0 32px;
@@ -455,7 +437,7 @@ td code {
 }
 
 .toc li {
-  padding: 2px 0;
+  padding: 4px 0;
   color: var(--fg-dim);
 }
 
@@ -468,15 +450,11 @@ td code {
   color: var(--accent);
 }
 
-/* ------ Inline list ------ */
-
-ul,
-ol {
+ul, ol {
   padding-left: 22px;
 }
 
-ul li,
-ol li {
+ul li, ol li {
   margin-bottom: 6px;
 }
 
@@ -484,4 +462,247 @@ hr {
   border: 0;
   border-top: 1px solid var(--rule-soft);
   margin: 32px 0;
+}
+
+/* ============================================================ */
+/* Mobile: ≤820px                                                 */
+/* Topbar appears, sidebar becomes off-canvas overlay,            */
+/* tables shrink, hero scales, padding tightens.                  */
+/* ============================================================ */
+
+@media (max-width: 820px) {
+  /* --- Topbar --- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 16px;
+    height: var(--topbar-h);
+    border-bottom: 1px solid var(--rule);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 60;
+  }
+
+  .topbar-brand {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    border-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar-brand .mark {
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+
+  .topbar-brand .tag {
+    color: var(--fg-mute);
+    font-size: 12px;
+  }
+
+  /* --- Hamburger --- */
+  .hamburger {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    margin-right: -8px;
+    flex: 0 0 auto;
+  }
+
+  .hamburger span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--fg);
+    transition: transform 0.18s ease, opacity 0.18s ease;
+    transform-origin: center;
+  }
+
+  .nav-toggle-input:checked ~ .topbar .hamburger span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+  .nav-toggle-input:checked ~ .topbar .hamburger span:nth-child(2) {
+    opacity: 0;
+  }
+  .nav-toggle-input:checked ~ .topbar .hamburger span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  /* --- Shell --- */
+  .shell {
+    grid-template-columns: 1fr;
+    min-height: calc(100vh - var(--topbar-h));
+  }
+
+  /* --- Sidebar off-canvas --- */
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    width: 280px;
+    max-width: 88vw;
+    height: calc(100vh - var(--topbar-h));
+    border-right: 1px solid var(--rule);
+    border-bottom: 0;
+    background: var(--bg);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 55;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 20px 20px 40px;
+  }
+
+  .nav-toggle-input:checked ~ .shell .sidebar {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Sidebar's internal brand is redundant on mobile (topbar has it) */
+  .sidebar .brand {
+    display: none;
+  }
+
+  /* --- Backdrop --- */
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-h) 0 0 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+    z-index: 50;
+  }
+
+  .nav-toggle-input:checked ~ .shell .nav-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Bigger touch targets on mobile */
+  .nav-link {
+    padding: 10px 0 10px 12px;
+    font-size: 14px;
+    min-height: 40px;
+  }
+
+  .nav-sublink {
+    padding: 6px 0 6px 24px;
+    font-size: 13px;
+    min-height: 32px;
+  }
+
+  /* --- Main column on mobile --- */
+  .main {
+    padding: 24px 20px 56px;
+    max-width: 100%;
+  }
+
+  .main h1 {
+    font-size: 20px;
+  }
+
+  .main h2 {
+    font-size: 16px;
+    margin-top: 36px;
+    padding-top: 20px;
+  }
+
+  .lede {
+    font-size: 14px;
+  }
+
+  /* Hero on mobile */
+  .hero {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+  }
+
+  .hero .mark {
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+
+  .hero h1 {
+    font-size: 22px;
+  }
+
+  .hero .sub {
+    font-size: 14px;
+  }
+
+  /* Step cards */
+  .step-card {
+    padding: 16px 18px;
+  }
+
+  /* Tables — let them shrink, allow long cells to wrap */
+  .main table {
+    font-size: 12px;
+    table-layout: fixed;
+  }
+
+  .main th,
+  .main td {
+    padding: 8px 8px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .main td code {
+    font-size: 11px;
+    padding: 0 4px;
+    word-break: break-all;
+  }
+
+  /* Toc, note, code, pre tighten up */
+  .toc {
+    padding: 12px 16px;
+  }
+
+  pre {
+    padding: 12px 14px;
+    font-size: 12px;
+    margin-left: -4px;
+    margin-right: -4px;
+    border-radius: 3px;
+  }
+
+  .note {
+    padding: 10px 14px;
+    font-size: 12.5px;
+  }
+
+  .step-card h3 {
+    font-size: 13.5px;
+  }
+}
+
+/* Very narrow phones (≤380px) — trim the brand mark in the topbar */
+@media (max-width: 380px) {
+  .topbar-brand .tag {
+    display: none;
+  }
+  .topbar-brand .mark {
+    letter-spacing: 0.5px;
+  }
 }
