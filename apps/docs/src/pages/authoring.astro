@@ -1,0 +1,346 @@
+---
+import Layout from '../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="Author a flow" description="Scaffold, edit, run, fail, fix, resume, extend. A seven-step walkthrough that ends with a working two-step flow.">
+  <span class="eyebrow">Build</span>
+  <h1>Author a flow</h1>
+  <p class="lede">
+    This walkthrough goes through the full loop a new flow author touches:
+    scaffold, edit, run, fail, fix, resume, extend. By the end you have a
+    working two-step flow that passes a typed handoff from the first step to
+    the second.
+  </p>
+
+  <div class="toc">
+    <div class="toc-title">on this page</div>
+    <ul>
+      <li><a href="#scaffold">1. Scaffold with relay new</a></li>
+      <li><a href="#edit-prompt">2. Edit the prompt file</a></li>
+      <li><a href="#first-run">3. Run it</a></li>
+      <li><a href="#fail">4. Introduce a deliberate failure</a></li>
+      <li><a href="#diagnose">5. Diagnose &amp; fix</a></li>
+      <li><a href="#resume">6. Resume from the checkpoint</a></li>
+      <li><a href="#second-step">7. Add a second step with a handoff</a></li>
+      <li><a href="#layout">Reference: the flow package layout</a></li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="scaffold">1. Scaffold with <code>relay new</code></h2>
+
+  <pre><code>relay new my-flow --template blank</code></pre>
+
+  <p>Expected output:</p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay new my-flow (blank template)
+
+ <span class="ok">✓</span> wrote ./my-flow/package.json
+ <span class="ok">✓</span> wrote ./my-flow/flow.ts
+ <span class="ok">✓</span> wrote ./my-flow/prompts/01_first.md
+ <span class="ok">✓</span> wrote ./my-flow/README.md
+ <span class="ok">✓</span> wrote ./my-flow/tsconfig.json
+ <span class="ok">✓</span> installed dev dependencies
+
+<span class="dim">try it:</span>
+    cd my-flow && relay run .</code></pre>
+
+  <p>
+    The <code>--template blank</code> flag skips the interactive generator and
+    writes files directly. Without it, <code>relay new</code> uses the
+    generator skill (if installed in Claude Code) for a conversational path.
+  </p>
+
+  <p>The directory you now have:</p>
+
+  <pre><code>my-flow/
+├── package.json
+├── flow.ts
+├── prompts/
+│   └── 01_first.md
+├── README.md
+└── tsconfig.json</code></pre>
+
+  <p>
+    <code>flow.ts</code> is the entry point. It default-exports a
+    <code>Flow</code> object built by <code>defineFlow()</code>. The blank
+    template gives you one prompt step named <code>first</code>.
+  </p>
+
+  <p>Before running, build the flow so the CLI can load <code>dist/flow.js</code>:</p>
+
+  <pre><code>cd my-flow && npm run build</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="edit-prompt">2. Edit <code>prompts/01_first.md</code></h2>
+
+  <p>Open <code>my-flow/prompts/01_first.md</code>. The blank template places this content there:</p>
+
+  <pre><code>{`You are writing about {{input.subject}}. Produce a short paragraph describing it.
+
+Return ONLY the paragraph text. No preamble, no headings, no commentary.`}</code></pre>
+
+  <p>Prompt files are Handlebars templates. Two variable namespaces are available:</p>
+
+  <table>
+    <thead><tr><th>Variable</th><th>Resolves to</th></tr></thead>
+    <tbody>
+      <tr><td><code>{`{{input.<field>}}`}</code></td><td>Any field from the flow's <code>input</code> schema.</td></tr>
+      <tr><td><code>{`{{<handoffId>.<field>}}`}</code></td><td>The JSON value a prior step wrote as a handoff, when the step declares <code>contextFrom: ['&lt;handoffId&gt;']</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+
+  <h2 id="first-run">3. Run it</h2>
+
+  <pre><code>relay run . --subject "the water cycle"</code></pre>
+
+  <p>
+    The <code>.</code> tells the CLI to load the flow from the current
+    directory. The <code>--subject</code> flag satisfies the
+    <code>subject: z.string()</code> input the blank template declared.
+  </p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay
+
+flow     my-flow v0.1.0
+input    the water cycle
+run      a1b2c3  ·  2026-04-23 09:14Z
+bill     subscription (max)  <span class="dim">·  no api charges</span>
+est      $0.00  ·  1 steps  ·  ~1 min
+
+<span class="dim">press ctrl-c any time — state is saved after every step.</span>
+───────────────────────────────────────────────────────
+
+ ⠋ first          sonnet     turn 1</code></pre>
+
+  <p>When the step completes, the success banner appears with the run id and the artifact path. Open the handoff to inspect it:</p>
+
+  <pre><code>cat .relay/runs/a1b2c3/handoffs/result.json</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="fail">4. Introduce a deliberate failure</h2>
+
+  <p>Add a Zod schema to the step so its output is validated. Open <code>flow.ts</code> and add a schema to <code>output</code>:</p>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'my-flow',
+  version: '0.1.0',
+  input: z.object({ subject: z.string() }),
+  steps: {
+    first: step.prompt({
+      promptFile: 'prompts/01_first.md',
+      output: {
+        handoff: 'result',
+        schema: z.object({ summary: z.string(), wordCount: z.number() }),
+      },
+    }),
+  },
+});`}</code></pre>
+
+  <p>The prompt still asks for a plain paragraph — which will not satisfy <code>{`{ summary: string; wordCount: number }`}</code>. Rebuild and run:</p>
+
+  <pre><code>npm run build
+relay run . --subject "photosynthesis"</code></pre>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  my-flow · b2c3d4  <span class="err">✕</span>
+
+ <span class="err">✕</span> first          exit 1     0.2s
+     step 'first' raised HandoffSchemaError
+     handoff 'result' missing required field: summary, wordCount
+
+0 of 1 steps succeeded · $0.000 spent · state saved
+
+<span class="dim">to resume after fixing:</span>
+    relay resume b2c3d4
+
+<span class="dim">to restart from scratch:</span>
+    relay run . --fresh</code></pre>
+
+  <p>
+    The run id <code>b2c3d4</code> and the step id <code>first</code> are both
+    in the banner. The checkpoint up to (but not including) the failed step is
+    saved on disk.
+  </p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="diagnose">5. Diagnose and fix</h2>
+
+  <p>
+    A <code>HandoffSchemaError</code> means the step's prompt returned output
+    the schema rejected. The banner names the failing paths.
+    For more detail, read the structured log:
+  </p>
+
+  <pre><code>relay logs b2c3d4 --step first</code></pre>
+
+  <p>Two paths forward: fix the prompt to return the schema's shape, or relax the schema. For this tutorial, fix the prompt. Replace <code>prompts/01_first.md</code> with:</p>
+
+  <pre><code>{`You are writing about {{input.subject}}.
+
+Return ONLY a JSON object with this exact shape:
+
+{
+  "summary": "<one sentence describing the subject>",
+  "wordCount": <number of words in the summary sentence>
+}
+
+No prose, no backticks, no preamble.`}</code></pre>
+
+  <p>Then rebuild:</p>
+
+  <pre><code>npm run build</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="resume">6. Resume from the checkpoint</h2>
+
+  <pre><code>relay resume b2c3d4</code></pre>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay resume b2c3d4
+
+flow     my-flow v0.1.0
+picking up from: first
+
+ ⠋ first          running
+
+<span class="dim">spent so far: $0.000</span></code></pre>
+
+  <div class="note">
+    <strong>The resume rule.</strong>
+    Steps with status <code>✓</code> in the pre-resume banner are cached —
+    they will not re-execute and their cost is not re-incurred. Only failed or
+    pending steps run again. Resuming a five-step flow where step 3 failed
+    costs roughly what step 3 through step 5 cost originally.
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="second-step">7. Add a second step with a handoff</h2>
+
+  <p>Now add a second step that consumes the <code>result</code> handoff:</p>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'my-flow',
+  version: '0.1.0',
+  input: z.object({ subject: z.string() }),
+  steps: {
+    first: step.prompt({
+      promptFile: 'prompts/01_first.md',
+      output: {
+        handoff: 'result',
+        schema: z.object({ summary: z.string(), wordCount: z.number() }),
+      },
+    }),
+    second: step.prompt({
+      promptFile: 'prompts/02_second.md',
+      dependsOn: ['first'],
+      contextFrom: ['result'],
+      output: { artifact: 'report.md' },
+    }),
+  },
+});`}</code></pre>
+
+  <p>Three fields wire the handoff together:</p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>output.handoff: 'result'</code></td><td>The first step names the JSON it writes to disk.</td></tr>
+      <tr><td><code>dependsOn: ['first']</code></td><td>The second step waits until <code>first</code> succeeds.</td></tr>
+      <tr><td><code>contextFrom: ['result']</code></td><td>The second step's prompt sees <code>result</code> as a Handlebars variable.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Create <code>prompts/02_second.md</code>:</p>
+
+  <pre><code>{`The prior step analysed {{input.subject}} and produced this summary:
+
+"{{result.summary}}" ({{result.wordCount}} words)
+
+Write a short markdown document (two paragraphs, no headings) that expands on the summary. Focus on why the subject matters.
+
+Return the markdown document as plain text. No code fences, no commentary.`}</code></pre>
+
+  <p>Build and run:</p>
+
+  <pre><code>npm run build
+relay run . --subject "the carbon cycle"</code></pre>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  my-flow · c3d4e5  <span class="ok">✓</span>
+
+ <span class="ok">✓</span> first          sonnet     3.1s    $0.000
+ <span class="ok">✓</span> second         sonnet     5.4s    $0.000
+
+all 2 steps succeeded in 8.5s
+
+cost     $0.000  <span class="dim">(estimated api equivalent; billed to subscription)</span>
+output   .relay/runs/c3d4e5/report.md</code></pre>
+
+  <p>The artifact <code>report.md</code> contains the markdown the second step wrote, with the summary from the first step substituted via the handoff.</p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="layout">Reference: the flow package layout</h2>
+
+  <p>Every flow — generated, installed from the catalog, or hand-written — has the same directory shape:</p>
+
+  <pre><code>{`<flow-name>/
+├── package.json           # name, version, peer-dep on @ganderbite/relay-core
+├── flow.ts                # defineFlow() entry point — default export
+├── prompts/
+│   ├── 01_<step>.md       # one file per prompt step
+│   └── ...
+├── schemas/               # optional: shared Zod schemas
+├── templates/             # optional: output templates (HTML, markdown)
+├── examples/              # optional: sample outputs for the README
+├── README.md              # user-facing docs
+└── tsconfig.json          # extends @ganderbite/relay-core/tsconfig`}</code></pre>
+
+  <p>Required: <code>package.json</code>, <code>flow.ts</code>, <code>README.md</code>. Everything else is optional.</p>
+
+  <h3>package.json</h3>
+
+  <pre><code>{`{
+  "name": "@ganderbite/flow-my-flow",
+  "version": "0.1.0",
+  "description": "Short description shown in the catalog.",
+  "type": "module",
+  "main": "./dist/flow.js",
+  "files": ["dist", "prompts", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "test": "relay test ."
+  },
+  "peerDependencies": {
+    "@ganderbite/relay-core": "^1.0.0"
+  },
+  "relay": {
+    "displayName": "My Flow",
+    "tags": ["example"],
+    "estimatedCostUsd": { "min": 0.05, "max": 0.20 },
+    "estimatedDurationMin": { "min": 1, "max": 5 },
+    "audience": ["dev"]
+  }
+}`}</code></pre>
+
+  <p>The <code>relay</code> metadata block drives <code>relay list</code>, <code>relay search</code>, and the pre-run banner. All five keys are required when publishing to the catalog.</p>
+
+  <h3>Where to go from here</h3>
+
+  <ul>
+    <li><a href={`${base}/steps/`}>Step types</a> — the other six step kinds and when to reach for them.</li>
+    <li><a href={`${base}/cli/`}>CLI commands</a> — every <code>relay</code> verb and what it prints.</li>
+    <li><a href="https://github.com/ganderbite/relay/tree/main/examples">Example flows</a> — <code>hello-world</code>, <code>multi-perspective-review</code>, <code>git-log-summary</code>, and more, runnable end-to-end.</li>
+  </ul>
+</Layout>

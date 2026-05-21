@@ -1,0 +1,244 @@
+---
+import Layout from '../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="CLI commands" description="Every relay command, what it does, sample output, and the exit codes you can route on.">
+  <span class="eyebrow">CLI</span>
+  <h1>The <code>relay</code> binary</h1>
+  <p class="lede">
+    The <code>relay</code> command wraps <code>@ganderbite/relay-core</code> in
+    a terminal-facing binary. It handles provider selection, pre-run banners,
+    live progress, and error display. Every command exits with a documented
+    code so CI scripts can distinguish auth failures from step failures.
+  </p>
+
+  <h2 id="install">Install</h2>
+  <pre><code>npm install -g @ganderbite/relay</code></pre>
+  <p>Requires Node ≥ 20.10. If <code>relay</code> isn't found after install, ensure your npm global bin directory is on <code>PATH</code> (<code>npm bin -g</code> tells you where it is).</p>
+
+  <div class="toc">
+    <div class="toc-title">commands on this page</div>
+    <ul>
+      <li><a href="#init">init</a> — configure your provider</li>
+      <li><a href="#doctor">doctor</a> — environment pre-flight check</li>
+      <li><a href="#run">run</a> — execute a flow</li>
+      <li><a href="#resume">resume</a> — continue a failed run</li>
+      <li><a href="#runs">runs</a> · <a href="#logs">logs</a> — diagnostics</li>
+      <li><a href="#new">new</a> — scaffold a flow</li>
+      <li><a href="#install-cmd">list · search · install · upgrade</a> — catalog</li>
+      <li><a href="#validate">validate · test · publish</a> — authoring tools</li>
+      <li><a href="#exit-codes">Exit codes</a></li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="init">relay init</h2>
+  <p>Probes auth and writes <code>~/.relay/settings.json</code>. Without it, every other command exits with <code>NoProviderConfiguredError</code> (exit 6).</p>
+
+  <pre><code>relay init
+relay init --provider claude-cli   # non-interactive
+relay init --force                 # overwrite existing settings</code></pre>
+
+  <p>Today there is one provider — <code>claude-cli</code>, which runs Claude under your Claude subscription via the local <code>claude</code> binary. There is no API-key billing path in v1.</p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="doctor">relay doctor</h2>
+  <p>Six-section pre-flight: Node version, <code>claude</code> binary, <code>.relay</code> directory writeability, providers, auth probe, and resolved provider. Run it whenever something is off.</p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay doctor
+
+ <span class="ok">✓</span> node              v20.11.1
+ <span class="ok">✓</span> claude binary     /usr/local/bin/claude  v1.2.0
+ <span class="ok">✓</span> .relay dir        writable
+ <span class="ok">✓</span> providers         claude-cli (subscription)
+ <span class="ok">✓</span> auth              max subscription
+ <span class="ok">✓</span> resolved          claude-cli
+
+all checks passed</code></pre>
+
+  <p>Exit codes: <code>0</code> when everything passes, <code>3</code> if only the API-key billing guard is blocking, <code>1</code> for any other blocker.</p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="run">relay run</h2>
+  <p>Execute a flow from start to finish. <code>&lt;flow&gt;</code> is either a directory path or a catalog flow name.</p>
+
+  <pre><code>relay run codebase-discovery --repoPath=. --audience=dev
+relay run ./packages/flows/codebase-discovery --repoPath=.</code></pre>
+
+  <p>Flags:</p>
+  <table>
+    <thead><tr><th>Flag</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>--fresh</code></td><td>Force a new run, even if a previous one exists for this flow.</td></tr>
+      <tr><td><code>--cost</code></td><td>Print a per-step cost breakdown after the success banner.</td></tr>
+      <tr><td><code>--provider &lt;name&gt;</code></td><td>Override provider selection (flag &gt; flow-settings &gt; global-settings).</td></tr>
+      <tr><td><code>--no-worktree</code></td><td>Disable the per-run git worktree.</td></tr>
+      <tr><td><code>--verbose</code></td><td>Print a verbose event sub-stream under each running step.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Pre-run banner:</p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay
+
+flow     hello-world v0.1.0
+input    the water cycle
+run      a1b2c3  ·  2026-04-23 09:14Z
+bill     subscription (max)  <span class="dim">·  no api charges</span>
+est      $0.00  ·  2 steps  ·  ~2 min
+
+<span class="dim">press ctrl-c any time — state is saved after every step.</span>
+───────────────────────────────────────────────────────
+
+ ⠋ greet           sonnet     turn 1</code></pre>
+
+  <p>Success banner:</p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  hello-world · a1b2c3  <span class="ok">✓</span>
+
+ <span class="ok">✓</span> greet           sonnet     3.1s    $0.000
+ <span class="ok">✓</span> summarize       sonnet     5.4s    $0.000
+
+all 2 steps succeeded in 8.5s
+
+cost     $0.000  <span class="dim">(estimated api equivalent; billed to subscription)</span>
+output   .relay/runs/a1b2c3/greeting.md</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="resume">relay resume</h2>
+  <p>Resume from the last checkpoint. Steps that already succeeded are not re-executed; only the failed step and anything downstream of it run.</p>
+
+  <pre><code>relay resume f9c3a2</code></pre>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay resume f9c3a2
+
+flow     hello-world v0.1.0
+picking up from: summarize
+
+ ⠋ summarize       running
+
+<span class="dim">spent so far: $0.000</span></code></pre>
+
+  <p>The rule: a step shown as <code>✓</code> in the pre-resume banner is cached. It will not re-execute and its cost is not re-incurred. Only failed or pending steps run again.</p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="runs">relay runs</h2>
+  <p>List recent runs in the current directory's <code>.relay/runs/</code>.</p>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  recent runs
+
+ <span class="ok">✓</span>  f9c3a2    codebase-discovery v0.1.0    2h ago      11m 42s
+ <span class="err">✕</span>  a1b2c3    codebase-discovery v0.1.0    3d ago      0s
+ <span class="dim">⊘</span>  d4e5f6    codebase-discovery v0.1.0    1w ago      -
+
+<span class="dim">resume any: relay resume &lt;runId&gt;</span></code></pre>
+
+  <p>Flags: <code>--limit N</code> (default 20), <code>--status &lt;state&gt;</code> to filter.</p>
+
+  <h2 id="logs">relay logs</h2>
+  <p>Print the structured event log for a run.</p>
+  <pre><code>relay logs f9c3a2                # full log
+relay logs f9c3a2 --step inventory  # only one step</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="new">relay new</h2>
+  <p>Scaffold a new flow package.</p>
+  <pre><code>relay new my-audit                   # interactive (via generator skill if available)
+relay new my-audit --template blank  # write a minimal one-step skeleton
+relay new my-audit --template linear # two-step linear flow
+relay new my-audit --template fanout # parallel example</code></pre>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  relay new my-flow (blank template)
+
+ <span class="ok">✓</span> wrote ./my-flow/package.json
+ <span class="ok">✓</span> wrote ./my-flow/flow.ts
+ <span class="ok">✓</span> wrote ./my-flow/prompts/01_first.md
+ <span class="ok">✓</span> wrote ./my-flow/README.md
+ <span class="ok">✓</span> wrote ./my-flow/tsconfig.json
+ <span class="ok">✓</span> installed dev dependencies
+
+<span class="dim">try it:</span>
+    cd my-flow && relay run .</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="install-cmd">Catalog: list · search · install · upgrade</h2>
+
+  <p>The catalog commands deal with shared flows published to npm under <code>@ganderbite/flow-&lt;name&gt;</code>.</p>
+
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>relay list</code></td><td>Flows installed in this project (under <code>./.relay/flows/</code> or <code>node_modules/@ganderbite/</code>).</td></tr>
+      <tr><td><code>relay search &lt;query&gt;</code></td><td>Search the public catalog at <code>relay.dev</code>.</td></tr>
+      <tr><td><code>relay install &lt;flow&gt;</code></td><td>Resolve <code>&lt;flow&gt;</code> to <code>@ganderbite/flow-&lt;flow&gt;</code> and install.</td></tr>
+      <tr><td><code>relay upgrade [&lt;flow&gt;]</code></td><td>Pull the latest compatible version from the catalog.</td></tr>
+    </tbody>
+  </table>
+
+  <pre class="term"><code><span class="mark">●─▶●─▶●─▶●</span>  installed flows (./.relay/flows/)
+
+ codebase-discovery    v0.1.0    20m  $0.40   PM-ready report on an unknown repo
+ api-audit             v0.2.1    15m  $0.25   surface stale or risky HTTP routes
+
+<span class="dim">2 flows installed. search more: relay search &lt;query&gt;</span></code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="validate">Authoring: validate · test · publish · dry-run</h2>
+  <p>Once you start writing your own flows, these are the loop you use most.</p>
+
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>relay validate [&lt;flow&gt;]</code></td><td>Compile <code>flow.ts</code>, parse <code>package.json</code>, lint the README. Catches structural mistakes before a run.</td></tr>
+      <tr><td><code>relay dry-run &lt;flow&gt;</code></td><td>Walk the DAG, render prompt templates, but do not invoke a provider. Useful for proving template substitutions work.</td></tr>
+      <tr><td><code>relay test [&lt;flow&gt;]</code></td><td>Run the flow's Vitest suite (using <code>MockProvider</code> by convention).</td></tr>
+      <tr><td><code>relay publish</code></td><td>Lint and publish the flow package to npm under the <code>@ganderbite/flow-</code> prefix.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+
+  <h2 id="glossary">relay --help glossary</h2>
+
+  <pre class="term"><code>flow        a named, versioned sequence of steps you can run
+step        one node in a flow (prompt, script, branch, parallel, loop, ask, terminal)
+handoff     the JSON one step produces and a later step consumes
+run         one execution of a flow; identified by a run id
+checkpoint  the saved state of a run after each step completes</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="exit-codes">Exit codes</h2>
+
+  <table>
+    <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>0</code></td><td>Success.</td></tr>
+      <tr><td><code>1</code></td><td>Runner failure — step error or unexpected exception.</td></tr>
+      <tr><td><code>2</code></td><td><code>FlowDefinitionError</code> or <code>ProviderCapabilityError</code> — malformed flow package.</td></tr>
+      <tr><td><code>3</code></td><td>Auth error — <code>SubscriptionAuthError</code> or <code>ProviderAuthError</code>.</td></tr>
+      <tr><td><code>4</code></td><td><code>HandoffSchemaError</code> — handoff data did not match the declared schema.</td></tr>
+      <tr><td><code>5</code></td><td>Timeout — <code>TimeoutError</code> or <code>AuthTimeoutError</code>.</td></tr>
+      <tr><td><code>6</code></td><td><code>NoProviderConfiguredError</code> — run <code>relay init</code>.</td></tr>
+      <tr><td><code>7</code></td><td>I/O error — <code>AtomicWriteError</code> writing checkpoint or state.</td></tr>
+      <tr><td><code>8</code></td><td>Rate limited — <code>ProviderRateLimitError</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Every code is stable across releases. CI scripts can rely on <code>exit 3</code> to mean <em>"auth misconfigured"</em> and <code>exit 4</code> to mean <em>"a step's handoff was the wrong shape"</em>.</p>
+
+  <hr />
+
+  <p>
+    To put this together with a real flow, read <a href={`${base}/authoring/`}>Author a flow</a>.
+  </p>
+</Layout>

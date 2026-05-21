@@ -1,12 +1,185 @@
 ---
+import Layout from '../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>Relay</title>
-  </head>
-  <body>
-    <h1>Relay</h1>
-  </body>
-</html>
+
+<Layout title="Relay" description="Deterministic multi-step Claude flows. Write the flow once. Run it the same way every time.">
+  <section class="hero">
+    <span class="mark">●─▶●─▶●─▶●  relay</span>
+    <h1>Deterministic multi-step Claude flows.</h1>
+    <p class="sub">
+      Write the flow once. Run it the same way every time. A typed, checkpointed
+      DAG of Claude Code invocations that resumes after crashes and never bills
+      the API by surprise.
+    </p>
+  </section>
+
+  <h2 id="what">What Relay is</h2>
+
+  <p>
+    Relay is a TypeScript library and CLI for running multi-step Claude
+    workflows. You describe the workflow as a graph of <strong>steps</strong> in a
+    typed config file. Relay compiles that file into a DAG, executes each step
+    in topological order, and writes a checkpoint after every step. A crash, a
+    network blip, or a deliberate <code>^C</code> never costs you a redo —
+    <code>relay resume &lt;runId&gt;</code> picks up at the last completed step.
+  </p>
+
+  <p>It ships as two packages:</p>
+
+  <table>
+    <thead>
+      <tr><th>Package</th><th>What it does</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>@ganderbite/relay</code></td>
+        <td>The <code>relay</code> CLI. Runs flows, resumes failed runs, scaffolds new flows, inspects auth.</td>
+      </tr>
+      <tr>
+        <td><code>@ganderbite/relay-core</code></td>
+        <td>The TypeScript library. Compiles a flow spec into a validated DAG and executes it.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    A flow is a directed acyclic graph of steps —
+    <a href={`${base}/steps/#prompt`}>prompt</a>,
+    <a href={`${base}/steps/#script`}>script</a>,
+    <a href={`${base}/steps/#branch`}>branch</a>,
+    <a href={`${base}/steps/#parallel`}>parallel</a>,
+    <a href={`${base}/steps/#loop`}>loop</a>,
+    <a href={`${base}/steps/#ask`}>ask</a>,
+    <a href={`${base}/steps/#terminal`}>terminal</a> —
+    that pass typed JSON <strong>handoffs</strong> between them.
+  </p>
+
+  <h2 id="why">Why Relay exists</h2>
+
+  <p>
+    If you delegate work to AI agents, you have probably hit these walls:
+  </p>
+
+  <ul>
+    <li>The longer a turn ran, the worse the output got — the conversation window filled with chatter.</li>
+    <li>You forgot to invoke the right subagent, and the main agent half-finished the work.</li>
+    <li>You wrote the same prompt a dozen times over, changing one file path or argument each time.</li>
+    <li>Compacting the conversation to free up room meant re-explaining the whole goal from scratch.</li>
+    <li>The main agent skipped steps to keep its window from filling, and you only noticed downstream.</li>
+    <li>The same prompt produced different answers on re-run.</li>
+  </ul>
+
+  <p>Relay turns a multi-agent run into a typed, checkpointed graph:</p>
+
+  <ul>
+    <li>Each step gets a <strong>fresh conversation window</strong> of its own — no chatter accrues across steps.</li>
+    <li>Subagent definitions live in the flow file. You can't forget to invoke one.</li>
+    <li>Prompts are <strong>templated files</strong>. You write the shape once and pass variables in.</li>
+    <li>Every step is <strong>checkpointed</strong>. A crash or <code>^C</code> resumes from the last completed step.</li>
+    <li>Execution order is a <strong>DAG you can read</strong>, not a vibe the model decides.</li>
+  </ul>
+
+  <div class="note">
+    <strong>The honest line.</strong>
+    Relay can't make Claude deterministic. It can make the orchestration around
+    Claude deterministic — same flow, same step order, same retries, same
+    checkpoints.
+  </div>
+
+  <h2 id="tour">60-second tour</h2>
+
+  <p>
+    Three commands take you from install to a real artifact on disk.
+  </p>
+
+  <pre><code>npm install -g @ganderbite/relay
+relay init                                 # configure your provider
+relay doctor                               # check your environment
+relay run codebase-discovery --repoPath=.  # produce a real artifact</code></pre>
+
+  <p>
+    <code>relay init</code> writes your provider choice to
+    <code>~/.relay/settings.json</code>. Without it, the CLI exits with
+    <code>NoProviderConfiguredError</code> before any step executes.
+    <code>relay doctor</code> tells you whether your environment is safe to run.
+  </p>
+
+  <h3>What a flow looks like</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from "@ganderbite/relay-core";
+
+export default defineFlow({
+  name: "hello",
+  version: "0.1.0",
+  input: z.object({ name: z.string() }),
+  steps: {
+    greet: step.prompt({
+      promptFile: "prompts/01_greet.md",
+      output: { handoff: "greeting" },
+    }),
+    summarize: step.prompt({
+      promptFile: "prompts/02_summarize.md",
+      dependsOn: ["greet"],
+      contextFrom: ["greeting"],
+      output: { artifact: "greeting.md" },
+    }),
+  },
+});`}</code></pre>
+
+  <p>
+    A flow package is a directory containing <code>flow.ts</code>, a
+    <code>prompts/</code> folder, and a <code>package.json</code>. The CLI runs it; the
+    library compiles and executes it. The handlebars-style templating engine
+    substitutes input fields and prior handoffs into the prompt files at step
+    start.
+  </p>
+
+  <h2 id="what-you-get">What you get</h2>
+
+  <table>
+    <tbody>
+      <tr>
+        <td><strong>DAG execution</strong></td>
+        <td>Steps run in topological order. Cycles and missing dependencies fail at <code>defineFlow()</code> time, before a single token is spent.</td>
+      </tr>
+      <tr>
+        <td><strong>Checkpoint &amp; resume</strong></td>
+        <td>Every step writes a checkpoint; <code>relay resume &lt;runId&gt;</code> continues a failed or aborted run from the last completed step.</td>
+      </tr>
+      <tr>
+        <td><strong>Prompt templating</strong></td>
+        <td>Handlebars interpolation of the flow's input and prior handoffs into prompt files. Write the shape once.</td>
+      </tr>
+      <tr>
+        <td><strong>Typed handoffs</strong></td>
+        <td>Zod schemas validate the JSON each step produces before the next step reads it. <code>HandoffSchemaError</code> exits with a distinct code so CI can route on it.</td>
+      </tr>
+      <tr>
+        <td><strong>Subagent definitions</strong></td>
+        <td>Declare ephemeral subagents per step — name, system prompt, tools, model. Resolved before the provider is invoked.</td>
+      </tr>
+      <tr>
+        <td><strong>Cost tracking</strong></td>
+        <td>Per-step tokens and dollar estimates persisted to <code>metrics.json</code> during the run.</td>
+      </tr>
+      <tr>
+        <td><strong>Billing safety</strong></td>
+        <td>The CLI refuses to silently route tokens to a paid API account when subscription credentials are configured.</td>
+      </tr>
+      <tr>
+        <td><strong>A testing path</strong></td>
+        <td><code>@ganderbite/relay-core/testing</code> exports <code>MockProvider</code>, a zero-network, zero-cost provider for Vitest suites.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="next">Where to go next</h2>
+
+  <ul>
+    <li><a href={`${base}/steps/`}>Step types</a> — what <code>prompt</code>, <code>script</code>, <code>branch</code>, <code>parallel</code>, <code>loop</code>, <code>ask</code>, and <code>terminal</code> do, with one example each.</li>
+    <li><a href={`${base}/patterns/`}>Real-world patterns</a> — iterate-until-pass loops, dynamic agent fan-out, dynamic-question asks. Sourced from production flows.</li>
+    <li><a href={`${base}/cli/`}>CLI commands</a> — every <code>relay</code> verb, what it prints, and the exit codes you can route on.</li>
+    <li><a href={`${base}/authoring/`}>Author a flow</a> — scaffold → run → fail → fix → resume, in seven small steps.</li>
+  </ul>
+</Layout>

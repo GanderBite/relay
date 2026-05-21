@@ -1,0 +1,407 @@
+---
+import Layout from '../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="Patterns" description="Real-world flow patterns: iterating until a verifier passes, fanning out via dynamic agents, sourcing questions from a prior step, gating writes behind verify scripts.">
+  <span class="eyebrow">Patterns</span>
+  <h1>Real-world patterns</h1>
+  <p class="lede">
+    The step types are LEGO bricks; the patterns are the things you build with
+    them. Every snippet below comes from a flow that ships work in production
+    — sprint planners, sprint runners, project bootstrappers — not toy
+    examples. Use them as starting points the next time you reach for
+    <code>step.loop</code> or <code>step.parallel</code> and want to know what
+    shape works.
+  </p>
+
+  <div class="toc">
+    <div class="toc-title">patterns on this page</div>
+    <ul>
+      <li><a href="#compose-plan">Iterate until a verifier passes</a> — loop with 4-step body</li>
+      <li><a href="#wave-loop">Fan-out via dynamic agents inside a loop</a> — the wave-loop idiom</li>
+      <li><a href="#dynamic-ask">Let the model decide what to ask</a> — dynamic questions from a handoff</li>
+      <li><a href="#fanout">Static fan-out / fan-in</a> — many reviewers, one aggregator</li>
+      <li><a href="#verify-after-write">Verify after every write</a> — the script-checks-handoff idiom</li>
+      <li><a href="#env-passthrough">Carrying inputs into shell steps</a> — script env passthrough</li>
+      <li><a href="#approval-gates">Approval gates between phases</a> — single-confirm asks</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="compose-plan">Iterate until a verifier passes</h2>
+
+  <p>
+    <strong>The shape:</strong> a four-step loop body where the last step is a
+    judge. The body keeps running until the judge says it's done — or until
+    <code>maxIterations</code> stops it. Useful any time the model needs more
+    than one pass to converge.
+  </p>
+
+  <p>
+    This is the <code>compose-plan</code> loop from the <code>planning</code>
+    flow. It turns a feature spec into a single sprint. The first three body
+    steps produce tasks, group them into waves, and fold the waves into a
+    sprint plan. The fourth step is the verifier — it reads the proposed plan,
+    walks the requirements, and emits <code>{`{ verdict: 'pass' | 'fail', ... }`}</code>.
+    If <code>verdict</code> is <code>'fail'</code>, the loop runs again with
+    the verifier's notes feeding back into the first step.
+  </p>
+
+  <pre><code>{`'compose-plan': step.loop({
+  dependsOn: ['approve-arch'],
+  maxIterations: 3,
+  start: 'compose-tasks',
+  until: { from: 'coverage_report', when: { verdict: 'pass' } },
+  body: {
+    'compose-tasks': step.prompt({
+      promptFile: 'prompts/04_compose_tasks.md',
+      tools: ['Read', 'Glob', 'Grep'],
+      model: 'opus',
+      output: { handoff: 'tasks', schema: TasksSchema },
+    }),
+    'compose-waves': step.prompt({
+      promptFile: 'prompts/05_compose_waves.md',
+      dependsOn: ['compose-tasks'],
+      contextFrom: ['tasks'],
+      model: 'opus',
+      output: { handoff: 'waves', schema: WavesSchema },
+    }),
+    'compose-sprints': step.prompt({
+      promptFile: 'prompts/06_compose_sprints.md',
+      dependsOn: ['compose-waves'],
+      contextFrom: ['tasks', 'waves'],
+      model: 'opus',
+      output: { handoff: 'sprints', schema: SprintsSchema },
+    }),
+    'verify-coverage': step.prompt({
+      promptFile: 'prompts/07_verify.md',
+      dependsOn: ['compose-sprints'],
+      contextFrom: ['sprints'],
+      tools: ['Read', 'Glob'],
+      model: 'opus',
+      output: { handoff: 'coverage_report', schema: CoverageReportSchema },
+    }),
+  },
+}),`}</code></pre>
+
+  <p>What carries the pattern:</p>
+
+  <ul>
+    <li><strong><code>start</code></strong> — names the first body step. Required when the body's <code>dependsOn</code> graph has more than one root.</li>
+    <li><strong><code>until.from</code></strong> — the handoff id of the verifier, identifying which JSON Relay checks at the end of each iteration.</li>
+    <li><strong><code>until.when</code></strong> — a shallow-equality pattern. The loop stops when every field in this object matches the verifier's handoff.</li>
+    <li><strong><code>maxIterations</code></strong> — the hard ceiling. Even if the model never says pass, Relay walks out.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Body isolation.</strong>
+    A body step cannot <code>contextFrom</code> handoffs from outside the loop
+    directly. If you need an upstream value inside the body, pass it via
+    <code>{`env: { X: { from: 'input.x' } }`}</code> on a script step, or
+    re-read it from disk inside a prompt.
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="wave-loop">Fan-out via dynamic agents inside a loop</h2>
+
+  <p>
+    <strong>The shape:</strong> one prompt step inside a loop body fans out
+    work to many ephemeral subagents via Claude's <code>Task</code> tool. The
+    list of subagents is itself a handoff written by an earlier step, so the
+    set of workers is decided by the model rather than hard-coded.
+  </p>
+
+  <p>
+    This is the <code>wave-loop</code> from <code>sprint-implementation</code>.
+    Each iteration runs one wave of a sprint: a deterministic script flips
+    every task in the next wave to <code>in_progress</code>, then a single
+    <code>wave</code> prompt step dispatches a Task per task in that wave
+    using the right builder persona, commits, smoke-tests, and updates state.
+    The loop exits when every wave is done.
+  </p>
+
+  <pre><code>{`'wave-loop': step.loop({
+  dependsOn: ['derive-builders'],
+  maxIterations: 20,
+  until: { from: 'wave_outcome', when: { all_waves_done: true } },
+  body: {
+    'mark-tasks-in-progress': step.script({
+      run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/mark-tasks-in-progress.sh"'],
+      env: { SPRINT_ID: { from: 'input.sprintId', required: true } },
+      onFail: 'abort',
+    }),
+    wave: step.prompt({
+      promptFile: 'prompts/02_wave.md',
+      dependsOn: ['mark-tasks-in-progress'],
+      tools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Task'],
+      model: 'opus',
+      agents: { from: 'handoff.builder_agents', required: true },
+      output: { handoff: 'wave_outcome', schema: WaveOutcomeSchema },
+    }),
+    'wave-commit': step.script({
+      run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/wave-commit.sh"'],
+      dependsOn: ['wave'],
+      onFail: 'abort',
+    }),
+    'wave-smoke': step.script({
+      run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/wave-smoke.sh"'],
+      dependsOn: ['wave-commit'],
+      env: { SPRINT_ID: { from: 'input.sprintId', required: true } },
+      onFail: 'abort',
+    }),
+    'mark-tasks-done': step.script({
+      run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/mark-tasks-done.sh"'],
+      dependsOn: ['wave-smoke'],
+      env: { SPRINT_ID: { from: 'input.sprintId', required: true } },
+      onFail: 'abort',
+    }),
+  },
+}),`}</code></pre>
+
+  <p>The load-bearing line:</p>
+
+  <pre><code>{`agents: { from: 'handoff.builder_agents', required: true },`}</code></pre>
+
+  <p>
+    An earlier step (<code>derive-builders</code>) wrote
+    <code>builder_agents</code> — an array of <code>AgentDefinition</code>
+    objects. Each entry has a <code>name</code>, a <code>systemPrompt</code>,
+    a tool list, and a model. When the wave step runs, those agents are
+    materialised as Claude Code subagents and exposed to the Task tool. The
+    main wave invocation then fans out one Task per sprint task, picking the
+    right persona for each.
+  </p>
+
+  <div class="note">
+    <strong>Why one prompt, not <code>step.parallel</code>?</strong>
+    Parallel-inside-loop is forbidden in v1 — and even if it weren't, the set
+    of workers per wave isn't known until the wave starts. Pushing fan-out
+    inside the model lets the dispatch be data-driven; the orchestrator still
+    gets exactly one checkpoint per wave.
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="dynamic-ask">Let the model decide what to ask</h2>
+
+  <p>
+    <strong>The shape:</strong> a prompt step writes a <code>Question[]</code>
+    handoff; an ask step consumes it via <code>{`{ from: <handoffId> }`}</code>;
+    a downstream prompt step reads the answers via <code>contextFrom</code>.
+    The flow author never hand-writes the questions.
+  </p>
+
+  <p>
+    From the <code>discovery</code> flow:
+  </p>
+
+  <pre><code>{`'clarify-questions': step.prompt({
+  promptFile: 'prompts/01_clarify_questions.md',
+  dependsOn: ['branch'],
+  tools: ['Read', 'Glob'],
+  model: 'opus',
+  output: { handoff: 'clarify_questions', schema: ClarifyQuestionsSchema },
+}),
+
+'ask-clarify': step.ask({
+  dependsOn: ['clarify-questions'],
+  questions: { from: 'clarify_questions' },
+}),
+
+decompose: step.prompt({
+  promptFile: 'prompts/02_decompose.md',
+  dependsOn: ['ask-clarify'],
+  contextFrom: ['ask-clarify'],
+  tools: ['Read', 'Glob', 'Grep'],
+  model: 'opus',
+  output: { handoff: 'feature_list', schema: FeatureListSchema },
+}),`}</code></pre>
+
+  <p>
+    Claude reads <code>docs/APPLICATION.md</code>, identifies the blocking
+    gaps, and emits a list of questions shaped like <code>{`[{ id, kind, label, required }]`}</code>.
+    The ask step renders them on the CLI. The user types answers. The
+    decompose step picks them up under the handoff id <code>ask-clarify</code>
+    (the step's own id, because answers are stored under the ask step that
+    collected them).
+  </p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="fanout">Static fan-out / fan-in</h2>
+
+  <p>
+    <strong>The shape:</strong> N independent prompt steps run concurrently
+    via <code>step.parallel</code>; an aggregator step waits for all of them
+    and produces the final artifact. Use this when the workers are known at
+    flow-author time and don't need to coordinate.
+  </p>
+
+  <pre><code>{`reviewSecurity: step.prompt({
+  promptFile: 'prompts/security-review.md',
+  output: { handoff: 'security' },
+}),
+reviewPerformance: step.prompt({
+  promptFile: 'prompts/performance-review.md',
+  output: { handoff: 'performance' },
+}),
+reviewReadability: step.prompt({
+  promptFile: 'prompts/readability-review.md',
+  output: { handoff: 'readability' },
+}),
+
+fanOut: step.parallel({
+  branches: ['reviewSecurity', 'reviewPerformance', 'reviewReadability'],
+  onAllComplete: 'aggregate',
+}),
+
+aggregate: step.prompt({
+  promptFile: 'prompts/aggregate-reviews.md',
+  dependsOn: ['reviewSecurity', 'reviewPerformance', 'reviewReadability'],
+  contextFrom: ['security', 'performance', 'readability'],
+  output: { artifact: 'report.md' },
+}),`}</code></pre>
+
+  <p>The four things to get right:</p>
+
+  <ul>
+    <li>The branch steps are <strong>independent</strong> — no <code>dependsOn</code> between them.</li>
+    <li>The <code>parallel</code> step lists them in <code>branches</code>.</li>
+    <li><code>onAllComplete</code> names the aggregator.</li>
+    <li>The aggregator's <code>dependsOn</code> lists every branch, and its <code>contextFrom</code> lists every handoff it reads.</li>
+  </ul>
+
+  <p>
+    Use static fan-out when N is small and known. When N is dynamic, use the
+    <a href="#wave-loop">dynamic-agents pattern above</a> instead.
+  </p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="verify-after-write">Verify after every write</h2>
+
+  <p>
+    <strong>The shape:</strong> every prompt step that writes a file is
+    followed by a deterministic script step that asserts the file exists and
+    is non-trivially populated. This catches model regressions before they
+    propagate.
+  </p>
+
+  <p>From <code>sdlc-init</code>:</p>
+
+  <pre><code>{`architecture: step.prompt({
+  promptFile: 'prompts/03_architecture.md',
+  dependsOn: ['verify-brainstorm'],
+  contextFrom: ['brief', 'intel'],
+  tools: ['Read', 'Write'],
+  model: 'opus',
+  output: { handoff: 'architecture', schema: ArchitectureSchema },
+}),
+
+'verify-architecture': step.script({
+  run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/assert-handoff-files.sh"'],
+  dependsOn: ['architecture'],
+  env: {
+    HANDOFF_NAME: 'architecture',
+    PATHS_JQ: '[.architecture_path]',
+    MIN_BYTES: '2048',
+  },
+  onFail: 'abort',
+}),`}</code></pre>
+
+  <p>
+    A shared script reads the handoff JSON, extracts a list of file paths via
+    a <code>jq</code> expression, and fails the run with <code>onFail: 'abort'</code>
+    if any file is missing or smaller than <code>MIN_BYTES</code>. The script
+    is generic; the per-step <code>env</code> map specialises it.
+  </p>
+
+  <div class="note">
+    <strong>Why not just trust the schema?</strong>
+    A Zod schema validates the JSON the model returned — not the side effects
+    on disk. If the model says "I wrote 200 files" but only created a stub,
+    the schema is happy. The verify script closes that gap.
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="env-passthrough">Carrying inputs into shell steps</h2>
+
+  <p>
+    <strong>The shape:</strong> map <code>input.&lt;path&gt;</code> and
+    <code>handoff.&lt;id&gt;.&lt;path&gt;</code> values into the child
+    process's environment without ever interpolating them into the command
+    string. Safer than building a shell line by concatenation.
+  </p>
+
+  <pre><code>{`pr: step.script({
+  run: ['bash', '-c', '"$RELAY_FLOW_DIR/scripts/open-pr.sh"'],
+  dependsOn: ['report'],
+  env: {
+    SPRINT_ID: { from: 'input.sprintId', required: true },
+    REPO:      { from: 'input.repo',      required: true },
+    DRY_RUN:   { from: 'input.dryRun' },
+  },
+}),`}</code></pre>
+
+  <p>Rules:</p>
+
+  <ul>
+    <li><code>{`{ from: 'input.<path>' }`}</code> reads a dot-path from the flow's <code>input</code> object.</li>
+    <li><code>{`{ from: 'handoff.<id>.<path>' }`}</code> reads a path from a prior step's handoff.</li>
+    <li><code>required: true</code> makes the resolver fail the step if the path is missing or empty.</li>
+    <li>String values like <code>HANDOFF_NAME: 'architecture'</code> are passed through as literals.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+
+  <h2 id="approval-gates">Approval gates between phases</h2>
+
+  <p>
+    <strong>The shape:</strong> a single-question <code>confirm</code> ask
+    between two prompt steps. The user reviews what the previous step wrote
+    on disk, then types y or n to either let the run continue or abort.
+  </p>
+
+  <pre><code>{`'approve-arch': step.ask({
+  dependsOn: ['verify-architecture'],
+  questions: [
+    {
+      id: 'approved',
+      kind: 'confirm',
+      label: 'Approve docs/ARCHITECTURE.md? Reject to abort the run and revise the prompt or brief.',
+      default: true,
+    },
+  ],
+}),
+
+'tech-stack': step.prompt({
+  promptFile: 'prompts/04_tech_stack.md',
+  dependsOn: ['approve-arch'],
+  contextFrom: ['architecture', 'brief'],
+  ...
+}),`}</code></pre>
+
+  <p>
+    The <code>approve-arch</code> step pauses the run between writing the
+    architecture doc and starting the tech-stack step. Because the run is
+    fully checkpointed, the user can close the terminal entirely and come
+    back hours later — <code>relay resume &lt;runId&gt;</code> picks up at the
+    pause. Reject the gate and the run aborts cleanly with the partial
+    artifacts intact on disk.
+  </p>
+
+  <hr />
+
+  <p>
+    These patterns are composable. The <code>planning</code> flow chains the
+    dynamic-ask pattern → an approval gate → the iterate-until-passes loop, in
+    one file. The <code>sprint-implementation</code> flow stacks two loops
+    back-to-back (a wave-loop, then a review-fix-loop). Pick a pattern, paste
+    it into <code>flow.ts</code>, and adjust the prompt files. The shape
+    survives.
+  </p>
+</Layout>

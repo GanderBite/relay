@@ -1,0 +1,558 @@
+---
+import Layout from '../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Layout title="Step types" description="The seven step kinds in Relay: prompt, script, branch, parallel, loop, ask, terminal.">
+  <span class="eyebrow">Concepts</span>
+  <h1>Step types</h1>
+  <p class="lede">
+    A flow is a directed acyclic graph of steps. Every step is one of seven
+    <strong>kinds</strong>. Each kind has a different role: <code>prompt</code> calls
+    Claude, <code>script</code> runs shell, <code>branch</code> picks the next step from an
+    exit code, and so on. This page documents every kind with the fields that
+    drive it and a runnable example.
+  </p>
+
+  <div class="toc">
+    <div class="toc-title">on this page</div>
+    <ul>
+      <li><a href="#shared">Fields every step shares</a></li>
+      <li><a href="#prompt">prompt — invoke Claude</a></li>
+      <li><a href="#script">script — run a shell command</a></li>
+      <li><a href="#branch">branch — route on an exit code</a></li>
+      <li><a href="#parallel">parallel — fan-out / fan-in</a></li>
+      <li><a href="#loop">loop — iterate until done</a></li>
+      <li><a href="#ask">ask — pause and collect user input</a></li>
+      <li><a href="#terminal">terminal — end the flow</a></li>
+    </ul>
+  </div>
+
+  <h2 id="shared">Fields every step shares</h2>
+
+  <p>
+    Steps live as keyed entries on the <code>steps</code> record passed to
+    <code>defineFlow()</code>. The record key becomes the step's <code>id</code>.
+    Every step kind supports <code>dependsOn</code>; most also accept
+    <code>onFail</code>.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>dependsOn</code></td><td><code>string[]</code></td><td>Ids of steps that must succeed before this one runs. Cycles fail at <code>defineFlow()</code> time.</td></tr>
+      <tr><td><code>onFail</code></td><td><code>'abort' | 'continue' | &lt;stepId&gt;</code></td><td>What to do when the step fails. <code>abort</code> stops the run. <code>continue</code> marks the step failed and runs downstream anyway. A step id jumps to that step.</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Two more concepts apply across kinds:
+  </p>
+
+  <ul>
+    <li><strong>Handoffs.</strong> A JSON value one step writes and a later step reads. Identified by a string id, validated by a Zod schema if you supply one. Stored at <code>.relay/runs/&lt;runId&gt;/handoffs/&lt;id&gt;.json</code>.</li>
+    <li><strong>Artifacts.</strong> A file on disk written by a step — markdown, HTML, JSON, whatever. Stored at <code>.relay/runs/&lt;runId&gt;/&lt;name&gt;</code>. Artifacts are the user-visible output.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+
+  <h2 id="prompt">prompt — invoke Claude</h2>
+
+  <div class="step-card">
+    <h3>step.prompt <span class="kind-tag">kind: prompt</span></h3>
+    <p class="one-liner">Send a templated prompt to Claude and capture the response as a handoff, an artifact, or both.</p>
+  </div>
+
+  <p>
+    <code>step.prompt</code> is the workhorse. It reads a Handlebars-templated
+    markdown file, substitutes input fields and prior handoffs, and dispatches
+    a Claude invocation through the configured provider. The contained
+    subprocess receives an explicit env allowlist so credentials never leak in.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>promptFile</code></td><td><code>string</code></td><td>yes</td><td>Path to the prompt file, relative to the flow directory.</td></tr>
+      <tr><td><code>output</code></td><td>see below</td><td>yes</td><td>Where the response goes — handoff, artifact, or both.</td></tr>
+      <tr><td><code>contextFrom</code></td><td><code>string[]</code></td><td>—</td><td>Handoff ids whose JSON is exposed to the prompt's Handlebars context.</td></tr>
+      <tr><td><code>model</code></td><td><code>string</code></td><td>—</td><td>Model alias (e.g. <code>sonnet</code>, <code>haiku</code>). Provider-dependent.</td></tr>
+      <tr><td><code>systemPrompt</code></td><td><code>string</code></td><td>—</td><td>System prompt for this invocation.</td></tr>
+      <tr><td><code>tools</code></td><td><code>string[]</code></td><td>—</td><td>Tool names the invocation may use.</td></tr>
+      <tr><td><code>agents</code></td><td>see core README</td><td>—</td><td>Ephemeral subagent definitions, inline or sourced from a handoff.</td></tr>
+      <tr><td><code>maxRetries</code></td><td><code>number</code></td><td>—</td><td>Retry count on transient errors. Defaults to provider policy.</td></tr>
+      <tr><td><code>maxBudgetUsd</code></td><td><code>number</code></td><td>—</td><td>Per-step cap. Exceeding it raises <code>BudgetExceededError</code>.</td></tr>
+      <tr><td><code>timeoutMs</code></td><td><code>number</code></td><td>—</td><td>Wall-clock cap. Defaults to 600&nbsp;000 ms (10 min).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>output shapes</h3>
+
+  <pre><code>{`// (a) Just a handoff — JSON the next step reads.
+output: { handoff: 'inventory' }
+
+// (b) Just an artifact — a file written to .relay/runs/<id>/.
+output: { artifact: 'report.html' }
+
+// (c) Both at once.
+output: { handoff: 'summary', artifact: 'summary.md' }
+
+// (d) Handoff with a Zod schema. Validated before the next step starts.
+output: {
+  handoff: 'inventory',
+  schema: z.object({ files: z.number(), entities: z.array(z.string()) }),
+}`}</code></pre>
+
+  <h3>Example</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'hello',
+  version: '0.1.0',
+  input: z.object({ topic: z.string() }),
+  steps: {
+    write: step.prompt({
+      promptFile: 'prompts/01_write.md',
+      output: { handoff: 'draft' },
+    }),
+    polish: step.prompt({
+      promptFile: 'prompts/02_polish.md',
+      dependsOn: ['write'],
+      contextFrom: ['draft'],
+      output: { artifact: 'final.md' },
+    }),
+  },
+});`}</code></pre>
+
+  <p>And the prompt file <code>prompts/02_polish.md</code> can reference both the input and the handoff:</p>
+
+  <pre><code>{`The topic is {{input.topic}}.
+
+The draft so far:
+
+{{draft.text}}
+
+Polish it into a tight one-paragraph summary.`}</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="script">script — run a shell command</h2>
+
+  <div class="step-card">
+    <h3>step.script <span class="kind-tag">kind: script</span></h3>
+    <p class="one-liner">Run a shell command or script under your shell, optionally producing an artifact.</p>
+  </div>
+
+  <p>
+    <code>step.script</code> spawns a child process. It is your hook for the
+    parts of a flow that aren't model calls — running tests, querying a
+    database, hitting a webhook, cleaning up scratch files. Unlike
+    <code>prompt</code>, the child process inherits <code>process.env</code> in
+    full. If a script touches the network, pass an explicit <code>env</code> map.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>run</code></td><td><code>string | string[]</code></td><td>yes</td><td>The command to run. Use an array for argv-style invocation; a string is passed through your shell.</td></tr>
+      <tr><td><code>env</code></td><td><code>Record&lt;string, string | {`{ from }`}&gt;</code></td><td>—</td><td>Explicit env map. Values can be string literals or <code>{`{ from: 'input.x' }`}</code> / <code>{`{ from: 'handoff.id.path' }`}</code> references.</td></tr>
+      <tr><td><code>cwd</code></td><td><code>string</code></td><td>—</td><td>Working directory for the child process.</td></tr>
+      <tr><td><code>output</code></td><td><code>{`{ artifact?: string }`}</code></td><td>—</td><td>If set, stdout is captured to the named artifact.</td></tr>
+      <tr><td><code>onExit</code></td><td><code>Record&lt;string, 'abort' | 'continue' | &lt;stepId&gt;&gt;</code></td><td>—</td><td>Map of exit codes to actions. Use <code>'default'</code> as the catch-all key.</td></tr>
+      <tr><td><code>maxRetries</code></td><td><code>number</code></td><td>—</td><td>Retry count on non-zero exit.</td></tr>
+      <tr><td><code>timeoutMs</code></td><td><code>number</code></td><td>—</td><td>Wall-clock cap. Process is killed on timeout.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'ship',
+  version: '0.1.0',
+  input: z.object({ webhook: z.string() }),
+  steps: {
+    summarize: step.prompt({
+      promptFile: 'prompts/01_summarize.md',
+      output: { handoff: 'summary', artifact: 'summary.json' },
+    }),
+    notify: step.script({
+      dependsOn: ['summarize'],
+      run: 'curl -sS -X POST "$WEBHOOK_URL" --data-binary @summary.json',
+      env: {
+        WEBHOOK_URL: { from: 'input.webhook' },
+      },
+      onExit: { '0': 'continue', default: 'abort' },
+      timeoutMs: 30_000,
+    }),
+  },
+});`}</code></pre>
+
+  <div class="note warn">
+    <strong>Env containment.</strong>
+    <code>script</code> and <code>branch</code> forward <code>process.env</code>
+    intact unless you pass an explicit <code>env</code> map. <code>prompt</code>
+    does not — it uses an allowlist. If a script touches an external service,
+    pass <code>env</code> explicitly so credentials are scoped to that step.
+  </div>
+
+  <!-- ============================================================ -->
+
+  <h2 id="branch">branch — route on an exit code</h2>
+
+  <div class="step-card">
+    <h3>step.branch <span class="kind-tag">kind: branch</span></h3>
+    <p class="one-liner">Run a shell command and use its exit code to pick which step runs next.</p>
+  </div>
+
+  <p>
+    A branch step is a script step whose entire purpose is the
+    <code>onExit</code> map. It produces no artifact and no handoff; the
+    side-effect is changing where execution goes. Use it for guards
+    (<em>"only continue if the lockfile is clean"</em>) and conditional
+    dispatch (<em>"if there are no changes, jump to <code>publish</code>; if there are,
+    go to <code>review</code>"</em>).
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>run</code></td><td><code>string | string[]</code></td><td>yes</td><td>The command whose exit code drives routing.</td></tr>
+      <tr><td><code>onExit</code></td><td><code>Record&lt;string, 'abort' | 'continue' | &lt;stepId&gt;&gt;</code></td><td>yes</td><td>Required and non-empty. Map exit-code strings (or <code>'default'</code>) to actions.</td></tr>
+      <tr><td><code>env</code></td><td>same as <code>script</code></td><td>—</td><td>Explicit env map.</td></tr>
+      <tr><td><code>cwd</code></td><td><code>string</code></td><td>—</td><td>Working directory.</td></tr>
+      <tr><td><code>timeoutMs</code></td><td><code>number</code></td><td>—</td><td>Wall-clock cap.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'release',
+  version: '0.1.0',
+  input: z.object({}),
+  steps: {
+    hasChanges: step.branch({
+      run: 'git diff --quiet HEAD',
+      onExit: {
+        '0': 'publish',   // no changes — go straight to publish
+        '1': 'review',    // changes pending — review first
+        default: 'abort',
+      },
+    }),
+    review: step.prompt({
+      promptFile: 'prompts/review.md',
+      dependsOn: ['hasChanges'],
+      output: { handoff: 'review' },
+    }),
+    publish: step.script({
+      dependsOn: ['hasChanges'],
+      run: 'npm publish',
+    }),
+  },
+});`}</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="parallel">parallel — fan-out / fan-in</h2>
+
+  <div class="step-card">
+    <h3>step.parallel <span class="kind-tag">kind: parallel</span></h3>
+    <p class="one-liner">Fan out to a set of named branches and converge on a single follow-up step.</p>
+  </div>
+
+  <p>
+    A <code>parallel</code> step lists the ids of the branches to run
+    concurrently and (optionally) a single step that runs after they all
+    complete. The branches themselves are normal steps elsewhere in the flow —
+    <code>parallel</code> just declares the fan-out boundary.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>branches</code></td><td><code>string[]</code></td><td>yes</td><td>Ids of the steps to run in parallel. Must be unique.</td></tr>
+      <tr><td><code>onAllComplete</code></td><td><code>string</code></td><td>—</td><td>Step id to run after every branch succeeds.</td></tr>
+      <tr><td><code>onFail</code></td><td><code>'abort' | &lt;stepId&gt;</code></td><td>—</td><td><code>continue</code> is not legal here — any branch failure either aborts or routes to a recovery step.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>No retry, no timeout, no contextFrom.</strong>
+    A parallel step is a dispatch boundary, not a worker. Retry, timeout, and
+    context injection belong on the branch steps themselves.
+  </div>
+
+  <h3>Example: three reviewers, one aggregator</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'multi-perspective-review',
+  version: '0.1.0',
+  input: z.object({ filePath: z.string() }),
+  steps: {
+    reviewSecurity: step.prompt({
+      promptFile: 'prompts/security-review.md',
+      output: { handoff: 'security' },
+    }),
+    reviewPerformance: step.prompt({
+      promptFile: 'prompts/performance-review.md',
+      output: { handoff: 'performance' },
+    }),
+    reviewReadability: step.prompt({
+      promptFile: 'prompts/readability-review.md',
+      output: { handoff: 'readability' },
+    }),
+    fanOut: step.parallel({
+      branches: ['reviewSecurity', 'reviewPerformance', 'reviewReadability'],
+      onAllComplete: 'aggregate',
+    }),
+    aggregate: step.prompt({
+      promptFile: 'prompts/aggregate-reviews.md',
+      dependsOn: ['reviewSecurity', 'reviewPerformance', 'reviewReadability'],
+      contextFrom: ['security', 'performance', 'readability'],
+      output: { artifact: 'report.md' },
+    }),
+  },
+});`}</code></pre>
+
+  <!-- ============================================================ -->
+
+  <h2 id="loop">loop — iterate until done</h2>
+
+  <div class="step-card">
+    <h3>step.loop <span class="kind-tag">kind: loop</span></h3>
+    <p class="one-liner">Run a sub-graph of steps repeatedly until a named handoff matches a condition or an iteration cap is hit.</p>
+  </div>
+
+  <p>
+    A loop step holds its own <code>body</code> — a small map of steps that
+    Relay re-executes each iteration. After each iteration, Relay inspects the
+    handoff named in <code>until.from</code> and stops when its fields match
+    the <code>until.when</code> pattern. The <code>maxIterations</code> field
+    is a hard cap — Relay will not loop forever, even if the model never
+    decides it's done.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>body</code></td><td><code>Record&lt;string, Step&gt;</code></td><td>yes</td><td>The sub-graph to repeat. Non-empty. No nested loops, no parallel.</td></tr>
+      <tr><td><code>until</code></td><td><code>{`{ from: handoffId, when: { ... } }`}</code></td><td>yes</td><td>Stop when the body's handoff equals the pattern (shallow equality).</td></tr>
+      <tr><td><code>maxIterations</code></td><td><code>number</code></td><td>yes</td><td>Positive integer. Hard cap.</td></tr>
+      <tr><td><code>start</code></td><td><code>string</code></td><td>—</td><td>Id of the body step to start each iteration on, if the body has multiple roots.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example: compose a sprint plan until coverage verifies</h3>
+
+  <p>
+    This is the <code>compose-plan</code> loop from the real <code>planning</code>
+    flow. Four prompt steps run in sequence — break the feature into tasks,
+    bucket tasks into waves, fold waves into a sprint, verify coverage —
+    then the verifier emits a <code>verdict</code>. If it's <code>pass</code>,
+    the loop exits. Otherwise the next iteration starts again at
+    <code>compose-tasks</code> with the verifier's notes in context.
+  </p>
+
+  <pre><code>{`'compose-plan': step.loop({
+  dependsOn: ['approve-arch'],
+  maxIterations: 3,
+  start: 'compose-tasks',
+  until: { from: 'coverage_report', when: { verdict: 'pass' } },
+  body: {
+    'compose-tasks': step.prompt({
+      promptFile: 'prompts/04_compose_tasks.md',
+      tools: ['Read', 'Glob', 'Grep'],
+      model: 'opus',
+      output: { handoff: 'tasks', schema: TasksSchema },
+    }),
+    'compose-waves': step.prompt({
+      promptFile: 'prompts/05_compose_waves.md',
+      dependsOn: ['compose-tasks'],
+      contextFrom: ['tasks'],
+      model: 'opus',
+      output: { handoff: 'waves', schema: WavesSchema },
+    }),
+    'compose-sprints': step.prompt({
+      promptFile: 'prompts/06_compose_sprints.md',
+      dependsOn: ['compose-waves'],
+      contextFrom: ['tasks', 'waves'],
+      model: 'opus',
+      output: { handoff: 'sprints', schema: SprintsSchema },
+    }),
+    'verify-coverage': step.prompt({
+      promptFile: 'prompts/07_verify.md',
+      dependsOn: ['compose-sprints'],
+      contextFrom: ['sprints'],
+      model: 'opus',
+      output: { handoff: 'coverage_report', schema: CoverageReportSchema },
+    }),
+  },
+}),`}</code></pre>
+
+  <p>
+    Notice three things: <code>start</code> names the body entry point so
+    Relay knows where each iteration begins, <code>until.from</code> matches
+    the verifier's handoff id, and <code>maxIterations: 3</code> is a hard
+    ceiling — three rounds at most. See the
+    <a href={`${base}/patterns/#compose-plan`}>Patterns page</a> for the
+    fuller version with prompts and schemas.
+  </p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="ask">ask — pause and collect user input</h2>
+
+  <div class="step-card">
+    <h3>step.ask <span class="kind-tag">kind: ask</span></h3>
+    <p class="one-liner">Pause the run, prompt the user for one or more answers, write the responses as a handoff.</p>
+  </div>
+
+  <p>
+    <code>step.ask</code> turns a flow into an interactive one. When the
+    flow reaches the step, Relay pauses, presents the questions on the CLI (or
+    in a host UI), and writes the collected answers as a handoff. A paused run
+    is fully checkpointed — the user can close the terminal and resume with
+    <code>relay resume &lt;runId&gt;</code> later.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>questions</code></td><td><code>Question[] | {`{ from: stepId }`}</code></td><td>yes</td><td>Literal list, or a dynamic source that names a step whose handoff produces the questions at dispatch time.</td></tr>
+      <tr><td><code>name</code></td><td><code>string</code></td><td>—</td><td>Optional label for the prompt block.</td></tr>
+      <tr><td><code>output</code></td><td><code>{`{ schema: ZodType }`}</code></td><td>—</td><td>Optional Zod schema. If set, the collected answers are validated before becoming a handoff.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Supported question kinds: <code>text</code>, <code>multiline</code>, <code>select</code>, <code>multiselect</code>, <code>confirm</code>, <code>number</code>.</p>
+
+  <h3>Two ways to source questions</h3>
+
+  <p>
+    A static <code>questions</code> array fixes the prompts at flow-author
+    time. The dynamic <code>{`{ from: <stepId> }`}</code> form lets a
+    prior step decide what to ask — useful when the questions themselves
+    depend on what Claude found earlier.
+  </p>
+
+  <h3>Static: an approval gate</h3>
+
+  <pre><code>{`'approve-arch': step.ask({
+  dependsOn: ['architecture'],
+  questions: [
+    {
+      id: 'approved',
+      kind: 'confirm',
+      label: 'Approve docs/ARCHITECTURE.md? Reject to abort the run.',
+      default: true,
+    },
+  ],
+}),`}</code></pre>
+
+  <p>
+    A single <code>confirm</code> question is the canonical "are you sure"
+    gate. The flow pauses; the user types y/n; the run resumes.
+  </p>
+
+  <h3>Dynamic: questions a prior step wrote</h3>
+
+  <p>
+    The <code>discovery</code> flow asks Claude to read the application idea
+    and generate clarifying questions of its own. Those questions become the
+    handoff that the next ask step reads:
+  </p>
+
+  <pre><code>{`'clarify-questions': step.prompt({
+  promptFile: 'prompts/01_clarify_questions.md',
+  tools: ['Read', 'Glob'],
+  model: 'opus',
+  output: { handoff: 'clarify_questions', schema: ClarifyQuestionsSchema },
+}),
+
+'ask-clarify': step.ask({
+  dependsOn: ['clarify-questions'],
+  questions: { from: 'clarify_questions' },
+}),
+
+decompose: step.prompt({
+  promptFile: 'prompts/02_decompose.md',
+  dependsOn: ['ask-clarify'],
+  contextFrom: ['ask-clarify'],
+  ...
+}),`}</code></pre>
+
+  <p>
+    The prompt step produces a <code>Question[]</code> that the schema
+    validates; the ask step renders it; the decompose step picks up the
+    user's answers via <code>contextFrom: ['ask-clarify']</code>. The
+    flow author never wrote a single question.
+  </p>
+
+  <!-- ============================================================ -->
+
+  <h2 id="terminal">terminal — end the flow</h2>
+
+  <div class="step-card">
+    <h3>step.terminal <span class="kind-tag">kind: terminal</span></h3>
+    <p class="one-liner">Explicitly end the flow with a message and an exit code, regardless of remaining steps.</p>
+  </div>
+
+  <p>
+    Use a <code>terminal</code> step at the end of a branch arm that should
+    short-circuit the rest of the flow — e.g. a <em>"nothing to do"</em> path
+    after a guard step. Reaching a terminal step writes a final-state
+    checkpoint and exits with the configured code.
+  </p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>message</code></td><td><code>string</code></td><td>—</td><td>Final message rendered in the success banner.</td></tr>
+      <tr><td><code>exitCode</code></td><td><code>0–255</code></td><td>—</td><td>Process exit code. Defaults to 0.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example: short-circuit when there's nothing to do</h3>
+
+  <pre><code>{`import { defineFlow, step, z } from '@ganderbite/relay-core';
+
+export default defineFlow({
+  name: 'maybe-publish',
+  version: '0.1.0',
+  input: z.object({}),
+  steps: {
+    hasChanges: step.branch({
+      run: 'git diff --quiet HEAD',
+      onExit: {
+        '0': 'noop',
+        '1': 'publish',
+        default: 'abort',
+      },
+    }),
+    noop: step.terminal({
+      dependsOn: ['hasChanges'],
+      message: 'nothing to publish',
+      exitCode: 0,
+    }),
+    publish: step.script({
+      dependsOn: ['hasChanges'],
+      run: 'npm publish',
+    }),
+  },
+});`}</code></pre>
+
+  <hr />
+
+  <p>
+    Want to put this together into a working flow? Read
+    <a href={`${base}/authoring/`}>Author a flow</a> — a seven-step walkthrough that
+    scaffolds, fails, fixes, and resumes a real run.
+  </p>
+</Layout>

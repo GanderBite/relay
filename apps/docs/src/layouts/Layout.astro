@@ -1,0 +1,42 @@
+---
+import Sidebar from '../components/Sidebar.astro';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const fullTitle = title === 'Relay' ? title : `${title} · Relay`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="shell">
+      <Sidebar />
+      <main class="main">
+        <slot />
+        <footer class="page-footer">
+          <p>
+            Relay is MIT-licensed and dogfooded by <a href="https://ganderbite.com">Ganderbite</a>.
+            Source on <a href="https://github.com/ganderbite/relay">GitHub</a>.
+          </p>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

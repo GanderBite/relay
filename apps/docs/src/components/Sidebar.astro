@@ -1,0 +1,98 @@
+---
+const { pathname } = Astro.url;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function link(href: string) {
+  return `${base}${href}`;
+}
+
+function isActive(href: string) {
+  const target = link(href);
+  if (target === `${base}/` || target === `${base}`) {
+    return pathname === '/' || pathname === `${base}/` || pathname === base;
+  }
+  return pathname === target || pathname === `${target}/`;
+}
+
+const nav = [
+  {
+    title: 'Intro',
+    links: [
+      { href: '/', label: 'What is Relay' },
+    ],
+  },
+  {
+    title: 'Concepts',
+    links: [
+      { href: '/steps/', label: 'Step types' },
+    ],
+    sub: [
+      { href: '/steps/#prompt', label: 'prompt' },
+      { href: '/steps/#script', label: 'script' },
+      { href: '/steps/#branch', label: 'branch' },
+      { href: '/steps/#parallel', label: 'parallel' },
+      { href: '/steps/#loop', label: 'loop' },
+      { href: '/steps/#ask', label: 'ask' },
+      { href: '/steps/#terminal', label: 'terminal' },
+    ],
+  },
+  {
+    title: 'CLI',
+    links: [
+      { href: '/cli/', label: 'Commands' },
+    ],
+    sub: [
+      { href: '/cli/#init', label: 'init' },
+      { href: '/cli/#doctor', label: 'doctor' },
+      { href: '/cli/#run', label: 'run' },
+      { href: '/cli/#resume', label: 'resume' },
+      { href: '/cli/#runs', label: 'runs · logs' },
+      { href: '/cli/#new', label: 'new' },
+      { href: '/cli/#install', label: 'list · install · search' },
+      { href: '/cli/#validate', label: 'validate · test · publish' },
+    ],
+  },
+  {
+    title: 'Patterns',
+    links: [
+      { href: '/patterns/', label: 'Real-world patterns' },
+    ],
+    sub: [
+      { href: '/patterns/#compose-plan', label: 'iterate until pass' },
+      { href: '/patterns/#wave-loop', label: 'fan-out via agents' },
+      { href: '/patterns/#dynamic-ask', label: 'dynamic questions' },
+      { href: '/patterns/#fanout', label: 'static fan-out' },
+      { href: '/patterns/#verify-after-write', label: 'verify after write' },
+      { href: '/patterns/#env-passthrough', label: 'env passthrough' },
+      { href: '/patterns/#approval-gates', label: 'approval gates' },
+    ],
+  },
+  {
+    title: 'Build',
+    links: [
+      { href: '/authoring/', label: 'Author a flow' },
+    ],
+  },
+];
+---
+
+<aside class="sidebar">
+  <a class="brand" href={link('/')}>
+    <span class="mark">●─▶●─▶●─▶●</span>
+    <span class="tag">relay docs</span>
+  </a>
+
+  {nav.map((group) => (
+    <div class="nav-group">
+      <div class="nav-group-title">{group.title}</div>
+      {group.links.map((l) => (
+        <a class={`nav-link ${isActive(l.href) ? 'active' : ''}`} href={link(l.href)}>{l.label}</a>
+      ))}
+      {group.sub && isActive(group.links[0].href) && (
+        group.sub.map((s) => (
+          <a class="nav-sublink" href={link(s.href)}>{s.label}</a>
+        ))
+      )}
+    </div>
+  ))}
+</aside>
