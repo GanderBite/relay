@@ -5,7 +5,7 @@ description: TypeScript 5.4+ patterns for the Relay codebase — strict mode dis
 
 # TypeScript Patterns for Relay
 
-The Relay codebase is **strict TypeScript 5.4+, ESM-only, Node ≥20.10**. Strict means strict — `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` all on. The type system is load-bearing; step authors get autocomplete and refactor safety from it, not from documentation.
+The Relay codebase is **strict TypeScript 5.4+, ESM-only, Node ≥22.0**. Strict means strict — `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` all on. The type system is load-bearing; step authors get autocomplete and refactor safety from it, not from documentation.
 
 ## Hard rules
 

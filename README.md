@@ -98,6 +98,8 @@ For a walkthrough, see [docs/authoring-your-first-flow.md](docs/authoring-your-f
 
 ## Docs
 
+Full documentation lives at [ganderbite.github.io/relay](https://ganderbite.github.io/relay).
+
 - [Authoring Your First Flow](docs/authoring-your-first-flow.md) — step-by-step guide from scaffold to first run
 - [Flow Package Format](docs/flow-package-format.md) — directory layout, package.json shape, step types, versioning
 - [Resume Semantics](docs/resume-semantics.md) — how checkpoint, crash recovery, and `relay resume` work

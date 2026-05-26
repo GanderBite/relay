@@ -166,7 +166,7 @@ The CLI resolves a flow name in this order:
 
 1. **Local**: `./.relay/flows/<name>/`
 2. **Workspace package**: `./node_modules/@ganderbite/relay-<name>/`
-3. **Remote catalog**: `https://relay.dev/registry.json` → fetch tarball
+3. **Remote catalog**: `https://ganderbite.github.io/relay/registry.json` → fetch tarball
 
 A locally installed flow always wins. The CLI prints which source it resolved.
 

@@ -75,7 +75,7 @@ Use this exact string in the `description` field of `@ganderbite/relay-core` and
 
 ---
 
-## relay.dev about paragraph
+## About paragraph
 
 > Relay is an open-source CLI and TypeScript library for building
 > deterministic multi-step flows on top of Claude Code. Made by

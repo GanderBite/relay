@@ -20,7 +20,7 @@ The flow has four steps in total: one branch (`route`) and three leaf prompt ste
 
 ## Prerequisites
 
-- Node ≥ 20.10 and pnpm, same as the rest of the Relay monorepo.
+- Node ≥ 22.0 (LTS) and pnpm, same as the rest of the Relay monorepo.
 - A working Claude subscription (Pro or Max). The three leaf prompts each run one short prompt.
 - A file you want to review on your local disk. The flow reads its path from the `FILE_PATH` environment variable (for the branch step) and from the `--filePath` input variable (for the leaf prompts).
 

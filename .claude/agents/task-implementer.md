@@ -34,7 +34,7 @@ You implement a single task from a Relay sprint backlog. The user (the orchestra
 ## Hard rules
 
 - **ESM only.** `"type": "module"` everywhere. No CJS dual-publish. No `require()`. Use `import.meta.url` when you need `__dirname`.
-- **Node ≥20.10, TypeScript 5.4+.** Top-level `await` is fine.
+- **Node ≥22.0, TypeScript 5.4+.** Top-level `await` is fine.
 - **No emojis.** Even in code comments. The product spec's symbol vocabulary is the only allowed special-character set.
 - **No new dependencies unless the task description names them.** Zod is the only mandatory runtime dep beyond Node built-ins for `@ganderbite/relay-core`.
 - **Atomic writes** for any file another process reads (state.json, batons, metrics, live state). Use the `atomicWriteJson` helper from `@ganderbite/relay-core` once it exists.

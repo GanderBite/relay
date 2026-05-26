@@ -1,11 +1,11 @@
 ---
 name: relay-monorepo
-description: Conventions for the Relay pnpm-workspace monorepo — root config, per-package package.json shape, tsconfig setup, tsup bundling config, vitest test setup, ESM-only Node 20.10 + TypeScript 5.4 stack. Trigger this skill when scaffolding a new package, configuring `tsup.config.ts` or `tsconfig.json`, wiring `vitest.config.ts`, adding workspace dependencies (`workspace:^`), or troubleshooting the build pipeline. Flow packages live in `packages/flows/`. Used by the foundational sprint-0 tasks and any later task that touches build infrastructure.
+description: Conventions for the Relay pnpm-workspace monorepo — root config, per-package package.json shape, tsconfig setup, tsup bundling config, vitest test setup, ESM-only Node 22.0 + TypeScript 5.4 stack. Trigger this skill when scaffolding a new package, configuring `tsup.config.ts` or `tsconfig.json`, wiring `vitest.config.ts`, adding workspace dependencies (`workspace:^`), or troubleshooting the build pipeline. Flow packages live in `packages/flows/`. Used by the foundational sprint-0 tasks and any later task that touches build infrastructure.
 ---
 
 # Relay Monorepo Conventions
 
-The repo is a pnpm workspace. Four packages plus `examples/` plus `packages/flows/`. ESM-only. Node ≥20.10. TypeScript 5.4+.
+The repo is a pnpm workspace. Four packages plus `examples/` plus `packages/flows/`. ESM-only. Node ≥22.0. TypeScript 5.4+.
 
 ## Root layout
 
@@ -45,7 +45,7 @@ Add `catalog/` only if it ships as a workspace package (it doesn't in v1 — it'
     "lint": "pnpm -r --parallel lint"
   },
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22.0"
   },
   "packageManager": "pnpm@9.0.0"
 }
@@ -122,7 +122,7 @@ auto-install-peers=true
     "@anthropic-ai/claude-agent-sdk": "*"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
+    "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.0.0"
@@ -160,7 +160,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  target: 'node20',
+  target: 'node22',
   splitting: false,
   treeshake: true,
 });

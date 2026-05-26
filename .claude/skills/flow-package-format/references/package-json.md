@@ -20,7 +20,7 @@
     "@ganderbite/relay-core": "^1.0.0"
   },
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22.0"
   },
   "keywords": ["relay", "claude", "codebase", "discovery"],
   "repository": {

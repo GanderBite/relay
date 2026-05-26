@@ -71,7 +71,7 @@ credential hygiene inside script steps.
 
 `relay doctor` runs five checks before any flow step executes:
 
-1. Node version (≥ 20.10.0)
+1. Node version (≥ 22.0.0)
 2. `claude` binary reachable on PATH
 3. Auth state — calls `ClaudeCliProvider.authenticate()` to show which billing
    source would be active

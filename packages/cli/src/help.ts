@@ -65,8 +65,8 @@ export function renderSplash(): void {
 
     // LEARN — MARK prefix with 3 spaces, verbatim from §6.1
     'LEARN',
-    `${INDENT}${MARK}   relay.dev                    the catalog`,
-    `${INDENT}${MARK}   relay.dev/docs/first-flow    scaffold one in 5 minutes`,
+    `${INDENT}${MARK}   ganderbite.github.io/relay              the catalog`,
+    `${INDENT}${MARK}   ganderbite.github.io/relay/authoring     your first flow`,
   ];
 
   process.stdout.write(lines.join('\n') + '\n');

@@ -1,7 +1,7 @@
 /**
  * Registry generator — reads flow package metadata from local directories or
  * npm package names and emits a RegistryDoc suitable for serving at
- * relay.dev/registry.json.
+ * ganderbite.github.io/relay/registry.json.
  *
  * The same shape is consumed by:
  *   - catalog/app.js  (browser, fetches the static file)

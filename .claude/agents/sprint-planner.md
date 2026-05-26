@@ -23,7 +23,7 @@ You always read the codebase before generating tasks. You never fabricate file p
 
 This is the Relay TypeScript monorepo (pnpm workspaces). Key facts:
 - Packages: `@ganderbite/relay-core`, `@ganderbite/relay`, `@ganderbite/relay-generator`
-- Hard rules: No emojis (use `✓ ✕ ⚠ ⠋ ○ · ●─▶` only), no "simply" in copy, no trailing `!`, ESM only, Node >=20.10, TypeScript 5.4+
+- Hard rules: No emojis (use `✓ ✕ ⚠ ⠋ ○ · ●─▶` only), no "simply" in copy, no trailing `!`, ESM only, Node >=22.0, TypeScript 5.4+
 - Patterns: neverthrow Result<T,E> for fallible functions (no throwing), Zod v4 native z.toJSONSchema, thin re-exports preferred, domain-generic error names
 - Sprint files live at `_work/sprint-<N>.json`
 - Specs at `_specs/` are frozen — never suggest editing them; raise conflicts with the user

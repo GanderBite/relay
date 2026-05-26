@@ -20,7 +20,7 @@ misconfigurations from step failures.
 npm install -g @ganderbite/relay
 ```
 
-Requires Node ≥ 20.10.
+Requires Node ≥ 22.0 (LTS).
 
 If `relay` is not found after install, ensure the npm global bin directory is in
 your PATH. Run `npm bin -g` to locate it, then add that path to your shell

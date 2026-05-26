@@ -196,18 +196,18 @@ relay run <flowName> <input>
 
 `relay doctor` runs pre-flight checks and exits with code `1` if any blocker is present. The three categories of blocking failures:
 
-#### Node version below 20.10.0
+#### Node version below 22.0.0
 
 ```
-✕ node          18.x.x  (≥ 20.10.0 required)
+✕ node          18.x.x  (≥ 22.0.0 required)
 ```
 
 **Cause.** The active Node.js version is below the minimum required.
 
-→ Install Node.js 20.10.0 or later from [nodejs.org](https://nodejs.org), or use a version manager:
+→ Install Node.js 22.0.0 or later from [nodejs.org](https://nodejs.org), or use a version manager:
 ```
-nvm install 20
-nvm use 20
+nvm install 22
+nvm use 22
 ```
 
 #### `claude` binary not on PATH

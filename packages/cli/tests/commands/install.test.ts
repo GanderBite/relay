@@ -354,7 +354,7 @@ describe('relay install — successful install', () => {
 
     // fetch should only have been called once — for the tarball, not for the registry.
     const registryFetchCalls = fetchMock.mock.calls.filter((c: unknown[]) =>
-      String(c[0]).includes('relay.dev/registry.json'),
+      String(c[0]).includes('ganderbite.github.io/relay/registry.json'),
     );
     expect(registryFetchCalls).toHaveLength(0);
 

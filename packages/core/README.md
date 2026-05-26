@@ -25,7 +25,7 @@ checkpoint with `relay resume <runId>`.
 npm install @ganderbite/relay-core
 ```
 
-Requires Node ≥ 20.10 and TypeScript 5.4+ (`"module": "NodeNext"` in tsconfig).
+Requires Node ≥ 22.0 (LTS) and TypeScript 5.4+ (`"module": "NodeNext"` in tsconfig).
 
 ---
 

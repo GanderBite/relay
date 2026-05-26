@@ -14,7 +14,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  target: 'node20',
+  target: 'node22',
   splitting: false,
   treeshake: true,
   outDir: 'dist',
@@ -27,7 +27,7 @@ Key choices:
 - `dts: true` — emits `.d.ts` next to each `.js`. No separate `tsc` invocation needed.
 - `splitting: false` — keep one output file per entry. Cleaner subpath exports.
 - `treeshake: true` — removes unused imports. Helps the published bundle stay lean.
-- `target: 'node20'` — ES2022 features without polyfills.
+- `target: 'node22'` — ES2022 features without polyfills.
 
 ## CLI package config
 
@@ -41,7 +41,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  target: 'node20',
+  target: 'node22',
   shims: false,
   banner: { js: '#!/usr/bin/env node' },   // optional — only if main IS the bin
 });
@@ -60,7 +60,7 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   clean: true,
-  target: 'node20',
+  target: 'node22',
 });
 ```
 

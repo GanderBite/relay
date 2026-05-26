@@ -12,7 +12,7 @@ The flow exists to demonstrate two things: fan-out parallelism (one parallel ste
 
 ## Prerequisites
 
-- Node ≥ 20.10 and pnpm, same as the rest of the Relay monorepo.
+- Node ≥ 22.0 (LTS) and pnpm, same as the rest of the Relay monorepo.
 - A working Claude subscription (Pro or Max). The flow runs four prompt steps — three reviewers plus the aggregator.
 - A source file on disk that you want reviewed. Any text file Claude can read will do (TypeScript, Python, Go, SQL, YAML). The reviewers resolve the path you pass as `--filePath`.
 

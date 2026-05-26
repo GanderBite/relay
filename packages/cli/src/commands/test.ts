@@ -14,7 +14,7 @@
  *      - Print pass / fail per fixture.
  *   5. Exit 0 if all fixtures pass, exit 1 if any fail.
  *
- * Full eval harness lands in v1.x — see relay.dev/docs/testing.
+ * Full eval harness lands in v1.x — see ganderbite.github.io/relay.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -225,7 +225,7 @@ function printNoFixtures(): void {
     '    test/fixtures/basic.json  \u2192  { "input": {}, "expectedArtifacts": [] }\n',
   );
   process.stdout.write('\n');
-  process.stdout.write('full eval harness lands in v1.x \u2014 see relay.dev/docs/testing\n');
+  process.stdout.write('full eval harness lands in v1.x \u2014 see ganderbite.github.io/relay\n');
 }
 
 function printFixtureResult(result: FixtureResult): void {

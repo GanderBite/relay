@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Node >= 20.10
+- Node >= 22.0 (LTS)
 - pnpm >= 10
 
 ---
@@ -49,7 +49,7 @@ Before opening a pull request, verify each item:
 
 Full rules live in [`docs/naming-conventions.md`](docs/naming-conventions.md). The short version:
 
-**TypeScript** — strict mode throughout. ESM only (`"type": "module"`). Node >= 20.10. TypeScript 5.4+. No `any`, no `as` casts, no `// @ts-ignore`. Import extensions must be explicit (`.js` for compiled output).
+**TypeScript** — strict mode throughout. ESM only (`"type": "module"`). Node >= 22.0. TypeScript 5.4+. No `any`, no `as` casts, no `// @ts-ignore`. Import extensions must be explicit (`.js` for compiled output).
 
 **Error handling** — all fallible functions return `Result<T, E>` via [neverthrow](https://github.com/supermacro/neverthrow). Throwing is forbidden across `@ganderbite/relay-core`. Callers pattern-match on `result.isOk()` / `result.isErr()`.
 

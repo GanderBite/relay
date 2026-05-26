@@ -31,7 +31,7 @@ The Relay base tsconfig (`tsconfig.base.json`) enables a specific strict subset.
 ## Flag-by-flag
 
 ### `target: "ES2022"`
-Ships modern syntax (top-level await, class fields, `at()`, structuredClone, error cause). Node 20.10+ supports all of it natively.
+Ships modern syntax (top-level await, class fields, `at()`, structuredClone, error cause). Node 22+ supports all of it natively.
 
 ### `module: "NodeNext"` + `moduleResolution: "NodeNext"`
 True ESM resolution that matches what Node actually does. Requires `.js` extensions in import paths, even from `.ts` source files. The cost is you type more characters; the win is your code runs in Node identically to how the compiler resolved it.

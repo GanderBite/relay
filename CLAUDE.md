@@ -71,7 +71,7 @@ The harness runs four hook events to keep the loop tight:
 1. **No emojis in any code, output, or doc.** Use the Unicode symbol vocabulary only (`✓ ✕ ⚠ ⠋ ○ · ●─▶`). The mark `●─▶●─▶●─▶●` is the brand.
 2. **The word "simply" is banned in user-facing copy.** Same with trailing exclamation marks.
 3. **Subscription billing is the default.** Only `ClaudeCliProvider` is supported. Run `claude /login` to authenticate. See `billing-safety` skill for the auth contract.
-4. **ESM only, Node ≥20.10, TypeScript 5.4+.** No CJS dual-publish.
+4. **ESM only, Node ≥22.0, TypeScript 5.4+.** No CJS dual-publish.
 5. **Atomic writes for any file other processes might read** (state.json, batons/*, metrics.json, live/*).
 6. **Each task ends with one atomic commit** referencing the task ID.
 7. **Internal vs public error discipline.** Public API functions return `Result<T, E>` via neverthrow — they never throw. Internal step executors under `packages/core/src/orchestrator/exec/` may throw `PipelineError` subclasses; the run loop catches and converts them. When adding a new executor, throw on unrecoverable step failure. Never throw in the public API surface.

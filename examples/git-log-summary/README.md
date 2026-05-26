@@ -14,7 +14,7 @@ Two steps, two artifacts: `commits.txt` (the gate's capture) and `changelog.md` 
 
 ## Prerequisites
 
-- Node ≥ 20.10 and pnpm, same as the rest of the Relay monorepo.
+- Node ≥ 22.0 (LTS) and pnpm, same as the rest of the Relay monorepo.
 - `git` on your `PATH`. The first step shells out directly as a gate, and the prompt step then shells out again via Claude's tool use; there is no fallback.
 - You must run the flow inside a git working tree that has at least one commit. If there are fewer than 20 commits, `git log` returns what it has and Claude summarizes that — the flow does not fail.
 - A working Claude subscription (Pro or Max). The second step runs one short prompt.

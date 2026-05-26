@@ -97,7 +97,7 @@ Every Relay package has `"type": "module"` and uses `exports`:
 ## Importing JSON
 
 ```ts
-// ✅ Node 20.10+ supports JSON import attributes
+// ✅ Node 22+ supports JSON import attributes
 import pkg from '../package.json' with { type: 'json' };
 
 // ⚠ Older syntax `assert { type: 'json' }` is deprecated; use `with`

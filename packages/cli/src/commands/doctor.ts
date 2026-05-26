@@ -2,7 +2,7 @@
  * relay doctor — environment pre-flight check.
  *
  * Sections:
- *   1. node version  (≥ 20.10.0 required)
+ *   1. node version  (≥ 22.0.0 required)
  *   2. claude binary (version + path)
  *   3. dir           (.relay directory writable)
  *   4. providers     (one row per registered provider with billing descriptor)
@@ -75,7 +75,7 @@ interface CheckResult {
 /** 1. node version */
 function checkNode(): CheckResult {
   const version = process.versions.node;
-  const required = '20.10.0';
+  const required = '22.0.0';
   const ok = semver.gte(version, required) === true;
   return {
     line: ok

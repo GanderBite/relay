@@ -99,7 +99,7 @@ Rules:
 ```
 ●─▶●─▶●─▶●  relay doctor
 
- ✓ node         20.10.0  (≥ 20.10 required)
+ ✓ node         22.0.0  (≥ 22.0 required)
  ✓ claude       2.4.1 at /usr/local/bin/claude
  ✓ auth         subscription (max) via CLAUDE_CODE_OAUTH_TOKEN
  ✓ env          no conflicting ANTHROPIC_API_KEY
@@ -113,7 +113,7 @@ ready to run.
 ```
 ●─▶●─▶●─▶●  relay doctor
 
- ✓ node         20.10.0  (≥ 20.10 required)
+ ✓ node         22.0.0  (≥ 22.0 required)
  ✓ claude       2.4.1 at /usr/local/bin/claude
  ✓ auth         subscription (max) via CLAUDE_CODE_OAUTH_TOKEN
  ✕ env          ANTHROPIC_API_KEY is set in your environment
@@ -159,8 +159,8 @@ DIAGNOSTICS
     relay --help <command>          help for a specific command
 
 LEARN
-    ●─▶●─▶●─▶●   relay.dev                    the catalog
-    ●─▶●─▶●─▶●   relay.dev/docs/first-flow    scaffold one in 5 minutes
+    ●─▶●─▶●─▶●   ganderbite.github.io/relay              the catalog
+    ●─▶●─▶●─▶●   ganderbite.github.io/relay/authoring     your first flow
 ```
 
 ## Glossary subcommand (§13)
@@ -181,7 +181,7 @@ checkpoint  the saved state of a run after each step completes
 ●─▶●─▶●─▶●  relay 0.1.0
             @ganderbite/relay 0.1.0
             @ganderbite/relay-core 0.1.0
-            node 20.10.0 · claude 2.4.1
+            node 22.0.0 · claude 2.4.1
 ```
 
 Four lines. Optimized for paste-into-GitHub-issue.

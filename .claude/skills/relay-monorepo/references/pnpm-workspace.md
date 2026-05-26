@@ -51,7 +51,7 @@ node-linker=isolated
     "lint": "pnpm -r --parallel lint",
     "clean": "pnpm -r --parallel clean"
   },
-  "engines": { "node": ">=20.10" },
+  "engines": { "node": ">=22.0" },
   "packageManager": "pnpm@9.0.0"
 }
 ```
