@@ -67,6 +67,10 @@ const KNOWN_UNMAPPED: ReadonlySet<string> = new Set([
   ERROR_CODES.STATE_WRITE,
   // state.json atomic-write failure. Same as ATOMIC_WRITE / HANDOFF_WRITE:
   // no actionable remediation beyond checking the run directory.
+
+  ERROR_CODES.AGENTS_RESOLUTION,
+  // Agent graph validation failure before any invocation. The generic
+  // PipelineError fallback includes the message with the resolution details.
 ]);
 
 // ---------------------------------------------------------------------------
