@@ -55,13 +55,15 @@ jobs:
       - name: Install dependencies
         run: LEFTHOOK=0 pnpm install --frozen-lockfile
 
-      # ── 5. Typecheck all packages ─────────────────────────────────────────
-      - name: Typecheck
-        run: pnpm -r typecheck
-
-      # ── 6. Build all packages ─────────────────────────────────────────────
+      # ── 5. Build all packages ─────────────────────────────────────────────
+      #    Build before typecheck so that examples (which import compiled
+      #    @ganderbite/relay-core types from dist/) can resolve their imports.
       - name: Build
         run: pnpm -r build
+
+      # ── 6. Typecheck all packages ─────────────────────────────────────────
+      - name: Typecheck
+        run: pnpm -r typecheck
 
       # ── 7. Test all packages ──────────────────────────────────────────────
       - name: Test
