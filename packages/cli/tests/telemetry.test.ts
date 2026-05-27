@@ -143,7 +143,7 @@ describe('maybeSendRunEvent — telemetry enabled', () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://telemetry.relay.dev/runs');
+    expect(url).toBe('https://telemetry.ganderbite.com/runs');
     expect(init.method).toBe('POST');
     expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
 

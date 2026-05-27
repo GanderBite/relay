@@ -16,7 +16,7 @@ import { loadGlobalSettings } from '@ganderbite/relay-core';
 // Constants
 // ---------------------------------------------------------------------------
 
-const TELEMETRY_ENDPOINT = 'https://telemetry.relay.dev/runs';
+const TELEMETRY_ENDPOINT = 'https://telemetry.ganderbite.com/runs';
 const TELEMETRY_TIMEOUT_MS = 2_000;
 
 // ---------------------------------------------------------------------------
